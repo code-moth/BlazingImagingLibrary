@@ -1570,6 +1570,36 @@ This is an optional layer, built and supported as part of BIL. It is switched on
 
 **Writing.** The mapped format is written by BIL's own writer (section 11).
 
+**The layout.** The mapped format is BIL's own, made for mapping and nothing else.
+
+| Part | Content |
+| --- | --- |
+| Header | JSON text, so a person can inspect it: each Image with its grid, sample type and Levels, its fields and markings, and the block table's place. A whole copy also carries a `complete` flag. |
+| Block table | For each block: which Image, Level, frame and tile it holds, where it is, and its state |
+| Blocks | Native pixels or float32 Slices, uncompressed, in native byte order, each starting on a memory page so that it can be borrowed as it stands |
+
+- **On request, the blocks are a fixed set of slots.** They form a cache of bounded size. For a live stream they form a ring of recent frames.
+- **A whole copy fills every block once.**
+- **Other tools do not read it.** A caller who wants a decoded copy for other software writes one with BIL's writers (section 11).
+
+**Starting the decoder process**
+
+- **Spawned on first use.** BIL starts the decoder process when external decoding is first needed, and it ends when its parent ends.
+- **Or attached to.** Where a decoder is already running in the configured place, BIL attaches to it instead, so one decoding can serve several processes. A lock file there names each decoder's owner, which is also how leftovers are cleared.
+- **Only from configured locations.** The decoder program is found only where the configuration says, as plugins are (section 10.3).
+
+**Learning that data is ready**
+
+- **On request, by the control channel.** A reader asks for blocks over a control channel to the decoder, and the decoder replies when they are ready. The same channel carries every request, on every system.
+- **For a whole copy, by the `complete` flag.** The decoder sets it in the header last, after every block is safely written.
+
+**Blocks a caller still holds.** On request, a slot is reused once its block is no longer needed, but a caller may still hold a borrowed Fragment from it.
+
+- **A reader marks each slot it is using,** and the decoder reuses only slots that no reader has marked.
+- **A dead reader's marks are cleared.** When a reader's control channel closes, the decoder clears that reader's marks.
+
+**Private by construction.** Shared memory is created with no name and passed over the control channel: as a file descriptor on Linux and macOS, and as a duplicated handle on Windows. No other process can find it, so it is private to its owner without relying on file permissions.
+
 ### 10.3 Untrusted files
 
 Imagery files often arrive from outside, and BIL hands them to many C and C++ libraries. A file crafted to exploit one of those libraries could take over the caller's process, and a Rust core does not protect code it only calls. BIL answers with four measures.
@@ -2356,7 +2386,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Three points are not yet settled, and sixty-seven have been decided. Each lists the current proposal.
+Two points are not yet settled, and sixty-eight have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2368,7 +2398,7 @@ Three points are not yet settled, and sixty-seven have been decided. Each lists 
 - [x] **Video chroma.** Decided: luma and reduced chroma are two related Images. Chroma upsampling is part of the local slice functions `video.planes` and `video.rgb`, which read both, because every Slice at one Level shares one grid (sections 3, 5 and 9.3).
 - [x] **One resolution for every Slice.** Decided: the Level sets the grid. At a given Level every Slice of an Image has the same size, whichever slice function made it. Data stored at lower resolution, such as video chroma, mosaic sites, polarizer angles and video fields, is interpolated onto that grid (section 5).
 - [x] **Frame count and index.** Decided: a frame count is `Known`, `AtLeast` or `Unknown`, and the frame index is built on first need, never when a Source is opened (section 3.2).
-- [ ] **Mapped format details.** Its layout, how the decoder process is started, and how a reader learns that data is ready.
+- [x] **Mapped format details.** Decided: BIL's own layout, a JSON header with a block table and page-aligned blocks, used as a bounded set of slots on request. The decoder process is spawned on first use, or attached to where one is running. Readiness comes by a reply on the control channel, or by a `complete` flag for a whole copy. Readers mark the slots they hold, and shared memory is passed without a name (section 10.2).
 - [x] **Test data.** Decided: two layers. Synthetic reference files with known contents are generated by BIL's own test suite. Real files are listed in `testdata/manifest.toml` with their source, purpose and checksum, and fetched by `testdata/fetch.py`. The first come from GDAL's download cache, which mirrors the NITF Test Bed files; the author supplies others. CLIF 2007 remains a candidate for wide area motion imagery (Appendix B).
 - [ ] **Drivers for the added sensor cases.** The medical, security screening and sonar cases in section 8 name the data but not yet the libraries that read it.
 - [x] **Metadata model.** Decided, for now: metadata is held as named fields, with names taken from self-describing files or from specifications. Fields are extracted on demand and held to be read when needed (section 14).
