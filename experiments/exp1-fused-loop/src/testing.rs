@@ -189,7 +189,12 @@ pub fn with_holes(mut img: Image, seed: u64) -> Image {
 /// The Slices of `func` for the whole Image at Levels 0 to `top`, with missing data, made the
 /// plain way: whole planes, indexed directly, one Level after another, in scalar code. It shares
 /// only the arithmetic of the rolling buffer, not its structure, and so checks it.
-pub fn masked_reference(img: &Image, func: Func, top: u32) -> Vec<Vec<Slice>> {
+pub fn masked_reference(
+    img: &Image,
+    func: Func,
+    top: u32,
+    weights: crate::MissingWeights,
+) -> Vec<Vec<Slice>> {
     use crate::simd::Isa::Scalar;
     let mask = img.valid.as_ref().expect("an Image with a validity mask");
     let (carried, extra) = func.level0_planes();
@@ -220,6 +225,9 @@ pub fn masked_reference(img: &Image, func: Func, top: u32) -> Vec<Vec<Slice>> {
                     inputs[2].as_ptr(),
                     [o[0], o[1], o[2], o[3], o[4]],
                 ),
+                Func::Mask | Func::Labels | Func::Range => {
+                    unreachable!("the reference makes only the averaged functions")
+                }
             }
         }
         for (p, plane) in planes.iter_mut().enumerate() {
@@ -234,6 +242,24 @@ pub fn masked_reference(img: &Image, func: Func, top: u32) -> Vec<Vec<Slice>> {
     }
     let mut out = Vec::new();
     let (mut h, mut w) = (rows, cols);
+    // Each pixel's weight: 1 present, 0 missing at Level 0.
+    let mut weight: Vec<f32> = mask
+        .iter()
+        .map(|&b| if b == 0 { 0.0 } else { 1.0 })
+        .collect();
+    // A value that is not a number is missing too, in every plane of its pixel.
+    for (i, w) in weight.iter_mut().enumerate() {
+        if planes.iter().any(|p| p[i].is_nan()) {
+            *w = 0.0;
+        }
+    }
+    for plane in planes.iter_mut() {
+        for (x, w) in plane.iter_mut().zip(&weight) {
+            if *w == 0.0 {
+                *x = f32::NAN;
+            }
+        }
+    }
     for k in 0..=top {
         if k > 0 {
             let (h2, w2) = (
@@ -242,36 +268,56 @@ pub fn masked_reference(img: &Image, func: Func, top: u32) -> Vec<Vec<Slice>> {
             );
             let (jr, jc) = (h as i64, w as i64);
             let at = |i: i64, j: i64| crate::reflect(i, j) as usize;
+            let cols3 = |j: i64| [at(2 * j - 1, jc), at(2 * j, jc), at(2 * j + 1, jc)];
+            let rows3 = |i: i64| [at(2 * i - 1, jr), at(2 * i, jr), at(2 * i + 1, jr)];
+            // Along rows, the weights: 1 2 1, a quarter.
+            let mut wt = vec![0f32; h * w2];
+            for r in 0..h {
+                for j in 0..w2 as i64 {
+                    let c = cols3(j).map(|c| weight[r * w + c]);
+                    wt[r * w2 + j as usize] = ((c[0] + c[2]) + (c[1] + c[1])) * 0.25;
+                }
+            }
+            // Down columns, the weights of the new Level.
+            let mut q = vec![0f32; h2 * w2];
+            for i in 0..h2 as i64 {
+                for j in 0..w2 {
+                    let c = rows3(i).map(|r| wt[r * w2 + j]);
+                    q[i as usize * w2 + j] = ((c[0] + c[2]) + (c[1] + c[1])) * 0.25;
+                }
+            }
             for plane in planes.iter_mut().take(carried) {
-                // Along rows: sums of present values and of their weights.
+                // Along rows: the weighted sum of the present values.
                 let mut sum = vec![0f32; h * w2];
-                let mut wt = vec![0f32; h * w2];
                 for r in 0..h {
                     for j in 0..w2 as i64 {
-                        let v = [at(2 * j - 1, jc), at(2 * j, jc), at(2 * j + 1, jc)]
-                            .map(|c| plane[r * w + c]);
-                        let x = v.map(|x| if x.is_nan() { 0.0 } else { x });
-                        let p = v.map(|x| if x.is_nan() { 0.0 } else { 1.0 });
-                        sum[r * w2 + j as usize] = ((x[0] + x[2]) + (x[1] + x[1])) * 0.25;
-                        wt[r * w2 + j as usize] = ((p[0] + p[2]) + (p[1] + p[1])) * 0.25;
+                        let idx = cols3(j);
+                        let x = idx
+                            .map(|c| plane[r * w + c])
+                            .map(|x| if x.is_nan() { 0.0 } else { x });
+                        let c = idx.map(|c| weight[r * w + c]);
+                        sum[r * w2 + j as usize] =
+                            ((c[0] * x[0] + c[2] * x[2]) + (c[1] * x[1] + c[1] * x[1])) * 0.25;
                     }
                 }
-                // Down columns: combined, then divided once.
+                // Down columns: combined, then divided once by the new weight.
                 let mut next = vec![0f32; h2 * w2];
                 for i in 0..h2 as i64 {
-                    let src = [at(2 * i - 1, jr), at(2 * i, jr), at(2 * i + 1, jr)];
                     for j in 0..w2 {
-                        let s = src.map(|r| sum[r * w2 + j]);
-                        let q = src.map(|r| wt[r * w2 + j]);
-                        let (s, q) = (
-                            ((s[0] + s[2]) + (s[1] + s[1])) * 0.25,
-                            ((q[0] + q[2]) + (q[1] + q[1])) * 0.25,
-                        );
+                        let s = rows3(i).map(|r| sum[r * w2 + j]);
+                        let s = ((s[0] + s[2]) + (s[1] + s[1])) * 0.25;
+                        let q = q[i as usize * w2 + j];
                         next[i as usize * w2 + j] = if q == 0.0 { f32::NAN } else { s / q };
                     }
                 }
                 *plane = next;
             }
+            weight = match weights {
+                crate::MissingWeights::Equal => {
+                    q.iter().map(|&q| if q > 0.0 { 1.0 } else { 0.0 }).collect()
+                }
+                crate::MissingWeights::PixelCount => q,
+            };
             (h, w) = (h2, w2);
         }
         let derive =
@@ -301,6 +347,7 @@ pub fn masked_reference(img: &Image, func: Func, top: u32) -> Vec<Vec<Slice>> {
                 planes[0].clone(),
                 planes[1].clone(),
             ],
+            _ => unreachable!("the reference makes only the averaged functions"),
         };
         out.push(
             func.slice_names()

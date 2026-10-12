@@ -145,68 +145,61 @@ pub unsafe fn halve<V: Vf>(n: usize, a: *const f32, b: *const f32, c: *const f32
 /// `src` holds `2n + 1` values.
 #[inline(always)]
 pub unsafe fn halve_row<V: Vf>(n: usize, src: *const f32, out: *mut f32) {
-    row_pairs::<V, 1>(
+    row_pairs::<V, 1, 1>(
         n,
-        src,
+        [src],
         [out],
         #[inline(always)]
-        |a, b, c| [a.add(c).add(b.add(b)).mul(V::splat(0.25))],
+        |[[a, b, c]]| [a.add(c).add(b.add(b)).mul(V::splat(0.25))],
     );
 }
 
-/// The first half of a halving where values may be missing, as NaN: the weighted sum of the
-/// values present, and the sum of their weights, each with weights 1 2 1 and scaled by a quarter
-/// as `halve` scales, but not yet divided by the weight.
+/// The first half of a halving where values may be missing: the weighted sum of the values
+/// present along a row, `((ca a + cc c) + (cb b + cb b)) / 4`. Each value carries a weight,
+/// 0 where it is missing; a missing value may be NaN, and it is replaced by 0 before it is
+/// weighted. With weights of exactly 0 or 1 every product is exact, so a weight of 1 everywhere
+/// gives the bits of `halve`. The weights themselves are halved with `halve`.
 #[inline(always)]
-pub unsafe fn halve_sum<V: Vf>(
+pub unsafe fn halve_weighted<V: Vf>(
     n: usize,
-    a: *const f32,
-    b: *const f32,
-    c: *const f32,
-    out: [*mut f32; 2],
-) {
-    map::<V, 3, 2>(
-        n,
-        [a, b, c],
-        out,
-        #[inline(always)]
-        |[a, b, c]| sum_present(a, b, c),
-    );
-}
-
-/// `halve_sum` along a row, reading the row itself as `halve_row` does. `src` holds `2n + 1`
-/// values.
-#[inline(always)]
-pub unsafe fn halve_row_sum<V: Vf>(n: usize, src: *const f32, out: [*mut f32; 2]) {
-    row_pairs::<V, 2>(
-        n,
-        src,
-        out,
-        #[inline(always)]
-        |a, b, c| sum_present(a, b, c),
-    );
-}
-
-/// The second half of a halving where values may be missing: the weighted sums and weights of
-/// three rows, combined with weights 1 2 1 and divided. NaN where no value was present.
-#[inline(always)]
-pub unsafe fn halve_skip<V: Vf>(
-    n: usize,
-    sums: [*const f32; 3],
-    weights: [*const f32; 3],
+    x: [*const f32; 3],
+    c: [*const f32; 3],
     out: *mut f32,
 ) {
     map::<V, 6, 1>(
         n,
-        [
-            sums[0], sums[1], sums[2], weights[0], weights[1], weights[2],
-        ],
+        [x[0], x[1], x[2], c[0], c[1], c[2]],
         [out],
         #[inline(always)]
-        |[sa, sb, sc, wa, wb, wc]| {
-            let quarter = V::splat(0.25);
-            let s = sa.add(sc).add(sb.add(sb)).mul(quarter);
-            let w = wa.add(wc).add(wb.add(wb)).mul(quarter);
+        |[a, b, cc, wa, wb, wc]| [weighted_sum([a, b, cc], [wa, wb, wc])],
+    );
+}
+
+/// `halve_weighted` along a row, reading the values and their weights from the rows themselves
+/// as `halve_row` does. `x` and `c` each hold `2n + 1` values.
+#[inline(always)]
+pub unsafe fn halve_row_weighted<V: Vf>(n: usize, x: *const f32, c: *const f32, out: *mut f32) {
+    row_pairs::<V, 2, 1>(
+        n,
+        [x, c],
+        [out],
+        #[inline(always)]
+        |[x, c]| [weighted_sum(x, c)],
+    );
+}
+
+/// The second half of a halving where values may be missing: the weighted sums of three rows,
+/// combined with weights 1 2 1 and a quarter as `halve` does, then divided by the halved weight
+/// `w`. NaN where `w` is 0, so a value is NaN only when nothing that would contribute is present.
+#[inline(always)]
+pub unsafe fn halve_over<V: Vf>(n: usize, s: [*const f32; 3], w: *const f32, out: *mut f32) {
+    map::<V, 4, 1>(
+        n,
+        [s[0], s[1], s[2], w],
+        [out],
+        #[inline(always)]
+        |[sa, sb, sc, w]| {
+            let s = sa.add(sc).add(sb.add(sb)).mul(V::splat(0.25));
             let none = w.eq(V::splat(0.0));
             [V::select(
                 none,
@@ -215,6 +208,109 @@ pub unsafe fn halve_skip<V: Vf>(
             )]
         },
     );
+}
+
+/// 1 where a weight is above 0, else 0: the weights of the next Level when each present value
+/// counts equally, whatever share of its pixels was present.
+#[inline(always)]
+pub unsafe fn present_one<V: Vf>(n: usize, w: *const f32, out: *mut f32) {
+    map::<V, 1, 1>(
+        n,
+        [w],
+        [out],
+        #[inline(always)]
+        |[w]| [V::select(w.gt(V::splat(0.0)), V::splat(1.0), V::splat(0.0))],
+    );
+}
+
+/// The minimum of three values, leaving out missing ones (NaN): NaN only when all three are
+/// missing. Minimum and selection are exact, so the result is the same on every instruction set.
+/// It reduces range and depth, where an average would invent a range that is nowhere in the scene.
+#[inline(always)]
+pub unsafe fn min3_present<V: Vf>(
+    n: usize,
+    a: *const f32,
+    b: *const f32,
+    c: *const f32,
+    out: *mut f32,
+) {
+    map::<V, 3, 1>(
+        n,
+        [a, b, c],
+        [out],
+        #[inline(always)]
+        |[a, b, c]| [min_present([a, b, c])],
+    );
+}
+
+/// `min3_present` along a row, reading the row itself as `halve_row` does. `src` holds `2n + 1`
+/// values.
+#[inline(always)]
+pub unsafe fn min3_row<V: Vf>(n: usize, src: *const f32, out: *mut f32) {
+    row_pairs::<V, 1, 1>(
+        n,
+        [src],
+        [out],
+        #[inline(always)]
+        |[x]| [min_present(x)],
+    );
+}
+
+/// The weight `c` where `x` is a number, and 0 where `x` is NaN, so a value that is not a number
+/// counts as missing even where the mask calls its pixel valid.
+#[inline(always)]
+pub unsafe fn weight_present<V: Vf>(n: usize, x: *const f32, c: *const f32, out: *mut f32) {
+    map::<V, 2, 1>(
+        n,
+        [x, c],
+        [out],
+        #[inline(always)]
+        |[x, c]| [V::select(x.eq(x), c, V::splat(0.0))],
+    );
+}
+
+/// Applies a validity mask to every plane of a row in one pass. `rows[0]` is the weight row: 1
+/// where the mask says present, 0 where missing. A pixel is missing when its weight is 0 or any of
+/// its planes is not a number. Its weight becomes 0 and every one of its planes NaN; the rest are
+/// unchanged. Each value is read before it is written, so every row is both input and output.
+#[inline(always)]
+pub unsafe fn mask_planes<V: Vf, const N: usize>(n: usize, rows: [*mut f32; N]) {
+    map::<V, N, N>(
+        n,
+        rows.map(|p| p as *const f32),
+        rows,
+        #[inline(always)]
+        |v| {
+            let mut present = v[0].gt(V::splat(0.0));
+            for x in &v[1..] {
+                present = V::and(present, x.eq(*x));
+            }
+            let mut out = v;
+            out[0] = V::select(present, v[0], V::splat(0.0));
+            for k in 1..N {
+                out[k] = V::select(present, v[k], V::splat(f32::NAN));
+            }
+            out
+        },
+    );
+}
+
+/// `mask_planes` for one plane, as `pixel.raw`, labels and range have.
+#[inline(always)]
+pub unsafe fn mask_planes1<V: Vf>(n: usize, rows: [*mut f32; 2]) {
+    mask_planes::<V, 2>(n, rows)
+}
+
+/// `mask_planes` for the four planes of `complex.polar`.
+#[inline(always)]
+pub unsafe fn mask_planes4<V: Vf>(n: usize, rows: [*mut f32; 5]) {
+    mask_planes::<V, 5>(n, rows)
+}
+
+/// `mask_planes` for the five planes of `color.hsv`.
+#[inline(always)]
+pub unsafe fn mask_planes5<V: Vf>(n: usize, rows: [*mut f32; 6]) {
+    mask_planes::<V, 6>(n, rows)
 }
 
 /// `x` where `probe` is a number, and NaN where `probe` is NaN. A mask of 1.0 and NaN applies a
@@ -230,51 +326,57 @@ pub unsafe fn keep_present<V: Vf>(n: usize, probe: *const f32, x: *const f32, ou
     );
 }
 
-/// Present values with weights 1 2 1, and the sum of their weights, both scaled by a quarter. A
-/// value is present when it is not NaN. With all three present the weight is exactly 1 and the
-/// sum has the bits of `halve`, so a mask with nothing missing changes nothing, over the whole
-/// float32 range. Every operation is exact or correctly rounded, so the result is the same on
-/// every instruction set.
+/// The least of three values that are present, or NaN when none is.
 #[inline(always)]
-unsafe fn sum_present<V: Vf>(a: V, b: V, c: V) -> [V; 2] {
+unsafe fn min_present<V: Vf>(x: [V; 3]) -> V {
+    // Written out rather than with array `map`, whose closures the compiler may not inline into
+    // vector code, which makes every instruction a call (rule 5 of the working notes).
+    let inf = V::splat(f32::INFINITY);
+    let (pa, pb, pc) = (x[0].eq(x[0]), x[1].eq(x[1]), x[2].eq(x[2]));
+    let a = V::select(pa, x[0], inf);
+    let b = V::select(pb, x[1], inf);
+    let c = V::select(pc, x[2], inf);
+    let m = a.min(b).min(c);
+    let none = V::and(V::not(pa), V::and(V::not(pb), V::not(pc)));
+    V::select(none, V::splat(f32::NAN), m)
+}
+
+/// `((ca a + cc c) + (cb b + cb b)) / 4`, with a missing value, which may be NaN, replaced by 0
+/// first. Every operation is exact or correctly rounded, so the result is the same on every
+/// instruction set.
+#[inline(always)]
+unsafe fn weighted_sum<V: Vf>(x: [V; 3], c: [V; 3]) -> V {
     let zero = V::splat(0.0);
-    let one = V::splat(1.0);
-    let (pa, pb, pc) = (a.eq(a), b.eq(b), c.eq(c));
-    let (a, b, c) = (
-        V::select(pa, a, zero),
-        V::select(pb, b, zero),
-        V::select(pc, c, zero),
-    );
-    let (wa, wb, wc) = (
-        V::select(pa, one, zero),
-        V::select(pb, one, zero),
-        V::select(pc, one, zero),
-    );
-    let quarter = V::splat(0.25);
-    [
-        a.add(c).add(b.add(b)).mul(quarter),
-        wa.add(wc).add(wb.add(wb)).mul(quarter),
-    ]
+    // Written out, not with array `map`, so that it inlines into vector code.
+    let a = V::select(x[0].eq(x[0]), x[0], zero);
+    let b = V::select(x[1].eq(x[1]), x[1], zero);
+    let cc = V::select(x[2].eq(x[2]), x[2], zero);
+    let (a, b, cc) = (a.mul(c[0]), b.mul(c[1]), cc.mul(c[2]));
+    a.add(cc).add(b.add(b)).mul(V::splat(0.25))
 }
 
 /// Applies `f` to the left, center and right sources of each output of a halving along a row,
-/// read from the row itself: `src[2i]`, `src[2i + 1]` and `src[2i + 2]`. `src` holds `2n + 1`
-/// values. The last outputs go through the same vector code on a padded copy.
+/// read from each of `NI` rows itself: `src[2i]`, `src[2i + 1]` and `src[2i + 2]`. Each source
+/// holds `2n + 1` values. The last outputs go through the same vector code on a padded copy.
 #[inline(always)]
-unsafe fn row_pairs<V: Vf, const NO: usize>(
+unsafe fn row_pairs<V: Vf, const NI: usize, const NO: usize>(
     n: usize,
-    src: *const f32,
+    srcs: [*const f32; NI],
     outs: [*mut f32; NO],
-    f: impl Fn(V, V, V) -> [V; NO],
+    f: impl Fn([[V; 3]; NI]) -> [V; NO],
 ) {
     let l = V::LANES;
     let mut i = 0;
     // The right source of the last output in a vector is read by the second load, which ends
     // one value past it, so a full vector needs i + l < n.
     while i + l < n {
-        let (a, b) = V::load_even_odd(src.add(2 * i));
-        let (c, _) = V::load_even_odd(src.add(2 * i + 2));
-        let r = f(a, b, c);
+        let mut v = [[V::splat(0.0); 3]; NI];
+        for k in 0..NI {
+            let (a, b) = V::load_even_odd(srcs[k].add(2 * i));
+            let (c, _) = V::load_even_odd(srcs[k].add(2 * i + 2));
+            v[k] = [a, b, c];
+        }
+        let r = f(v);
         for k in 0..NO {
             r[k].store(outs[k].add(i));
         }
@@ -282,13 +384,17 @@ unsafe fn row_pairs<V: Vf, const NO: usize>(
     }
     if i < n {
         let rem = n - i;
-        let mut t = [0f32; 2 * MAX_LANES + 2];
-        for j in 0..2 * rem + 1 {
-            t[j] = *src.add(2 * i + j);
+        let mut t = [[0f32; 2 * MAX_LANES + 2]; NI];
+        let mut v = [[V::splat(0.0); 3]; NI];
+        for k in 0..NI {
+            for j in 0..2 * rem + 1 {
+                t[k][j] = *srcs[k].add(2 * i + j);
+            }
+            let (a, b) = V::load_even_odd(t[k].as_ptr());
+            let (c, _) = V::load_even_odd(t[k].as_ptr().add(2));
+            v[k] = [a, b, c];
         }
-        let (a, b) = V::load_even_odd(t.as_ptr());
-        let (c, _) = V::load_even_odd(t.as_ptr().add(2));
-        let r = f(a, b, c);
+        let r = f(v);
         let mut tout = [0f32; MAX_LANES];
         for k in 0..NO {
             r[k].store(tout.as_mut_ptr());

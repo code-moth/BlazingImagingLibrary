@@ -23,7 +23,7 @@ pub use bil::{kernels, simd};
 
 /// Experiment 1b: the same pass on a rolling buffer of a few rows, into the caller's buffers.
 pub mod rolling;
-pub use rolling::{plan_outputs, read_levels_into, Pass};
+pub use rolling::{plan_outputs, read_levels_into, LevelMethod, MissingWeights, Pass, ReadOptions};
 
 /// Test images and comparisons for the experiment programs.
 pub mod testing;
@@ -60,6 +60,23 @@ pub enum Func {
     Polar,
     /// `color.hsv`
     Hsv,
+    /// `pixel.mask`: `valid` and `valid_fraction`, made from the validity mask
+    Mask,
+    /// `class.labels`: a label in each pixel, reduced by keeping every second value
+    Labels,
+    /// `depth.sensor`: a range in each pixel, reduced by the minimum of each 3 × 3 block
+    Range,
+}
+
+/// How a kind of Slice is reduced at each halving (section 5 of the specification).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reduce {
+    /// The level method's weights, 1 2 1, leaving missing values out
+    Average,
+    /// The value at the grid point, as for labels and for `decimate`
+    Keep,
+    /// The least present value of the 3 × 3 block centered on the grid point, as for range
+    Min3,
 }
 
 impl Func {
@@ -68,6 +85,28 @@ impl Func {
             Func::Raw => &["intensity"],
             Func::Polar => &["magnitude", "phase"],
             Func::Hsv => &["hue", "saturation", "value"],
+            Func::Mask => &["valid", "valid_fraction"],
+            Func::Labels => &["value"],
+            Func::Range => &["range"],
+        }
+    }
+    /// The function's name in the specification: family and function.
+    pub fn name(self) -> &'static str {
+        match self {
+            Func::Raw => "pixel.raw",
+            Func::Polar => "complex.polar",
+            Func::Hsv => "color.hsv",
+            Func::Mask => "pixel.mask",
+            Func::Labels => "class.labels",
+            Func::Range => "depth.sensor",
+        }
+    }
+    /// How this function's Slices are reduced under the default level method.
+    pub fn reduce(self) -> Reduce {
+        match self {
+            Func::Raw | Func::Polar | Func::Hsv | Func::Mask => Reduce::Average,
+            Func::Labels => Reduce::Keep,
+            Func::Range => Reduce::Min3,
         }
     }
     /// Planes made at Level 0: those carried to coarser Levels, then Level 0 extras.
@@ -76,11 +115,12 @@ impl Func {
             Func::Raw => (1, 0),
             Func::Polar => (3, 1),
             Func::Hsv => (4, 1),
+            Func::Mask | Func::Labels | Func::Range => (1, 0),
         }
     }
     fn inputs(self) -> usize {
         match self {
-            Func::Raw => 1,
+            Func::Raw | Func::Mask | Func::Labels | Func::Range => 1,
             Func::Polar => 2,
             Func::Hsv => 3,
         }
@@ -158,9 +198,16 @@ dispatch!(phase_from(n: usize, ure: *const f32, uim: *const f32, out: *mut f32))
 dispatch!(hsv0(n: usize, r: *const f32, g: *const f32, b: *const f32, out: [*mut f32; 5]));
 dispatch!(hue_from(n: usize, hc: *const f32, hs: *const f32, out: *mut f32));
 dispatch!(halve_row(n: usize, src: *const f32, out: *mut f32));
-dispatch!(halve_sum(n: usize, a: *const f32, b: *const f32, c: *const f32, out: [*mut f32; 2]));
-dispatch!(halve_row_sum(n: usize, src: *const f32, out: [*mut f32; 2]));
-dispatch!(halve_skip(n: usize, sums: [*const f32; 3], weights: [*const f32; 3], out: *mut f32));
+dispatch!(halve_weighted(n: usize, x: [*const f32; 3], c: [*const f32; 3], out: *mut f32));
+dispatch!(halve_row_weighted(n: usize, x: *const f32, c: *const f32, out: *mut f32));
+dispatch!(halve_over(n: usize, s: [*const f32; 3], w: *const f32, out: *mut f32));
+dispatch!(present_one(n: usize, w: *const f32, out: *mut f32));
+dispatch!(weight_present(n: usize, x: *const f32, c: *const f32, out: *mut f32));
+dispatch!(mask_planes1(n: usize, rows: [*mut f32; 2]));
+dispatch!(mask_planes4(n: usize, rows: [*mut f32; 5]));
+dispatch!(mask_planes5(n: usize, rows: [*mut f32; 6]));
+dispatch!(min3_present(n: usize, a: *const f32, b: *const f32, c: *const f32, out: *mut f32));
+dispatch!(min3_row(n: usize, src: *const f32, out: *mut f32));
 dispatch!(keep_present(n: usize, probe: *const f32, x: *const f32, out: *mut f32));
 
 // ---------------------------------------------------------------- grid arithmetic
@@ -320,6 +367,10 @@ pub fn read_levels(img: &Image, func: Func, isa: Isa, window: Window, top: u32) 
         isa == Isa::Scalar || Isa::available().contains(&isa),
         "{isa:?} is not available"
     );
+    assert!(
+        matches!(func, Func::Raw | Func::Polar | Func::Hsv),
+        "experiment 1's whole planes make only pixel.raw, complex.polar and color.hsv"
+    );
     let (row_out, row_need) = axis_plan(
         img.rows,
         window.row_start,
@@ -378,6 +429,7 @@ pub fn read_levels(img: &Image, func: Func, isa: Isa, window: Window, top: u32) 
                     )
                 };
             }
+            Func::Mask | Func::Labels | Func::Range => unreachable!("checked above"),
         }
     }
 
@@ -542,5 +594,6 @@ fn slices_at(
                 make("value", value),
             ]
         }
+        Func::Mask | Func::Labels | Func::Range => unreachable!("checked above"),
     }
 }

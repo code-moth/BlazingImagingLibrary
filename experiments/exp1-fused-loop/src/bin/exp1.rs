@@ -64,7 +64,7 @@ fn main() {
                 }
             }
             all_ok &= diffs == 0 && vs_scalar == 0;
-            println!("| `{}` | {kind} | {isa:?} | {windows_per_case} | {compared} | {diffs} | {vs_scalar} |", func_name(*func));
+            println!("| `{}` | {kind} | {isa:?} | {windows_per_case} | {compared} | {diffs} | {vs_scalar} |", func.name());
         }
     }
     println!("\nAll bitwise checks passed: **{all_ok}**\n");
@@ -78,14 +78,6 @@ fn main() {
         return;
     }
     benchmarks(&isas);
-}
-
-fn func_name(f: Func) -> &'static str {
-    match f {
-        Func::Raw => "pixel.raw",
-        Func::Polar => "complex.polar",
-        Func::Hsv => "color.hsv",
-    }
 }
 
 /// Level 0 values against float64 references.
@@ -178,7 +170,7 @@ fn benchmarks(isas: &[Isa]) {
                 });
                 println!(
                     "| `{}` | {kind} | {n} × {n} | {isa:?} | 0 to {top} | {:.3} s | {:.0} | {:.1} |",
-                    func_name(func),
+                    func.name(),
                     t,
                     (n * n) as f64 / t / 1e6,
                     t / copy

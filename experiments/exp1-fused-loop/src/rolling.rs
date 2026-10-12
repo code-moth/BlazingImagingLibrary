@@ -14,18 +14,25 @@
 //! missing. `missing_value` is applied last, to the finished Slice. An Image with no mask makes
 //! none of these checks.
 //!
-//! Three choices here are proposals that the specification leaves open, awaiting the author:
+//! `missing_weights` chooses how a Level weights the values below it: `Equal`, the default, or
+//! `PixelCount`, by the share of present full-resolution pixels behind each (version 67).
+//!
+//! Four choices here are proposals that the specification leaves open, awaiting the author:
 //! - **One 2D average.** Along the row the weighted sum of the values present and the sum of
 //!   their weights are kept apart; down the column both are combined and divided once. The result
 //!   is the 3 x 3 average of the values present, rather than an average rescaled after each pass.
-//! - **Level by level.** Each Level averages the values of the Level before it with equal weight,
-//!   without carrying how many full-resolution pixels lie behind each one.
 //! - **Stored NaN is missing.** On this path any NaN counts as missing, so a NaN stored in float
 //!   data at a pixel the mask calls valid is skipped and filled like a masked one.
+//! - **`valid_fraction` by filter weight.** The share of contributing pixels that were valid is
+//!   weighted by the filter.
+//! - **`valid` follows the averaged mask** whatever kind of Slice it is read beside, so beside
+//!   labels or range it can differ from where a reduced value exists.
 
 use super::{
-    axis_plan, convert_row, grid_len, halve, halve_row, halve_row_sum, halve_skip, halve_sum, hsv0,
-    hue_from, keep_present, phase_from, polar0, reflect, Func, Image, Slice, Window,
+    axis_plan, convert_row, grid_len, halve, halve_over, halve_row, halve_row_weighted,
+    halve_weighted, hsv0, hue_from, keep_present, mask_planes1, mask_planes4, mask_planes5,
+    min3_present, min3_row, phase_from, polar0, present_one, reflect, weight_present, Func, Image,
+    Reduce, Samples, Slice, Window,
 };
 use crate::simd::Isa;
 
@@ -92,12 +99,18 @@ struct LevelState {
     /// The output columns `lo..hi` whose sources need no mirroring, and the source column of the
     /// first one's left neighbor. Their sources are read from the row itself.
     interior: (usize, usize, usize),
-    /// Rows of the Level before, halved along the row, in `RING` slots. Without missing data,
-    /// one plane for each carried plane. With it, two: the weighted sums, then the weights.
+    /// Rows of the Level before, halved along the row, in `RING` slots: one plane for each
+    /// carried plane. With missing data they are weighted sums, not yet divided.
     ring: Vec<Vec<f32>>,
+    /// With missing data, the weight of each value of the current row: 0 where it is missing.
+    /// Every plane of a pixel is present or missing together, so one row serves them all.
+    count: Vec<f32>,
+    /// With missing data, the weights of the Level before, halved along the row, in `RING` slots.
+    ring_count: Vec<f32>,
     /// Which row of the Level before each ring slot holds.
     tags: [i64; RING],
-    /// The current row of this Level: carried planes, then Level 0's extra planes.
+    /// The current row of this Level: carried planes, then Level 0's extra planes, which every
+    /// Level keeps when values are kept rather than averaged.
     row: Vec<Vec<f32>>,
 }
 
@@ -120,8 +133,39 @@ pub struct Pass {
     edge: [Vec<f32>; 3],
     /// The native samples of one row, converted to f32 component rows.
     inputs: Vec<Vec<f32>>,
-    /// One row of the validity mask, as 1.0 where present and NaN where missing.
-    valid: Vec<f32>,
+    /// Gathered weights at the two ends of a row, with missing data.
+    edge_count: [Vec<f32>; 3],
+}
+
+/// How a Level weights the values below it where some are missing (section 5 of the
+/// specification).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MissingWeights {
+    /// Each present value below counts with its filter weight alone.
+    #[default]
+    Equal,
+    /// Each present value below counts with its filter weight times the share of present
+    /// full-resolution pixels behind it, as if the Level were made from full resolution at once.
+    PixelCount,
+}
+
+/// The level method (section 5 of the specification).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LevelMethod {
+    /// Weights 1 2 1 at each halving, for every kind of Slice that is averaged.
+    #[default]
+    Bilinear,
+    /// The value at each point of the reduced grid, for every kind of Slice.
+    Decimate,
+}
+
+/// The options of a read that concern this experiment, as `SliceOptions` holds them.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ReadOptions {
+    pub level_method: LevelMethod,
+    /// A number for missing positions, in place of NaN.
+    pub missing_value: Option<f32>,
+    pub missing_weights: MissingWeights,
 }
 
 impl Pass {
@@ -135,7 +179,6 @@ impl Pass {
             .map(|k| {
                 let cols = plan.col_need[k];
                 let w = (cols.1 - cols.0 + 1) as usize;
-                let planes = if k == 0 { carried + extra } else { carried };
                 let gather = if k == 0 {
                     [Vec::new(), Vec::new(), Vec::new()]
                 } else {
@@ -151,11 +194,9 @@ impl Pass {
                     ]
                 };
                 let interior = interior_of(&gather);
-                let ring_planes = match (k, masked) {
-                    (0, _) => 0,
-                    (_, false) => carried,
-                    (_, true) => 2 * carried,
-                };
+                let ring_planes = if k == 0 { 0 } else { carried };
+                let count_len = if masked { w } else { 0 };
+                let ring_count_len = if masked && k > 0 { RING * w } else { 0 };
                 LevelState {
                     cols,
                     interior,
@@ -168,8 +209,10 @@ impl Pass {
                     },
                     gather,
                     ring: vec![vec![0f32; RING * w]; ring_planes],
+                    count: vec![0f32; count_len],
+                    ring_count: vec![0f32; ring_count_len],
                     tags: [i64::MIN; RING],
-                    row: vec![vec![0f32; w]; planes],
+                    row: vec![vec![0f32; w]; carried + extra],
                 }
             })
             .collect();
@@ -182,8 +225,8 @@ impl Pass {
             plan,
             levels,
             edge: [vec![0f32; widest], vec![0f32; widest], vec![0f32; widest]],
-            inputs: vec![vec![0f32; widest]; func.inputs()],
-            valid: vec![0f32; widest],
+            inputs: vec![vec![0f32; widest]; func.inputs().max(components(img))],
+            edge_count: [vec![0f32; widest], vec![0f32; widest], vec![0f32; widest]],
         }
     }
 
@@ -213,14 +256,8 @@ impl Pass {
     }
 
     /// Runs the read into `out`, which must have the shape `outputs` gives. Missing positions
-    /// are NaN, or `missing_value` where the caller gives one.
-    pub fn run(
-        &mut self,
-        img: &Image,
-        isa: Isa,
-        missing_value: Option<f32>,
-        out: &mut [Vec<Slice>],
-    ) {
+    /// are NaN, or the `missing_value` of `options` where the caller gives one.
+    pub fn run(&mut self, img: &Image, isa: Isa, options: ReadOptions, out: &mut [Vec<Slice>]) {
         assert!(
             isa == Isa::Scalar || Isa::available().contains(&isa),
             "{isa:?} is not available"
@@ -235,6 +272,10 @@ impl Pass {
             level.tags = [i64::MIN; RING];
         }
         let func = self.func;
+        let reduce = match options.level_method {
+            LevelMethod::Decimate => Reduce::Keep,
+            LevelMethod::Bilinear => func.reduce(),
+        };
         let (r0, r1) = self.levels[0].rows;
         let (c0, c1) = self.levels[0].cols;
         let n = self.levels[0].width();
@@ -242,7 +283,43 @@ impl Pass {
             let row = &mut self.levels[0].row;
             match func {
                 // Converted straight into the Level 0 row.
-                Func::Raw => convert_row(img, r as usize, c0 as usize, c1 as usize, &mut row[..1]),
+                Func::Raw | Func::Labels | Func::Range => {
+                    convert_row(img, r as usize, c0 as usize, c1 as usize, &mut row[..1])
+                }
+                // The mask, 1.0 where present and 0.0 where missing, averaged as it is. A sample
+                // that is not a number counts as missing, as on the weighted path.
+                Func::Mask => {
+                    match &img.valid {
+                        Some(mask) => {
+                            let at = r as usize * img.cols;
+                            let bytes = &mask[at + c0 as usize..=at + c1 as usize];
+                            for (v, &b) in row[0].iter_mut().zip(bytes) {
+                                *v = f32::from(u8::from(b != 0));
+                            }
+                        }
+                        None => row[0].fill(1.0),
+                    }
+                    // As on the weighted path, NaN is looked for only where the Image can have
+                    // missing pixels, and only float samples can hold one.
+                    if img.valid.is_some()
+                        && matches!(img.samples, Samples::F32(_) | Samples::ComplexF32(_))
+                    {
+                        let k = components(img);
+                        convert_row(
+                            img,
+                            r as usize,
+                            c0 as usize,
+                            c1 as usize,
+                            &mut self.inputs[..k],
+                        );
+                        let w = row[0].as_mut_ptr();
+                        for x in &self.inputs[..k] {
+                            // The sample rows and the mask row hold n values; the mask row is
+                            // read before it is written.
+                            unsafe { weight_present(isa, n, x.as_ptr(), w, w) };
+                        }
+                    }
+                }
                 Func::Polar => {
                     convert_row(img, r as usize, c0 as usize, c1 as usize, &mut self.inputs);
                     let i = &self.inputs;
@@ -284,26 +361,45 @@ impl Pass {
                     }
                 }
             }
-            if let Some(mask) = &img.valid {
-                // Every plane of a missing pixel is NaN, whatever its kernel made of the samples.
+            if let (Some(mask), true) = (&img.valid, self.weighted()) {
+                // Each pixel's weight is 1 where present and 0 where missing, and every plane of
+                // a missing pixel is NaN, whatever its kernel made of the samples.
+                let level0 = &mut self.levels[0];
                 let at = r as usize * img.cols;
                 let bytes = &mask[at + c0 as usize..=at + c1 as usize];
-                for (v, &b) in self.valid.iter_mut().zip(bytes) {
-                    *v = if b == 0 { f32::NAN } else { 1.0 };
+                for (v, &b) in level0.count.iter_mut().zip(bytes) {
+                    *v = if b == 0 { 0.0 } else { 1.0 };
                 }
-                for plane in row.iter_mut() {
-                    let p = plane.as_mut_ptr();
-                    // The mask row and the plane hold at least n values; the kernel reads each
-                    // value before it writes it, so the plane may be both input and output.
-                    unsafe { keep_present(isa, n, self.valid.as_ptr(), p, p) };
+                // A value that is not a number is missing too, in every plane of its pixel. One
+                // pass reads every plane once, sets the weight and makes the pixel NaN.
+                let c = level0.count.as_mut_ptr();
+                let mut p = [std::ptr::null_mut(); 5];
+                for (d, plane) in p.iter_mut().zip(level0.row.iter_mut()) {
+                    *d = plane.as_mut_ptr();
+                }
+                // The weight row and every plane hold n values; each is read before it is
+                // written, so every row is both input and output.
+                unsafe {
+                    match level0.row.len() {
+                        1 => mask_planes1(isa, n, [c, p[0]]),
+                        4 => mask_planes4(isa, n, [c, p[0], p[1], p[2], p[3]]),
+                        5 => mask_planes5(isa, n, [c, p[0], p[1], p[2], p[3], p[4]]),
+                        _ => unreachable!("every function has one, four or five planes"),
+                    }
                 }
             }
             self.levels[0].next = r + 1;
-            self.emit(isa, missing_value, 0, r, out);
+            self.emit(isa, options, reduce, 0, r, out);
         }
         for (k, level) in self.levels.iter().enumerate() {
             assert_eq!(level.next, level.rows.1 + 1, "Level {k} was not finished");
         }
+    }
+
+    /// Whether missing values are NaN and skipped. The mask Slices are made from the mask itself,
+    /// so they have no missing values.
+    fn weighted(&self) -> bool {
+        self.masked && self.func != Func::Mask
     }
 
     fn check_shape(&self, out: &[Vec<Slice>]) {
@@ -330,11 +426,21 @@ impl Pass {
 
     /// Row `r` of Level `k` is in `levels[k].row`. Writes the part of it the Window shows,
     /// passes it to Level k + 1, and makes every row of the Levels above that it completes.
-    fn emit(&mut self, isa: Isa, fill: Option<f32>, k: usize, r: i64, out: &mut [Vec<Slice>]) {
+    fn emit(
+        &mut self,
+        isa: Isa,
+        options: ReadOptions,
+        reduce: Reduce,
+        k: usize,
+        r: i64,
+        out: &mut [Vec<Slice>],
+    ) {
+        let fill = options.missing_value;
         write_out(
             self.func,
             isa,
-            self.masked,
+            self.weighted(),
+            reduce == Reduce::Keep,
             fill,
             &self.plan,
             &self.levels[k],
@@ -345,26 +451,65 @@ impl Pass {
         if k + 1 >= self.levels.len() {
             return;
         }
-        let (carried, _) = self.func.level0_planes();
-        let masked = self.masked;
+        let (carried, extra) = self.func.level0_planes();
+        let masked = self.weighted();
+        if reduce == Reduce::Keep {
+            // Every second value of every second row, with nothing averaged: the next Level's
+            // row i is this Level's row 2i at the even columns.
+            let i = {
+                let (here, above) = self.levels.split_at_mut(k + 1);
+                let (cur, next) = (&here[k], &mut above[0]);
+                if next.next > next.rows.1 || r != 2 * next.next {
+                    return;
+                }
+                let even = &next.gather[1];
+                for p in 0..carried + extra {
+                    for (d, &j) in next.row[p].iter_mut().zip(even) {
+                        *d = cur.row[p][j];
+                    }
+                }
+                next.next += 1;
+                next.next - 1
+            };
+            return self.emit(isa, options, reduce, k + 1, i, out);
+        }
+        if reduce == Reduce::Min3 {
+            return self.emit_min3(isa, options, k, r, out);
+        }
         let (here, above) = self.levels.split_at_mut(k + 1);
         let (cur, next) = (&here[k], &mut above[0]);
 
-        // Halve this row along the row into the next Level's ring.
+        // Halve this row along the row into the next Level's ring. With missing data the
+        // weights are halved first, once for every plane, and each plane is weighted by them.
         let w = next.width();
         let slot = r.rem_euclid(RING as i64) as usize;
         let (lo, hi, first) = next.interior;
+        let span = 2 * (hi - lo) + 1;
+        if masked {
+            let src = &cur.count;
+            let dst = next.ring_count[slot * w..].as_mut_ptr();
+            for (i0, i1) in [(0, lo), (hi, w)] {
+                for i in i0..i1 {
+                    for t in 0..3 {
+                        self.edge_count[t][i] = src[next.gather[t][i]];
+                    }
+                }
+                if i1 > i0 {
+                    let [a, b, c] = [0, 1, 2].map(|t| self.edge_count[t][i0..].as_ptr());
+                    // The edge buffers hold at least w values and the ring slot w, and i0..i1
+                    // lies inside both.
+                    unsafe { halve(isa, i1 - i0, a, b, c, dst.add(i0)) };
+                }
+            }
+            if hi > lo {
+                let from = src[first..first + span].as_ptr();
+                // `from` holds 2(hi - lo) + 1 values, and lo..hi lies inside the ring slot.
+                unsafe { halve_row(isa, hi - lo, from, dst.add(lo)) };
+            }
+        }
         for p in 0..carried {
             let src = &cur.row[p];
-            let (s, wt) = if masked {
-                let (a, b) = next.ring.split_at_mut(2 * p + 1);
-                (
-                    a[2 * p][slot * w..].as_mut_ptr(),
-                    b[0][slot * w..].as_mut_ptr(),
-                )
-            } else {
-                (next.ring[p][slot * w..].as_mut_ptr(), std::ptr::null_mut())
-            };
+            let dst = next.ring[p][slot * w..].as_mut_ptr();
             // The two ends, where a source may be mirrored, are gathered by index.
             for (i0, i1) in [(0, lo), (hi, w)] {
                 if i0 == i1 {
@@ -375,26 +520,29 @@ impl Pass {
                         self.edge[t][i] = src[next.gather[t][i]];
                     }
                 }
-                let [a, b, c] = [0, 1, 2].map(|t| self.edge[t][i0..].as_ptr());
+                let x = [0, 1, 2].map(|t| self.edge[t][i0..].as_ptr());
                 // The edge buffers hold at least w values and each ring slot w, and i0..i1 lies
                 // inside both.
                 unsafe {
                     if masked {
-                        halve_sum(isa, i1 - i0, a, b, c, [s.add(i0), wt.add(i0)]);
+                        let c = [0, 1, 2].map(|t| self.edge_count[t][i0..].as_ptr());
+                        halve_weighted(isa, i1 - i0, x, c, dst.add(i0));
                     } else {
-                        halve(isa, i1 - i0, a, b, c, s.add(i0));
+                        halve(isa, i1 - i0, x[0], x[1], x[2], dst.add(i0));
                     }
                 }
             }
             // The interior is read from the row itself: 2(hi - lo) + 1 values from `first`.
             if hi > lo {
-                let from = src[first..first + 2 * (hi - lo) + 1].as_ptr();
-                // `from` holds 2(hi - lo) + 1 values, and lo..hi lies inside each ring slot.
+                let from = src[first..first + span].as_ptr();
+                // `from` and the weights hold 2(hi - lo) + 1 values from `first`, and lo..hi lies
+                // inside each ring slot.
                 unsafe {
                     if masked {
-                        halve_row_sum(isa, hi - lo, from, [s.add(lo), wt.add(lo)]);
+                        let weights = cur.count[first..first + span].as_ptr();
+                        halve_row_weighted(isa, hi - lo, from, weights, dst.add(lo));
                     } else {
-                        halve_row(isa, hi - lo, from, s.add(lo));
+                        halve_row(isa, hi - lo, from, dst.add(lo));
                     }
                 }
             }
@@ -423,24 +571,104 @@ impl Pass {
                     assert_eq!(next.tags[slot], s, "row {s} left the ring too early");
                     slot
                 });
+                if masked {
+                    // The weights of this row first: they divide every plane.
+                    let [a, b, c] = slots.map(|t| next.ring_count[t * w..].as_ptr());
+                    let wt = next.count.as_mut_ptr();
+                    // Each ring slot and the weight row hold w values.
+                    unsafe { halve(isa, w, a, b, c, wt) };
+                }
                 for p in 0..carried {
                     let out = next.row[p].as_mut_ptr();
-                    // Each ring slot and the output row hold w values.
+                    // Each ring slot, the weight row and the output row hold w values.
                     unsafe {
                         if masked {
-                            let sums = slots.map(|t| next.ring[2 * p][t * w..].as_ptr());
-                            let weights = slots.map(|t| next.ring[2 * p + 1][t * w..].as_ptr());
-                            halve_skip(isa, w, sums, weights, out);
+                            let sums = slots.map(|t| next.ring[p][t * w..].as_ptr());
+                            halve_over(isa, w, sums, next.count.as_ptr(), out);
                         } else {
                             let [a, b, c] = slots.map(|t| next.ring[p][t * w..].as_ptr());
                             halve(isa, w, a, b, c, out);
                         }
                     }
                 }
+                if masked && options.missing_weights == MissingWeights::Equal {
+                    // Each present value counts the same at the next halving.
+                    let wt = next.count.as_mut_ptr();
+                    // The weight row holds w values, read before written.
+                    unsafe { present_one(isa, w, wt, wt) };
+                }
                 next.next = i + 1;
                 i
             };
-            self.emit(isa, fill, k + 1, i, out);
+            self.emit(isa, options, reduce, k + 1, i, out);
+        }
+    }
+
+    /// As `emit`'s averaging, for range: the least present value of each 3 × 3 block, along the
+    /// row into the ring and then down the column.
+    fn emit_min3(
+        &mut self,
+        isa: Isa,
+        options: ReadOptions,
+        k: usize,
+        r: i64,
+        out: &mut [Vec<Slice>],
+    ) {
+        {
+            let (here, above) = self.levels.split_at_mut(k + 1);
+            let (cur, next) = (&here[k], &mut above[0]);
+            let w = next.width();
+            let slot = r.rem_euclid(RING as i64) as usize;
+            let (lo, hi, first) = next.interior;
+            let src = &cur.row[0];
+            let dst = next.ring[0][slot * w..].as_mut_ptr();
+            for (i0, i1) in [(0, lo), (hi, w)] {
+                for i in i0..i1 {
+                    for t in 0..3 {
+                        self.edge[t][i] = src[next.gather[t][i]];
+                    }
+                }
+                if i1 > i0 {
+                    let [a, b, c] = [0, 1, 2].map(|t| self.edge[t][i0..].as_ptr());
+                    // The edge buffers hold at least w values and the ring slot w, and i0..i1
+                    // lies inside both.
+                    unsafe { min3_present(isa, i1 - i0, a, b, c, dst.add(i0)) };
+                }
+            }
+            if hi > lo {
+                let from = src[first..first + 2 * (hi - lo) + 1].as_ptr();
+                // `from` holds 2(hi - lo) + 1 values, and lo..hi lies inside the ring slot.
+                unsafe { min3_row(isa, hi - lo, from, dst.add(lo)) };
+            }
+            next.tags[slot] = r;
+        }
+        loop {
+            let i = {
+                let next = &mut self.levels[k + 1];
+                let w = next.width();
+                if next.next > next.rows.1 {
+                    return;
+                }
+                let i = next.next;
+                let src = [
+                    reflect(2 * i - 1, next.prev_rows),
+                    2 * i,
+                    reflect(2 * i + 1, next.prev_rows),
+                ];
+                if src.iter().any(|&s| s > r) {
+                    return;
+                }
+                let [a, b, c] = src.map(|s| {
+                    let slot = s.rem_euclid(RING as i64) as usize;
+                    assert_eq!(next.tags[slot], s, "row {s} left the ring too early");
+                    next.ring[0][slot * w..].as_ptr()
+                });
+                // Each ring slot and the output row hold w values.
+                unsafe { min3_present(isa, w, a, b, c, next.row[0].as_mut_ptr()) };
+                next.next = i + 1;
+                i
+            };
+            self.emit(isa, options, Reduce::Min3, k + 1, i, out);
         }
     }
 }
@@ -460,10 +688,18 @@ pub fn read_levels_into(
     isa: Isa,
     window: Window,
     top: u32,
-    missing_value: Option<f32>,
+    options: ReadOptions,
     out: &mut [Vec<Slice>],
 ) {
-    Pass::new(img, func, window, top).run(img, isa, missing_value, out);
+    Pass::new(img, func, window, top).run(img, isa, options, out);
+}
+
+/// The components each pixel's samples hold: two for complex samples, else the Image's count.
+fn components(img: &Image) -> usize {
+    match img.samples {
+        Samples::ComplexI16(_) | Samples::ComplexF32(_) => 2,
+        _ => img.comps,
+    }
 }
 
 /// Finds the run of output columns whose three sources are consecutive columns, unmirrored.
@@ -485,6 +721,7 @@ fn write_out(
     func: Func,
     isa: Isa,
     masked: bool,
+    kept: bool,
     fill: Option<f32>,
     plan: &Plan,
     level: &LevelState,
@@ -514,11 +751,19 @@ fn write_out(
             }
         }
     };
+    // Kept values are those of Level 0, so their angles are Level 0's too.
+    let direct = k == 0 || kept;
     match func {
-        Func::Raw => put(0, 0),
+        Func::Raw | Func::Labels | Func::Range => put(0, 0),
+        Func::Mask => {
+            put(1, 0);
+            let dst = slices[0].data[at..at + w].as_mut_ptr();
+            // The plane and the output row hold w values.
+            unsafe { present_one(isa, w, plane(0).as_ptr(), dst) };
+        }
         Func::Polar => {
             put(0, 0);
-            if k == 0 {
+            if direct {
                 put(1, 3);
             } else {
                 angle(slices, 1, 1, 2, phase_from);
@@ -527,7 +772,7 @@ fn write_out(
         Func::Hsv => {
             put(1, 0);
             put(2, 1);
-            if k == 0 {
+            if direct {
                 put(0, 4);
             } else {
                 angle(slices, 0, 2, 3, hue_from);
