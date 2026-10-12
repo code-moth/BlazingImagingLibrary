@@ -11,7 +11,7 @@ bases = [
   "https://download-cache.osgeo.org/gdal/data/nitf/",
   "https://download.osgeo.org/gdal/data/nitf/",
 ]
-listing_pages = ["nitf2.0/scen_2_0.html", "nitf2.0/", "nitf2.1/", "jpeg2000/", "nitf2.1/jpeg2000/"]
+listing_pages = ["nitf2.0/", "nitf2.1/", "jpeg2000/", "nitf2.1/scen_2_1.html"]
 
 # Each file: where it is, which tier needs it, and what it exercises.
 
@@ -79,19 +79,19 @@ sha256 = "f4ef48bf477868d3d536cffcab69938012fca7636e49a98e546d3a7ad58281ec"
 path = "nitf2.0/U_4017a.ntf"
 tier = 2
 exercises = "12-bit JPEG, 64 x 64 mono"
-sha256 = ""
+sha256 = "c18ae07f6612a669a64943378e3d0e15cab75ba7cc8ee723141885e4f028678d"
 
 [[file]]
 path = "nitf2.0/U_2010a.ntf"
 tier = 2
 exercises = "JPEG YCbCr color"
-sha256 = ""
+sha256 = "1ba207e074d8ca6e6fa47a6ee0ded295e5c80f8616ca7375c570796dc8fbc244"
 
 [[file]]
 path = "nitf2.0/U_3058b.ntf"
 tier = 3
 exercises = "VQ compressed 1536 x 1536"
-sha256 = ""
+sha256 = "7de3c06d8d6c36547816dcd998e91c045fca443ce349eb6f5ee0e9d4216679a3"
 
 # Wanted, but not in GDAL's download cache (404 on 12 October 2026). To be supplied by the author
 # or found elsewhere:

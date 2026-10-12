@@ -103,9 +103,9 @@ def main():
             except RuntimeError as error:
                 note("warning", f"could not list {page}: {error}")
                 continue
-            names = sorted(set(re.findall(rb'href="([^"?#]+\.(?:ntf|nitf|nsf|j2k|jp2))"', html, re.I)))
-            folder = page.rsplit("/", 1)[0]
-            note("notice", f"{folder}: {len(names)} files: " + " ".join(n.decode() for n in names))
+            links = re.findall(rb'href="([^"?#]+\.(?:ntf|nitf|nsf|j2k|jp2))"', html, re.I)
+            names = sorted(set(link.decode().rsplit("/", 1)[-1] for link in links))
+            note("notice", f"{page}: {len(names)} files: " + " ".join(names))
 
     flush()
     sys.exit(1 if failed else 0)
