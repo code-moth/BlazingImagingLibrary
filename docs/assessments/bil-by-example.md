@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 58: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 59: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 58. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 59. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -777,7 +777,7 @@ out.write_geo_model(sicd.read_geo_model(sicd.list_geo_models()[0], 0))
 out.close()
 ```
 
-A Slice goes into the component of its own name unless another is named. A geo model is written as far as the format holds it, and the rest goes to the companion file. What a writer does when no geo model is given is still open, as finding R30 of the second review.
+A Slice goes into the component of its own name unless another is named. A writer writes the Source's geo model without being asked, as far as the format holds it, with the rest in the companion file. `write_geo_model` writes a different one instead.
 
 ### 12.2 Native pixels to ENVI
 
@@ -1080,4 +1080,4 @@ Version 1 of this document found these gaps in the calling interface. Version 58
 | The C interface | 17.3 | Five conventions: handles, status, ownership, data and errors | 2 |
 | Writing several components | 12.1 | `write_slice(window, slice, component)` and `write_geo_model` | 11 |
 
-**Still open, as design rather than interface.** What a writer does when no geo model is given is finding R30 of the second review. How a live stream behaves when two Readers read it, and what a request for a frame no longer held returns, are finding R34.
+**Settled since, in version 59.** A writer writes the geo model without being asked (R30). A live stream has one position for all Readers, and a frame no longer held is `Missing` (R34).

@@ -323,7 +323,7 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 ### R26. Isolation decodes the whole Source
 
-**Status:** Open · **Where:** sections 10.2 and 10.3
+**Status:** Resolved in version 59 · **Where:** sections 10.2 and 10.3
 
 **Problem.** Isolation runs a driver in the decoder process of section 10.2, which "opens the original Source and decodes it" into the mapped format, "frame by frame for video". That is a decoding of the whole Source. A caller reading one small Window from a 100,000 × 100,000 NITF pays to decode 10 billion pixels first, and holds a 20 GB decoded copy.
 
@@ -335,9 +335,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept, and whether the whole-copy form of external decoding stays as a separate choice.
 
+**Ruling.** Accepted. A whole copy stays as a separate choice.
+
+**What changed in the specification.** Version 59. Section 10.2: the decoder process works on request, decoding only the blocks each read needs into bounded shared memory, with a ring of frames for a live stream. Isolation always uses on request. A whole copy is configured separately, for many readers or for keeping the decoded data.
+
 ### R27. Window independence is not defined to the bit
 
-**Status:** Open · **Where:** sections 5, 10.4 and 12
+**Status:** Resolved in version 59 · **Where:** sections 5, 10.4 and 12
 
 **Problem.** The Window independence test requires a Slice of a Window to "equal" the same region cut from the whole. Section 5 says computed Levels give the same values "on every machine". Neither holds automatically.
 
@@ -353,9 +357,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept, and whether bitwise agreement across machines is wanted at a cost in speed.
 
+**Ruling.** Not accepted as proposed: bitwise agreement is not a concern. Window independence and agreement between machines hold to a tolerance.
+
+**What changed in the specification.** Version 59. Sections 5 and 10.4: equal means within one unit in the last place of float32 for arithmetic, and within each transcendental function's stated bound. Experiment 1's bitwise result is kept where it costs nothing, but is not required. The Window independence test runs on every instruction set BIL ships.
+
 ### R28. Markings can be separated from the data
 
-**Status:** Open · **Where:** sections 11 and 14.2
+**Status:** Resolved in version 59 · **Where:** sections 11 and 14.2
 
 **Problem.** None of BIL's writable formats has a native field for a security marking, so for every file BIL writes, markings go to the companion file `<file>.metadata`. Copying the file without its companion loses the marking silently. Reading such a copy later gives data with no markings and no sign that any are missing. On closed networks this is a spill risk, and it falls on exactly the data the marking rule exists to protect.
 
@@ -368,6 +376,10 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 **Decision needed.** Accept, and whether writing `.npy` from a marked Source is refused by default.
 
 ## Serious findings
+
+**Ruling.** Accepted, with the refusal off by default.
+
+**What changed in the specification.** Version 59. Section 11: markings are written inside ENVI headers and TIFF text metadata as well as the companion file; a file BIL writes records its companion, and reading it without one gives `Partial` and a warning; `require_internal_markings` in `WriteOptions` refuses formats with no internal place, and is off by default.
 
 ### R29. Stored levels are not on the Level grid
 
@@ -386,7 +398,7 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 ### R30. Writing loses geocoding, and ENVI cannot hold every sample type
 
-**Status:** Open · **Where:** section 11
+**Status:** Resolved in version 59 · **Where:** section 11
 
 **Problem.**
 
@@ -404,9 +416,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Note.** Version 58 adds `write_slice(window, slice, component)` and `write_geo_model(model)`, so a caller can write into named components and write a geo model. Still open: whether writers write the geo model without being asked, the sample types each writer refuses, and how a Slice from a reduced Level is written.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 11: writers write the geo model unasked, as far as the format holds it, with the rest in the companion file; a Slice is written on its own grid; each writer lists its sample types, and any other is an error. ENVI's list no longer claims every sample type.
+
 ### R31. A deferred Fragment has no decoder of its own
 
-**Status:** Open · **Where:** section 4
+**Status:** Resolved in version 59 · **Where:** section 4
 
 **Problem.** A video Fragment is deferred: it holds compressed packets, and its pixels are decoded "on demand". Decoder state lives in a Reader, and a Reader belongs to one thread. Fragments, however, may be passed between threads. Nothing says which decoder decodes a deferred Fragment that another thread asks for, or one asked for after its Reader has moved on to other frames. The cache, meanwhile, holds decoded frames "each as a Fragment", so the same frame can exist in deferred and decoded form at once.
 
@@ -418,9 +434,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 4: a deferred Fragment holds its packets from the key frame, is decoded by its own Reader when free and in place or else by a decoder made for it, and once decoded is the same object as its cache entry.
+
 ### R32. Untrusted files get no limits by default, and the cache is limited only by count
 
-**Status:** Open · **Where:** sections 4 and 10.3
+**Status:** Resolved in version 59 · **Where:** sections 4 and 10.3
 
 **Problem.**
 
@@ -434,9 +454,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** The default byte ceiling.
 
+**Ruling.** Accepted. The default byte ceiling is a quarter of physical memory.
+
+**What changed in the specification.** Version 59. Sections 3.4, 4 and 10.3: `set_cache_bytes` adds a byte ceiling beside the count, and an untrusted Source gets default limits scaled to the file.
+
 ### R33. Remote Sources are not designed for
 
-**Status:** Open · **Where:** sections 1.1, 10 and 12
+**Status:** Resolved in version 59 · **Where:** sections 1.1, 10 and 12
 
 **Problem.** Remote reading is named as a source of data, through object\_store and the OxiGeo storage backend, but the design treats it like a local file.
 
@@ -452,9 +476,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Sections 3.4 and 10.3: remote reads run on a private runtime behind the blocking interface; `plan` reports requests and bytes; ranges within `remote_merge_gap` are merged; `remote_timeout` and `remote_retries` bound each request.
+
 ### R34. Live streams cannot be stopped, timed out or read twice
 
-**Status:** Open · **Where:** sections 3.2 and 4
+**Status:** Resolved in version 59 · **Where:** sections 3.2 and 4
 
 **Problem.**
 
@@ -472,9 +500,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Note.** Version 58 adds `latest_frame()`, and `timeout` and `cancel` in `SliceOptions`. Still open: one shared position for a live stream, and `Missing` for a frame no longer held.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 3.2: a live Source has one position for all Readers, and a frame no longer held is `Missing`. Version 58 had already added `latest_frame`, `timeout` and `cancel`.
+
 ### R35. The LGPL may keep Rust developers away
 
-**Status:** Open · **Where:** section 10.6
+**Status:** Resolved in version 59 · **Where:** section 10.6
 
 **Problem.** The naming rule was changed so that Rust developers would accept BIL. The license may undo that. Rust programs normally link their dependencies statically, and the LGPL then requires that users can relink the program with a modified BIL. Rust has no stable binary interface, so in practice that means shipping object files built with the same compiler version, or the program's source. Section 10.6 notes the duty, but many Rust projects will not take on an LGPL dependency for this reason.
 
@@ -484,9 +516,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 ## Lesser findings
 
+**Ruling.** A static-linking exception is added.
+
+**What changed in the specification.** Version 59. Section 10.6: a program may link BIL statically without the duty to allow relinking; changes to BIL itself stay under the LGPL. The wording goes to the license review, now noted in section 16.
+
 ### R36. The precision rule is wrong for integer data
 
-**Status:** Open · **Where:** section 5
+**Status:** Resolved in version 59 · **Where:** section 5
 
 **Problem.** "A slice function computes at the precision of the Fragment." For integer data that would mean integer arithmetic: the power of a `ComplexI16` sample in 32-bit integers can overflow, since twice 32,768 squared exceeds the largest signed 32-bit value.
 
@@ -494,9 +530,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 5: arithmetic is in float32 for types float32 holds exactly and in float64 otherwise, never in integers.
+
 ### R37. A validity mask at reduced Levels is undefined
 
-**Status:** Open · **Where:** section 5
+**Status:** Resolved in version 59 · **Where:** section 5
 
 **Problem.** `pixel.mask.valid` is 1.0 or 0.0. Reduced by `bilinear`, it becomes a fraction. Under the NaN rule a reduced value is valid when any contributing pixel is, so a mask reduced as a linear quantity disagrees with the data it describes.
 
@@ -504,9 +544,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 5 and 9.1: masks are their own kind of Slice, and `pixel.mask` gains `valid_fraction`.
+
 ### R38. Saved frame indexes and companion files are trusted blindly
 
-**Status:** Open · **Where:** sections 3.2, 10.3 and 14.2
+**Status:** Resolved in version 59 · **Where:** sections 3.2, 10.3 and 14.2
 
 **Problem.**
 
@@ -520,9 +564,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Sections 3.2, 3.4 and 14.2: a saved frame index records the stream's size and a checksum and is refused on a mismatch; an untrusted Source uses its companion's values only with `trust_companion`, and always reports markings in it.
+
 ### R39. BIL has no stability policy for its own interfaces
 
-**Status:** Open · **Where:** sections 2 and 10
+**Status:** Resolved in version 59 · **Where:** sections 2 and 10
 
 **Problem.** The plugin interface has a version. BIL's own C interface, Rust crate and Python package do not. Callers of a shared library need to know when an update can break them.
 
@@ -530,9 +578,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 2: semantic versioning for the crate and shared library, incompatible C changes only at a major version, and the Python package built against Python's stable interface.
+
 ### R40. The conformance suite misses some of the design
 
-**Status:** Open · **Where:** section 10.4
+**Status:** Resolved in version 59 · **Where:** section 10.4
 
 **Problem.** Several things the specification now requires have no test.
 
@@ -546,15 +598,23 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 10.4: tests for declared concurrency, deferred decoding, status and field names, and One grid checks origin and scale (version 57).
+
 ### R41. Exif already has a time in UTC
 
-**Status:** Open · **Where:** section 14.2
+**Status:** Resolved in version 59 · **Where:** section 14.2
 
 **Problem.** Section 14.2 takes Exif `DateTimeOriginal` as local time and works out its zone. Exif files with a GPS position usually also carry `GPSDateStamp` and `GPSTimeStamp`, which are in UTC. Those give `common.collection_time` directly, with no zone to find.
 
 **Proposed resolution.** Add the Exif GPS date and time as a provided source of `common.collection_time`, in UTC, ahead of the local-time rule. `DateTimeOriginal` is used only where the GPS time is absent.
 
 **Decision needed.** Accept.
+
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 59. Section 14.2: Exif `GPSDateStamp` with `GPSTimeStamp` provides `common.collection_time` in UTC, ahead of the local-time rule.
 
 ## What held up
 

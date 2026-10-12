@@ -5,21 +5,21 @@ Read this first in every session. It records the state of the work, how it is do
 ## The arrangement
 
 - **Claude writes BIL.** The specification's author leads, rules on every design decision, reviews each change, and supplies test data and other systems.
-- **The specification is the source of truth.** `docs/specification/specification.md`, version 58. A design change is made there first, by the author's ruling, and the version number goes up.
+- **The specification is the source of truth.** `docs/specification/specification.md`, version 59. A design change is made there first, by the author's ruling, and the version number goes up.
 - **Ask, don't assume, on design.** Where the specification leaves something open, propose and flag it. Do not decide it silently.
 
 ## Conventions
 
 - **Naming.** Types and enum values are UpperCamelCase. Every other name is snake_case, including names passed as text: `color.hsv.hue`, `level3`, `stored2`, `bilinear`, `rational_polynomial`. C uses the prefixes `bil_`, `Bil` and `BIL_`.
 - **American spelling** in identifiers, comments and documents.
-- **License.** LGPL 2.1 or later. BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that.
+- **License.** LGPL 2.1 or later, with a static-linking exception (`LINKING-EXCEPTION.md`, a draft pending legal review). BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that.
 - **Uniform design.** One mechanism for each thing, with no special cases (specification section 1.6).
 - **Not in BIL.** Registration, orthorectification and analysis are layers above BIL.
 - **No reference to any earlier system by name.** The design is influenced by knowledge of previous requirements, and says no more than that.
 
 ## Rules for numeric code, from experiment 1
 
-These give bitwise-identical results across Windows and across instruction sets. Keep them.
+The specification requires agreement between Windows, instruction sets and machines to a tolerance: one unit in the last place for arithmetic, and each transcendental function's stated bound (section 5). Bitwise agreement is not required; the author ruled it is not a concern. These rules gave bitwise agreement in experiment 1 at little cost, so keep them where they cost nothing, and relax them where speed needs it, staying within the tolerance.
 
 1. Only correctly rounded IEEE operations (add, sub, mul, div, sqrt) and exact ones (min, max, compare, select, floor).
 2. No fused multiply-add.
@@ -29,8 +29,8 @@ These give bitwise-identical results across Windows and across instruction sets.
 
 ## State
 
-- **Specification:** version 58. Pass 2 red team review: U1 to U16 resolved in version 57; R26 to R41 (16 findings) await the author's rulings. Version 58 closes the 17 interface gaps BIL by Example found.
-- **Documents in step with version 58:** the specification, the pass 2 review (review version 3) and BIL by Example (version 3). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
+- **Specification:** version 59. Pass 2 red team review: every finding resolved except R29 (stored levels are not on the Level grid), which awaits the author's ruling. Version 58 closed the interface gaps; version 59 applies the red team rulings.
+- **Documents in step with version 59:** the specification, the pass 2 review (review version 4) and BIL by Example (version 4). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
 - **CI:** green on all four systems, and on the latest stable Rust.
 - **Open decisions in the specification:** 9 (section 16).

@@ -2,7 +2,7 @@
 
 BIL extracts a processable subset of imaging sensor data, efficiently, from any format. It delivers that subset as native Fragments or as 2D float32 Slices, and locates every pixel in the world through one geocoding chain.
 
-BIL is written in Rust, with a C-callable interface over it delivered as one shared library, and a Python interface. It is licensed under the LGPL, version 2.1 or later.
+BIL is written in Rust, with a C-callable interface over it delivered as one shared library, and a Python interface. It is licensed under the LGPL, version 2.1 or later, with a static-linking exception.
 
 **Status.** Design, and the first experiments. There is no usable library yet.
 
@@ -10,7 +10,7 @@ BIL is written in Rust, with a C-callable interface over it delivered as one sha
 
 | Path | Contents |
 | --- | --- |
-| `docs/specification/` | The specification, version 56: Markdown source and the rendered page |
+| `docs/specification/` | The specification, version 59: Markdown source and the rendered page |
 | `docs/reviews/` | The two red team reviews of the specification |
 | `docs/assessments/` | BIL by Example, and the implementability assessment |
 | `docs/tools/` | The scripts that render the documents |
@@ -28,4 +28,4 @@ The results are in `experiments/exp1-fused-loop/RESULTS.md`.
 
 ## License
 
-GNU Lesser General Public License, version 2.1 or, at your option, any later version. See `LICENSE`.
+GNU Lesser General Public License, version 2.1 or, at your option, any later version, with a static-linking exception. See `LICENSE` and `LINKING-EXCEPTION.md`. The exception's wording is a draft pending legal review.

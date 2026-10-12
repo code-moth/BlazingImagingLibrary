@@ -280,6 +280,8 @@ if (status == BIL_OK) status = bil_image(source, 0, &image);
 if (status == BIL_OK) status = bil_read_slice(image, "complex.polar.magnitude", &window, &slice);
 ```
 
+**Stability.** The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version (section 10). The Python package is built against Python's stable interface, so one build serves several Python versions.
+
 **The acronym.** BIL also names the Band Interleaved by Line raster layout, which BIL reads. The same letters are also used for burst illumination LIDAR, a sensor type BIL reads. Documentation spells out Blazing Imaging Library on first use.
 
 ## 3. Core concepts
@@ -392,8 +394,11 @@ For a framing sensor, a frame is one physical collection cycle: one exposure and
 | `latest_frame()` | The index of the newest frame received. For a file it is the last frame. |
 
 - **Opening never scans.** A count may be `AtLeast` or `Unknown` when the Source is opened.
+- **A saved index checks its stream.** A saved frame index records the stream's size and a checksum of its start. An index that no longer matches is refused, and the stream is scanned instead.
 - **The index is built on first need.** That is the first call that needs a `Known` count, a time coordinate or a jump to a distant frame.
-- **A live stream has no end.** Its count is `AtLeast`, and its frames are numbered from the first one received. A read can be given a `timeout` and a `cancel` handle (section 3.4), so it never waits without end.
+- **A live stream has no end.** Its count is `AtLeast`, and its frames are numbered from the first one received.
+- **A live stream has one position.** All Readers of a live Source see the same frames. A Reader cannot hold a place of its own in a stream that cannot be read again.
+- **Past frames are `Missing`.** A request for a frame older than those still held is delivered with status `Missing`, never by waiting or seeking. A read can be given a `timeout` and a `cancel` handle (section 3.4), so it never waits without end.
 
 **Additional index dimensions.** Where collection cycles nest, an Image may declare further named indexes. A sensor that sweeps 50 range gates once a second can declare `sweep` and `gate`. These are natural numbers too, and they always resolve to a frame number through `resolve_frame`. `Window` is unchanged: it still carries one `frame`.
 
@@ -437,6 +442,10 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `max_held_positions` | 1,000 | Index positions for which metadata is held (section 14.3) |
 | `max_held_group_bytes` | None | Bytes of extracted metadata groups held |
 | `corrupt_as_missing` | False | Deliver a corrupt block as missing data, with status `Partial` (section 3.3) |
+| `remote_timeout` | 30 seconds | The longest one request to a remote Source may take (section 10.3) |
+| `remote_retries` | 3 | How many times a failed remote request is tried again |
+| `remote_merge_gap` | 1 MB | Byte ranges closer than this are read in one request |
+| `trust_companion` | True, or False when `untrusted` is set | Read the companion file's values (section 14.2) |
 
 **`SliceOptions`**, given to any read
 
@@ -455,12 +464,13 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | --- | --- | --- |
 | `keep_markings` | True | Write markings (section 11) |
 | `keep_identity` | False | Write identity fields |
+| `require_internal_markings` | False | Refuse to write a marked Source to a format with no internal place for markings (section 11) |
 
 **Held data**
 
 | What is held | Limit | Reported by |
 | --- | --- | --- |
-| Decoded Fragments | `set_cache_size`, 16 by default (section 4) | `describe_held` and `describe_cache` |
+| Decoded Fragments | `set_cache_size`, 16 by default, and `set_cache_bytes`, a quarter of physical memory by default (section 4) | `describe_held` and `describe_cache` |
 | Metadata attached to an index | `max_held_positions` | `describe_held` |
 | Extracted metadata groups | `max_held_group_bytes` | `describe_held` |
 | Terrain tiles | None of their own: terrain is read through BIL's drivers, so its tiles sit in the Fragment cache of the terrain Sources | `describe_held` on those Sources |
@@ -533,6 +543,9 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 **Deferred Fragments.** For video, reading a Fragment does not decode anything. The call only seeks to the right place and extracts the compressed data that the Window and frame need. For a streamed format, that means the packets from the preceding key frame up to the frame asked for. The Fragment then reports `is_deferred`. The video is decoded when a Slice is formed from the Fragment, and the decoder's output goes straight to float32.
 
 - **Decoded on demand.** Asking a deferred Fragment for its native pixels decodes them at that moment. Nothing else about the Fragment changes.
+- **Self-contained.** A deferred Fragment holds everything needed to decode it: its packets from the preceding key frame.
+- **Decoded by its own Reader if it can be.** It is decoded by the Reader that made it, when that Reader is free and in place. Otherwise BIL decodes it with a decoder made for the purpose, at the cost `plan` reported. This holds on any thread.
+- **Decoded once.** Once decoded, the Fragment and its cache entry are the same object, so a frame is never decoded twice for one Source.
 - **A Window does not reduce the decoding.** Video decodes whole frames, starting from the preceding key frame. The Window reduces only the conversion to float32. `plan_slice` reports how many frames a read will decode.
 - **Open to other formats.** Any driver may return deferred Fragments where decoding is costly.
 
@@ -558,7 +571,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 **Fragment cache.** Compressed data decodes in whole blocks: a tile, a strip, a chunk or a video frame. BIL keeps recently decoded blocks, each as a Fragment, so a block that several reads share is decoded once.
 
 - **What it saves.** Adjacent Windows that share a block, the margins BIL reads around a Window, and video frames that are read more than once.
-- **Sized by count.** The caller sets how many Fragments are kept. Zero turns the cache off, and the default is 16.
+- **Sized by count, with a ceiling in bytes.** The caller sets how many Fragments are kept. Zero turns the cache off, and the default is 16. A second limit, `set_cache_bytes`, caps the bytes held, by default a quarter of physical memory. Whichever limit is reached first applies, so very large blocks, such as wide-area motion imagery frames, cannot exhaust memory.
 - **One cache for each Source.** Every Reader of the Source shares it, and it is freed when the Source is closed.
 - **Least recently used goes first.** When the cache is full, the Fragment that has gone longest without use is dropped.
 - **Memory follows the block size.** A count does not fix the memory used. `describe_cache` reports the bytes held, and `plan_slice` reports the size of the blocks a read will decode.
@@ -618,13 +631,15 @@ A Slice is one named 2D float32 array made from a Fragment by a slice function, 
 
 This rule has three consequences:
 
-- **Window-independent:** slicing a Window gives the same values as slicing the whole Image and cropping.
+- **Window-independent:** slicing a Window gives the same values as slicing the whole Image and cropping, to within the tolerance below.
 - **Lazy and parallel:** any Window can be computed alone, and rows can be computed in any order.
 - **Predictable cost:** a Slice never needs more than one pass over its Window.
 
 **Pointwise and local functions.** Most slice functions are pointwise. A local function declares a small fixed radius, and each output value may use the pixels within it. Full-resolution demosaicing is the main case: `cfa.demosaic` turns a Bayer mosaic into `red`, `green` and `blue` Slices at the full size of the Window. Upsampling video chroma is another.
 
 **Margins.** For a local function or a downsampled read, BIL itself reads the extra rows and columns needed around the Window. Blocks decoded for a margin stay in the Fragment cache (section 4), so a neighboring Window does not decode them again. At the edge of the Image, pixels are mirrored by whole periods of any pattern the data has, so the sites of a color filter or a polarizer stay in step. The neighborhood is fixed to the Image grid, so results stay window-independent and the caller never pads a Window.
+
+**How equal is equal.** Window independence, and agreement between instruction sets and machines, hold to a stated tolerance, not to the bit. A value differs by at most one unit in the last place of float32 for arithmetic, and by at most the bound each transcendental function states. Experiment 1 found that bitwise agreement can be had cheaply, and BIL keeps it where it costs nothing, but it is not required.
 
 **The common scalar is float32.** Every Slice has the same element type regardless of sensor. Float32 is as wide as int32, has native vector multiply-add, divide and square root, and is what downstream FFT, convolution, statistics and GPU code expect. It holds every integer up to 16,777,216 exactly, which covers all 8 to 16-bit sensors without loss.
 
@@ -793,6 +808,7 @@ Averaging suits most Slices but not all, so each Slice name declares its kind wh
 | Linear quantities | `intensity`, `power`, `red`, `luminance`, band values | The chosen method |
 | Angles | `phase`, `hue` | The chosen method applied to unit vectors, so wrap-around is handled |
 | Labels and indices | `class.labels.value`, `palette.lookup.index` | Every second value kept, with no averaging |
+| Masks | `pixel.mask.valid` | 1.0 where the reduced data value exists, which is wherever any contributing pixel was valid, else 0.0 |
 | Range and depth | `depth.sensor.range` | The minimum of the 3×3 block centered on each point of the reduced grid, which favors the nearest surface. Averaging across a depth edge would invent a range that exists nowhere in the scene. |
 
 For range, the block at each halving is centered on the reduced value's own pixel, so a range Slice sits on the same grid as every other Slice at that Level. Missing values are left out, and the result is NaN only when all nine are missing. The `x`, `y` and `z` Slices of `depth.points` are taken together from whichever pixel in the block has the minimum range, so a reduced point is always a real point.
@@ -803,7 +819,7 @@ Because levels are made after the slice function, reduced `power` and reduced `p
 
 | Route | Reads | Cost follows | Gives up |
 | --- | --- | --- | --- |
-| Computed, with a filtering method such as `bilinear` | Every full-resolution pixel under the Window | The full-resolution area | Nothing. Values are the same for every file and on every machine. |
+| Computed, with a filtering method such as `bilinear` | Every full-resolution pixel under the Window | The full-resolution area | Nothing. Values agree for every file and on every machine, to the tolerance of this section. |
 | Computed, with `decimate` | Only the pixels kept | The output, where the storage can be strided | Filtering, so fine detail aliases |
 | Stored | Reduced data the file already holds | The output | Control of the method. Values depend on how the file was made. |
 
@@ -887,7 +903,7 @@ pub enum LevelSource { Computed, Stored }
 | `U32`, `I32`, `U64`, `I64` | Exact up to 16,777,216, and rounded above it |
 | `F64`, `ComplexF64` | Rounded to about seven significant digits |
 
-- **Arithmetic at the source's precision.** A slice function computes at the precision of the Fragment and narrows to float32 once, at the end. The magnitude of a `ComplexF64` sample is computed in 64-bit.
+- **Arithmetic in floating point, never in integers.** A slice function computes in float32 for sample types float32 holds exactly, and in float64 for `U32`, `I32`, `U64`, `I64`, `F64` and `ComplexF64`. It narrows to float32 once, at the end. The magnitude of a `ComplexF64` sample is computed in 64-bit, and the power of a `ComplexI16` sample cannot overflow.
 - **Exact values come from the Fragment.** Callers who need the wider types exactly read the Fragment.
 
 **Illustrative shape** (not final)
@@ -1135,7 +1151,7 @@ A function that presents must be pointwise and take every statistic it uses from
 | `pixel.reduce` | `mean`, `sum`, `min`, `max`, `norm` | Reductions across the components of one pixel |
 | `pixel.weighted(weights)` | `value` | Dot product of the pixel with supplied weights |
 | `pixel.pair(i, j)` | `ratio`, `normalized_difference` | i / j, and (i − j) / (i + j) |
-| `pixel.mask` | `valid`, `saturated` | 1.0 or 0.0 |
+| `pixel.mask` | `valid`, `saturated`, `valid_fraction` | 1.0 or 0.0; and, at coarser Levels, the share of contributing pixels that were valid |
 | `pixel.nearest(coordinate_name, value)` | `value` | The component whose coordinate is nearest the value |
 | `pixel.integrate(coordinate_name, from, to)` | `value` | The average of the components whose coordinates lie between two values |
 | `pixel.peak(coordinate_name)` | `value`, `coordinate` | The largest component, and the coordinate at which it occurs |
@@ -1508,14 +1524,24 @@ BIL can hand the decoding of any supported format to a separate process and read
 
 This is an optional layer, built and supported as part of BIL. It is switched on by configuration for an existing supported format, and it is off by default. The caller's code does not change: the same `open_source`, `read_fragment` and `read_slice` calls are used.
 
-1. **A decoder process** opens the original Source and decodes it, outside the caller's process.
+1. **A decoder process** opens the original Source outside the caller's process.
 2. **The mapped format** receives the decoded data. It is laid out so that it can be mapped into memory and used as it stands.
 3. **The mapped driver** in the caller's process maps that data and serves Fragments and Slices from it directly.
+
+**Two ways to use it.** The configuration chooses, for each format or Source.
+
+| Way | What the decoder process does | Cost |
+| --- | --- | --- |
+| On request | Decodes only the blocks each read needs, into shared memory that is reused as a cache of bounded size. For a live stream, it keeps a ring of recent frames. | Follows the request, as rule 1 requires |
+| Whole copy | Decodes the whole Source once, into mapped data that several reading processes can share and that can be kept | Follows the Source, and is chosen knowingly |
+
+- **Isolation always uses on request.** Isolating a driver must not change what a read costs, beyond the round trip between processes (section 10.3).
+- **A whole copy is a deliberate choice.** It is useful when many processes read one Source, or when the decoded data is to be kept.
 
 | Part | What it is |
 | --- | --- |
 | Mapped format | BIL's own format for decoded data: uncompressed, in native byte order and aligned, with a header describing each Image. It can hold native pixels, float32 Slices, or both. |
-| Decoder process | A separate BIL program that decodes a Source with any driver and fills the mapped format, frame by frame for video. |
+| Decoder process | A separate BIL program that decodes a Source with any driver and fills the mapped format, on request or as a whole copy |
 | Mapped driver | A built-in driver that reads the mapped format. Every Fragment it returns is `Borrowed`, and so is every Slice the format already holds. |
 | Configuration | Names the formats or Sources that are decoded externally. Nothing else in BIL has to know. |
 
@@ -1548,7 +1574,8 @@ Imagery files often arrive from outside, and BIL hands them to many C and C++ li
 | `max_decoded_bytes` | One compressed block that expands without bound |
 | `max_field_group_bytes` | A metadata group built to exhaust memory |
 
-- **No limit is set by default.** Very large images are BIL's purpose, so any fixed default would turn away real data.
+- **No limit is set by default for a trusted Source.** Very large images are BIL's purpose, so any fixed default would turn away real data.
+- **An untrusted Source gets limits.** Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image and bytes per metadata group, each scaled to the size of the file where that makes sense. The caller can raise them.
 - **One check is always made.** For uncompressed data, a header that claims more pixels than the file can hold is rejected.
 
 **Plugins from configured locations only.** BIL loads external, optional and scripted plugins only from locations named by the caller or by the installation's configuration.
@@ -1564,12 +1591,18 @@ Imagery files often arrive from outside, and BIL hands them to many C and C++ li
 | `Untrusted` | Isolated for any Source the caller opens as untrusted, through `OpenOptions` |
 | `Always` | Isolated for every Source |
 
-- **Why it is off by default.** An isolated read cannot borrow from the original file, always makes one decoded copy as mapped data, and pays a round trip between processes for each read.
+- **Why it is off by default.** An isolated read cannot borrow from the original file, passes each decoded block through shared memory, and pays a round trip between processes for each read. It decodes only what each read needs (section 10.2).
 - **A policy for the deployment.** A system that handles outside files can set `Untrusted` or `Always` once, in its configuration, without changing the calling code.
 - **Reduced privileges.** Where the platform allows, the decoder process runs with no network and with access only to the Source and its mapped data. BIL reports whether privileges were reduced.
 - **It needs a place for mapped data.** If isolation is called for and no place has been chosen (section 10.2), the open fails. BIL does not fall back to running the driver in the caller's process.
 - **BIL's own Rust drivers stay in process.** They are covered by the fuzz testing below.
 - **The limit.** Isolation protects the caller's process. A decoder that has been taken over can still return wrong pixels.
+
+**Remote Sources.** A Source read over a network is read through the same calls as a local one, with three differences in how BIL works.
+
+- **A private runtime.** Storage backends such as object\_store are asynchronous. BIL runs them on a small runtime of its own, hidden from the caller, and keeps its blocking interface. The caller's own asynchronous runtime is never touched.
+- **Requests are counted and merged.** Over a network, the number of requests costs more than the bytes. `plan` reports both for a read, and BIL merges byte ranges that lie within a stated gap of each other into one request.
+- **Timeouts and retries.** `remote_timeout` and `remote_retries` in `OpenOptions` bound each request. A read whose requests all fail is an error.
 
 **Fuzz testing.** BIL's own Rust code that reads outside data is fuzz tested as a condition of release: its drivers and parsers, the mapped driver and the reader of companion files. This does not cover the C and C++ libraries, which rely on their own projects' testing and on isolation.
 
@@ -1580,7 +1613,7 @@ A driver is finished when it passes one suite of tests, which is the same for ev
 | Test | A driver passes when |
 | --- | --- |
 | Faithful Fragment | Fragment values equal the stored values of reference files, with the stated pixel type and significant bits |
-| Window independence | A Slice of any Window equals the same region cut from a Slice of the whole Image, for every slice function and Level the driver offers |
+| Window independence | A Slice of any Window equals the same region cut from a Slice of the whole Image, to the tolerance of section 5, for every slice function and Level the driver offers, on every instruction set BIL ships |
 | One grid | At a given Level, every Slice of an Image has the same size, origin and scale |
 | Plan against actual | The size, access class, stored level and blocks decoded that `plan_slice` reports match what the read then does |
 | Zero-copy | A Fragment is `Borrowed` whenever the zero-copy rule is met |
@@ -1593,6 +1626,10 @@ A driver is finished when it passes one suite of tests, which is the same for ev
 | Codec agreement | For losslessly coded data, every codec that accepts a file gives identical values. For lossy data, no sample differs from the reference decoder's by more than one unit of its stored value. |
 | Uniformity | Code written against another driver reads this driver's Sources without change |
 | Geocoding | Each step the driver supplies passes the validation tests of section 13.8 |
+| Declared concurrency | Reads on many threads give the same values as the same reads on one, under the driver's declared `concurrency` |
+| Deferred decoding | A deferred Fragment's native pixels equal those of the same Fragment decoded at once |
+| Status | Files built with known gaps and damage report `Partial` and `Missing` where they should, and `Complete` elsewhere |
+| Field names | Names with escaped dots and numbered repeats are listed and read back correctly |
 
 - **Reference files.** Each driver has a set of small files with known contents, kept with the tests.
 - **A failed test blocks release.** A driver that fails any test is not shipped as part of its tier.
@@ -1645,13 +1682,14 @@ Installing BIL is enough to read its formats. BIL does not duplicate libraries t
 
 ### 10.6 License and responsibility
 
-BIL is licensed under the LGPL, version 2.1 or later. The aim is to leave users free to make their own decisions and installations, while BIL itself stays a shared library that anyone can use.
+BIL is licensed under the LGPL, version 2.1 or later, with a static-linking exception. The aim is to leave users free to make their own decisions and installations, while BIL itself stays a shared library that anyone can use.
 
 **How BIL is delivered.** BIL is written in Rust. A C-callable interface is laid over the Rust library and covers all of it, and the two are delivered together as one shared library.
 
 - **Any language can call it.** Whatever can call C can use the whole of BIL.
 - **It can be replaced.** A user can put a modified build of the shared library in place without rebuilding their own program, which is what the LGPL asks for.
-- **Rust callers have a choice.** A Rust program may use the shared library, or compile the `bil` crate into itself. One that compiles it in takes on the LGPL's duty to let its own users relink.
+- **Rust callers have a choice.** A Rust program may use the shared library, or compile the `bil` crate into itself.
+- **A static-linking exception.** BIL's license adds an exception to the LGPL: a program may link BIL statically, as Rust programs normally do, without the LGPL's duty to let its users relink it with a modified BIL. Changes to BIL itself remain under the LGPL. The exception's exact wording is part of the legal review (section 16).
 - **Python is built on the same Rust library.**
 
 **Who answers for what**
@@ -1684,6 +1722,9 @@ BIL is licensed under the LGPL, version 2.1 or later. The aim is to leave users 
 BIL writes a small set of simple formats through writers of its own. Reading stays its main purpose.
 
 - **Its own writers.** Writing does not go through the backing libraries. Each writer is code inside BIL, so the files it produces do not depend on which plugins are installed.
+- **The geo model is written.** A writer writes the geo model of what it writes, without being asked, as far as the format holds it: GeoTIFF its affine, tie-point or RPC tags, and ENVI its map information. The model includes the `image_window` step of the Slice or Window written. What the format cannot hold goes to the companion file. `write_geo_model` writes a different model instead.
+- **A Slice is written on its own grid.** The output Image has the Slice's size, and its geo model starts from the Slice's `origin` and `scale`, so a Slice from a reduced Level or a stored level is located correctly.
+- **Sample types are never converted silently.** Each writer lists the sample types it holds. Writing any other is an error.
 - **A subset by design.** A format is writable only where a simple, lossless writer is practical. Being able to read a format never implies BIL can write it.
 - **New files only.** BIL never changes a Source it has opened for reading.
 - **Round trip.** A file BIL writes must read back through BIL with identical pixel values.
@@ -1711,7 +1752,10 @@ Writing is by Window, as reading is, so a large image can be written a block at 
 | `Marking` | Security classification, handling caveats, releasability | Always written | Turn it off, with `keep_markings` set to false |
 | `Identity` | A patient's name, identifier and date of birth | Left empty | Keep it, with `keep_identity` set to true |
 
+- **Inside the file wherever there is room.** BIL writes markings inside the file wherever the format has a place for text: as keys in an ENVI header, and as text metadata in a TIFF. It also writes them to the companion file. A `.npy` file has no such place.
 - **A companion file when the format has no place.** Where the output format cannot hold a marking field, BIL writes it to the output's companion file (section 14.2), as it does for any dictionary item the format cannot hold.
+- **A missing companion is noticed.** A file BIL writes records that a companion file belongs to it. Reading it without that companion file gives status `Partial` and a reported warning, so markings are never lost silently.
+- **Refusal on request.** With `require_internal_markings` set in `WriteOptions`, writing a marked Source to a format with no internal place for markings is an error. It is off by default.
 - **Companion files are read back.** When BIL opens a file that has a companion file, it attaches the markings in it to the Source. They therefore survive any number of steps through BIL.
 - **Carried without being asked.** Every Fragment and Slice keeps a reference to the markings of its Source. `write_fragment` and `write_slice` write them whether or not the caller calls `write_metadata`.
 - **Not interpreted.** BIL does not rank or combine markings. When data from several Sources is written to one file, the markings of every Source are written.
@@ -1731,9 +1775,9 @@ pub struct WriteOptions {
 
 | Format | Why it suits a BIL writer |
 | --- | --- |
-| ENVI | A text header beside flat binary. Holds every sample type, including complex, and any number of bands. |
-| TIFF and GeoTIFF | Uncompressed or Deflate, including BigTIFF and float32. The most widely read raster format. |
-| NumPy `.npy` | A minimal array file that Python code reads directly. |
+| ENVI | A text header beside flat binary, with any number of bands. Holds `U8`, `U16`, `I16`, `U32`, `I32`, `U64`, `I64`, `F32`, `F64`, `ComplexF32` and `ComplexF64`. Not `I8`, `F16`, `ComplexI8` or `ComplexI16`. |
+| TIFF and GeoTIFF | Uncompressed or Deflate, including BigTIFF. Holds every sample type, including complex integers. The most widely read raster format. |
+| NumPy `.npy` | A minimal array file that Python code reads directly. Holds every sample type except `ComplexI8` and `ComplexI16`, which NumPy has no type for. |
 
 **Also written.** BIL's own mapped format for externally decoded data (section 10.2).
 
@@ -2109,7 +2153,7 @@ The mapping lives in the native field's definition, which names the dictionary i
 | --- | --- | --- | --- |
 | `common.sensor_name` | Text | TIFF and Exif `Model`, DICOM `ManufacturerModelName` | Not derived |
 | `common.platform_name` | Text | A satellite or aircraft name, where the format states one | Not derived |
-| `common.collection_time` | Date and time, in UTC where the zone is known | NITF `IDATIM`, the KLV time stamp | Exif `DateTimeOriginal`, taken as local time with its zone found as below; or the time coordinate of frame 0 |
+| `common.collection_time` | Date and time, in UTC where the zone is known | NITF `IDATIM`, the KLV time stamp, Exif `GPSDateStamp` with `GPSTimeStamp`, which are in UTC | Exif `DateTimeOriginal`, where the GPS time is absent, taken as local time with its zone found as below; or the time coordinate of frame 0 |
 | `common.title` | Text | NITF `FTITLE`, the NetCDF `title` attribute | Not derived |
 | `common.exposure_time` | Seconds | Exif `ExposureTime` | Not derived |
 | `common.center_position` | Latitude, longitude and height | Formats that state a scene center | The geo model, at the center of the Image |
@@ -2151,6 +2195,7 @@ The mapping lives in the native field's definition, which names the dictionary i
 - **A fallback.** A companion value is used only where the file neither provides the item nor allows it to be derived.
 - **Written by the user or by BIL.** `write_companion(fields)` writes one for a Source without changing the Source. BIL's writers also use a companion file for what the output format cannot hold, including markings (section 11).
 - **Read back.** When BIL opens a file that has a companion file, its items are attached to the Source with the origin `Companion`.
+- **Not trusted blindly.** For a Source opened as untrusted, a companion file's values are used only when `trust_companion` is set, since a companion beside an outside file comes from outside too. Markings in it are always reported, whether or not its values are used.
 
 ### 14.3 Extracted on demand, then held
 
@@ -2226,7 +2271,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Nine points are not yet settled, and fifty-eight have been decided. Each lists the current proposal.
+Nine points are not yet settled, and fifty-nine have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2256,6 +2301,7 @@ Nine points are not yet settled, and fifty-eight have been decided. Each lists t
 - [x] **What the catalog holds.** Decided: a slice function belongs in BIL when it undoes the storage, calibrates, or re-expresses the measurement in a standard form that analysis starts from. Analysis goes to the `bil-extras` package. BIL is not for diagnostic use (sections 1.2 and 9).
 - [x] **Consistency, second review.** Decided: one rule for repeated names; one name and one meaning for each quantity; decibels beside their linear Slices; color converted only by the color functions; every input of a function a field; coordinates are dictionary items where the same; access classes describe the data only; Levels named in requests and geocoding built from the Slice; unknown names are errors and absent values `Missing`; one registration call; every option and held limit in section 3.4; one list of attachments; a display stretch as a kind of slice function; and packaging rules that match the FFmpeg decision (U1 to U16 of the second review).
 - [x] **The calling interface.** Decided: the gaps found by BIL by Example are closed. A caller lists Images and reads an `ImageInfo`; reads Fragments by Level name; passes selectors with parameters to `read_slices`; sends results to buffers or a callback; reads through a chosen Reader; finds the newest frame, with a timeout and cancellation; names geo models by their main step and makes steps; leaves out a surface where none is needed; registers slice functions and level methods by a stated description; writes field definitions in a stated form; writes into named components and writes geo models; and calls C by five conventions (sections 2, 3, 3.2, 3.4, 4, 5, 9.7, 10, 11, 13.3, 13.4, 14.1 and 14.2).
+- [x] **Red team, second review.** Decided: isolation decodes on request, and a whole copy is a separate choice; Window independence and agreement between machines hold to a stated tolerance, not to the bit; markings are written inside files where they fit, a missing companion is noticed, and refusal is available but off by default; writers write the geo model, hold stated sample types and write Slices on their own grid; deferred Fragments decode themselves; the cache has a byte ceiling and untrusted Sources get limits; remote Sources run on a private runtime with counted, merged requests and timeouts; a live stream has one position and past frames are `Missing`; a static-linking exception; arithmetic never in integers; masks reduced as masks; checked frame indexes and companions not trusted blindly; a stability policy; more conformance tests; and Exif GPS time used first (R26 to R41 except R29).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, and the formula for each derived one. The first entries are in section 14.2, and the list is settled as drivers are built.
 - [x] **Sensor geometry.** Decided: geocoding is a chain of steps between named coordinate spaces, covering affine, RPC, SAR and camera models, with Community Sensor Model plugins as one kind of step (section 13).
@@ -2290,7 +2336,7 @@ Nine points are not yet settled, and fifty-eight have been decided. Each lists t
 - [x] **JPEG 2000 codecs.** Decided: OpenJPEG is the fallback, and decodes every file until a Rust codec is proven. j2k-native is on trial as the Rust fallback. emuella-j2k is preferred for its declared profiles once it passes BIL's tests. hayro-jpeg2000 is a test reference. Grok stays an optional plugin (section 10).
 - [x] **LGPL version.** Decided: BIL is licensed under LGPL 2.1 or later.
 - [x] **License and responsibility.** Decided: BIL is a Rust library with a C-callable interface over it, delivered as one shared library. BIL answers for what its own packages contain, which is only LGPL-compatible builds. Users answer for what they install and pass on. `list_drivers` reports each library's license as built (section 10.6).
-- [ ] **License review.** A legal review of the contents of BIL's packages before the first release, including whether Apache-2.0 and LGPL 3 components are covered by "or later" (section 10.6).
+- [ ] **License review.** A legal review of the contents of BIL's packages before the first release, including whether Apache-2.0 and LGPL 3 components are covered by "or later", and the wording of the static-linking exception (section 10.6).
 - [x] **Writable formats.** Decided: ENVI, TIFF and GeoTIFF (uncompressed or Deflate), and NumPy `.npy`, each through BIL's own writer (section 11).
 - [x] **Wrapper crates.** Decided: an existing wrapper is considered first for every C or C++ library, and used when it passes the four tests of maintenance, performance, capability and packaging. Otherwise an existing bindings crate is used where one passes, and BIL's own bindings only where none does (section 10).
 - [x] **Reaching FFmpeg.** Decided: through the existing rusty\_ffmpeg bindings, with a thin safe layer of BIL's own. BIL does not generate bindings or build FFmpeg (section 10).
