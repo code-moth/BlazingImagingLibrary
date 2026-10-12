@@ -62,7 +62,7 @@ jobs:
       - name: what ships (deny.toml)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check --config deny.toml licenses bans sources
+          command: check licenses bans sources
       - name: everything, test-only code included (deny-tests.toml)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
