@@ -23,7 +23,7 @@ pub use bil::{kernels, simd};
 
 /// Experiment 1b: the same pass on a rolling buffer of a few rows, into the caller's buffers.
 pub mod rolling;
-pub use rolling::{plan_outputs, read_levels_into};
+pub use rolling::{plan_outputs, read_levels_into, Pass};
 
 /// Test images and comparisons for the experiment programs.
 pub mod testing;
@@ -47,6 +47,9 @@ pub struct Image {
     /// Components per pixel: 1 for intensity and complex, 3 for color.
     pub comps: usize,
     pub samples: Samples,
+    /// The validity mask of a Fragment, one byte a pixel: 0 where the pixel is missing. `None`
+    /// means the Image cannot have missing pixels, so no checks are made.
+    pub valid: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,6 +157,11 @@ dispatch!(polar0(n: usize, re: *const f32, im: *const f32, out: [*mut f32; 4]));
 dispatch!(phase_from(n: usize, ure: *const f32, uim: *const f32, out: *mut f32));
 dispatch!(hsv0(n: usize, r: *const f32, g: *const f32, b: *const f32, out: [*mut f32; 5]));
 dispatch!(hue_from(n: usize, hc: *const f32, hs: *const f32, out: *mut f32));
+dispatch!(halve_row(n: usize, src: *const f32, out: *mut f32));
+dispatch!(halve_sum(n: usize, a: *const f32, b: *const f32, c: *const f32, out: [*mut f32; 2]));
+dispatch!(halve_row_sum(n: usize, src: *const f32, out: [*mut f32; 2]));
+dispatch!(halve_skip(n: usize, sums: [*const f32; 3], weights: [*const f32; 3], out: *mut f32));
+dispatch!(keep_present(n: usize, probe: *const f32, x: *const f32, out: *mut f32));
 
 // ---------------------------------------------------------------- grid arithmetic
 

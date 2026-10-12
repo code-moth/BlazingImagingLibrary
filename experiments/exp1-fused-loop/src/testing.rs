@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //! Test images, Windows and comparisons shared by the programs of experiments 1 and 1b.
 
-use crate::{Image, Samples, Slice, Window};
+use crate::{Func, Image, Samples, Slice, Window};
 
 /// A small, fixed random number generator, so every run sees the same data.
 pub struct Rng(pub u64);
@@ -41,6 +41,7 @@ pub fn make(kind: &str, rows: usize, cols: usize, seed: u64) -> Image {
                 cols,
                 comps: 1,
                 samples: Samples::U16(v),
+                valid: None,
             }
         }
         "F32" => {
@@ -52,6 +53,7 @@ pub fn make(kind: &str, rows: usize, cols: usize, seed: u64) -> Image {
                 cols,
                 comps: 1,
                 samples: Samples::F32(v),
+                valid: None,
             }
         }
         "ComplexI16" | "ComplexF32" => {
@@ -68,6 +70,7 @@ pub fn make(kind: &str, rows: usize, cols: usize, seed: u64) -> Image {
                     cols,
                     comps: 1,
                     samples: Samples::ComplexI16(v.iter().map(|x| *x as i16).collect()),
+                    valid: None,
                 }
             } else {
                 Image {
@@ -75,6 +78,7 @@ pub fn make(kind: &str, rows: usize, cols: usize, seed: u64) -> Image {
                     cols,
                     comps: 1,
                     samples: Samples::ComplexF32(v.iter().map(|x| *x as f32).collect()),
+                    valid: None,
                 }
             }
         }
@@ -99,6 +103,7 @@ pub fn make(kind: &str, rows: usize, cols: usize, seed: u64) -> Image {
                     cols,
                     comps: 3,
                     samples: Samples::U8(v.iter().map(|x| *x as u8).collect()),
+                    valid: None,
                 }
             } else {
                 Image {
@@ -106,6 +111,7 @@ pub fn make(kind: &str, rows: usize, cols: usize, seed: u64) -> Image {
                     cols,
                     comps: 3,
                     samples: Samples::U16(v.iter().map(|x| *x as u16).collect()),
+                    valid: None,
                 }
             }
         }
@@ -157,4 +163,158 @@ pub fn random_window(rng: &mut Rng, rows: usize, cols: usize, t: usize) -> Windo
         row_count: rc,
         col_count: cc,
     }
+}
+
+/// Gives `img` a validity mask: scattered missing pixels, a missing block, a missing first row
+/// and last column, so that every Level meets missing data at the edges and inside.
+pub fn with_holes(mut img: Image, seed: u64) -> Image {
+    let mut rng = Rng(seed);
+    let (rows, cols) = (img.rows, img.cols);
+    let mut v = vec![1u8; rows * cols];
+    for r in 0..rows {
+        for c in 0..cols {
+            let block = r >= rows / 3
+                && r < rows / 3 + rows / 8
+                && c >= cols / 4
+                && c < cols / 4 + cols / 6;
+            if block || r == 0 || c + 1 == cols || rng.below(10) == 0 {
+                v[r * cols + c] = 0;
+            }
+        }
+    }
+    img.valid = Some(v);
+    img
+}
+
+/// The Slices of `func` for the whole Image at Levels 0 to `top`, with missing data, made the
+/// plain way: whole planes, indexed directly, one Level after another, in scalar code. It shares
+/// only the arithmetic of the rolling buffer, not its structure, and so checks it.
+pub fn masked_reference(img: &Image, func: Func, top: u32) -> Vec<Vec<Slice>> {
+    use crate::simd::Isa::Scalar;
+    let mask = img.valid.as_ref().expect("an Image with a validity mask");
+    let (carried, extra) = func.level0_planes();
+    let (rows, cols) = (img.rows, img.cols);
+    // Level 0 planes, row by row through the Level 0 kernels.
+    let mut planes = vec![vec![0f32; rows * cols]; carried + extra];
+    let mut inputs = vec![Vec::new(); func.inputs()];
+    let mut row = vec![vec![0f32; cols]; carried + extra];
+    for r in 0..rows {
+        crate::convert_row(img, r, 0, cols - 1, &mut inputs);
+        let o: Vec<*mut f32> = row.iter_mut().map(|p| p.as_mut_ptr()).collect();
+        // Every row holds cols values.
+        unsafe {
+            match func {
+                Func::Raw => row[0].copy_from_slice(&inputs[0]),
+                Func::Polar => crate::polar0(
+                    Scalar,
+                    cols,
+                    inputs[0].as_ptr(),
+                    inputs[1].as_ptr(),
+                    [o[0], o[1], o[2], o[3]],
+                ),
+                Func::Hsv => crate::hsv0(
+                    Scalar,
+                    cols,
+                    inputs[0].as_ptr(),
+                    inputs[1].as_ptr(),
+                    inputs[2].as_ptr(),
+                    [o[0], o[1], o[2], o[3], o[4]],
+                ),
+            }
+        }
+        for (p, plane) in planes.iter_mut().enumerate() {
+            for c in 0..cols {
+                plane[r * cols + c] = if mask[r * cols + c] == 0 {
+                    f32::NAN
+                } else {
+                    row[p][c]
+                };
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let (mut h, mut w) = (rows, cols);
+    for k in 0..=top {
+        if k > 0 {
+            let (h2, w2) = (
+                crate::grid_len(rows, k) as usize,
+                crate::grid_len(cols, k) as usize,
+            );
+            let (jr, jc) = (h as i64, w as i64);
+            let at = |i: i64, j: i64| crate::reflect(i, j) as usize;
+            for plane in planes.iter_mut().take(carried) {
+                // Along rows: sums of present values and of their weights.
+                let mut sum = vec![0f32; h * w2];
+                let mut wt = vec![0f32; h * w2];
+                for r in 0..h {
+                    for j in 0..w2 as i64 {
+                        let v = [at(2 * j - 1, jc), at(2 * j, jc), at(2 * j + 1, jc)]
+                            .map(|c| plane[r * w + c]);
+                        let x = v.map(|x| if x.is_nan() { 0.0 } else { x });
+                        let p = v.map(|x| if x.is_nan() { 0.0 } else { 1.0 });
+                        sum[r * w2 + j as usize] = ((x[0] + x[2]) + (x[1] + x[1])) * 0.25;
+                        wt[r * w2 + j as usize] = ((p[0] + p[2]) + (p[1] + p[1])) * 0.25;
+                    }
+                }
+                // Down columns: combined, then divided once.
+                let mut next = vec![0f32; h2 * w2];
+                for i in 0..h2 as i64 {
+                    let src = [at(2 * i - 1, jr), at(2 * i, jr), at(2 * i + 1, jr)];
+                    for j in 0..w2 {
+                        let s = src.map(|r| sum[r * w2 + j]);
+                        let q = src.map(|r| wt[r * w2 + j]);
+                        let (s, q) = (
+                            ((s[0] + s[2]) + (s[1] + s[1])) * 0.25,
+                            ((q[0] + q[2]) + (q[1] + q[1])) * 0.25,
+                        );
+                        next[i as usize * w2 + j] = if q == 0.0 { f32::NAN } else { s / q };
+                    }
+                }
+                *plane = next;
+            }
+            (h, w) = (h2, w2);
+        }
+        let derive =
+            |x: &[f32],
+             y: &[f32],
+             f: unsafe fn(crate::simd::Isa, usize, *const f32, *const f32, *mut f32)| {
+                let mut d = vec![0f32; h * w];
+                // x, y and d each hold h × w values.
+                unsafe { f(Scalar, h * w, x.as_ptr(), y.as_ptr(), d.as_mut_ptr()) };
+                for (d, x) in d.iter_mut().zip(x) {
+                    if x.is_nan() {
+                        *d = f32::NAN;
+                    }
+                }
+                d
+            };
+        let data: Vec<Vec<f32>> = match (func, k) {
+            (Func::Raw, _) => vec![planes[0].clone()],
+            (Func::Polar, 0) => vec![planes[0].clone(), planes[3].clone()],
+            (Func::Polar, _) => vec![
+                planes[0].clone(),
+                derive(&planes[1], &planes[2], crate::phase_from),
+            ],
+            (Func::Hsv, 0) => vec![planes[4].clone(), planes[0].clone(), planes[1].clone()],
+            (Func::Hsv, _) => vec![
+                derive(&planes[2], &planes[3], crate::hue_from),
+                planes[0].clone(),
+                planes[1].clone(),
+            ],
+        };
+        out.push(
+            func.slice_names()
+                .iter()
+                .zip(data)
+                .map(|(&name, data)| Slice {
+                    name,
+                    level: k,
+                    rows: (0, h as i64 - 1),
+                    cols: (0, w as i64 - 1),
+                    data,
+                })
+                .collect(),
+        );
+    }
+    out
 }

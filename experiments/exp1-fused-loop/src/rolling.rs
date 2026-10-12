@@ -5,12 +5,27 @@
 //! Each Level above Level 0 keeps a ring of three rows, already halved along the row, from the
 //! Level before. A row of Level k is made as soon as the three rows of Level k - 1 it needs are in
 //! the ring, and it is written out at once and passed on to Level k + 1. No full-size
-//! intermediate plane is made. The kernels and the order of operations are those of
-//! `read_levels`, so every value has the same bits.
+//! intermediate plane is made. Where nothing can be missing, the kernels and the order of
+//! operations are those of `read_levels`, so every value has the same bits.
+//!
+//! **Missing data.** An Image with a validity mask takes a second path, for section 5 of the
+//! specification. A missing pixel is NaN in every Slice. Each halving leaves NaN out and rescales
+//! the remaining weights, and a value is NaN only when every value that would contribute is
+//! missing. `missing_value` is applied last, to the finished Slice. An Image with no mask makes
+//! none of these checks.
+//!
+//! Three choices here are proposals that the specification leaves open, awaiting the author:
+//! - **One 2D average.** Along the row the weighted sum of the values present and the sum of
+//!   their weights are kept apart; down the column both are combined and divided once. The result
+//!   is the 3 x 3 average of the values present, rather than an average rescaled after each pass.
+//! - **Level by level.** Each Level averages the values of the Level before it with equal weight,
+//!   without carrying how many full-resolution pixels lie behind each one.
+//! - **Stored NaN is missing.** On this path any NaN counts as missing, so a NaN stored in float
+//!   data at a pixel the mask calls valid is skipped and filled like a masked one.
 
 use super::{
-    axis_plan, convert_row, grid_len, halve, hsv0, hue_from, phase_from, polar0, reflect, Func,
-    Image, Slice, Window,
+    axis_plan, convert_row, grid_len, halve, halve_row, halve_row_sum, halve_skip, halve_sum, hsv0,
+    hue_from, keep_present, phase_from, polar0, reflect, Func, Image, Slice, Window,
 };
 use crate::simd::Isa;
 
@@ -61,30 +76,6 @@ impl Plan {
     }
 }
 
-/// Allocates the Slices a request makes, in the same shape `read_levels` returns, so that a
-/// caller can allocate once and reuse the buffers for every read of the same shape.
-pub fn plan_outputs(img: &Image, func: Func, window: Window, top: u32) -> Vec<Vec<Slice>> {
-    let plan = Plan::new(img, window, top);
-    (0..plan.levels())
-        .map(|k| match (plan.row_out[k], plan.col_out[k]) {
-            (Some(rows), Some(cols)) => {
-                let size = ((rows.1 - rows.0 + 1) * (cols.1 - cols.0 + 1)) as usize;
-                func.slice_names()
-                    .iter()
-                    .map(|&name| Slice {
-                        name,
-                        level: k as u32,
-                        rows,
-                        cols,
-                        data: vec![0f32; size],
-                    })
-                    .collect()
-            }
-            _ => Vec::new(),
-        })
-        .collect()
-}
-
 /// The working rows of one Level.
 struct LevelState {
     /// Columns this Level computes.
@@ -99,9 +90,10 @@ struct LevelState {
     /// first column that Level computes. Empty for Level 0.
     gather: [Vec<usize>; 3],
     /// The output columns `lo..hi` whose sources need no mirroring, and the source column of the
-    /// first one's left neighbor. Their sources are read in order rather than gathered.
+    /// first one's left neighbor. Their sources are read from the row itself.
     interior: (usize, usize, usize),
-    /// Rows of the Level before, halved along the row: `RING` slots of `carried` planes.
+    /// Rows of the Level before, halved along the row, in `RING` slots. Without missing data,
+    /// one plane for each carried plane. With it, two: the weighted sums, then the weights.
     ring: Vec<Vec<f32>>,
     /// Which row of the Level before each ring slot holds.
     tags: [i64; RING],
@@ -115,158 +107,363 @@ impl LevelState {
     }
 }
 
+/// One planned read: the grid, and every working row it needs, allocated once. Running it again
+/// on the same Image shape allocates nothing.
+pub struct Pass {
+    func: Func,
+    rows: usize,
+    cols: usize,
+    masked: bool,
+    plan: Plan,
+    levels: Vec<LevelState>,
+    /// Gathered sources at the two ends of a row, where the Image edge mirrors them.
+    edge: [Vec<f32>; 3],
+    /// The native samples of one row, converted to f32 component rows.
+    inputs: Vec<Vec<f32>>,
+    /// One row of the validity mask, as 1.0 where present and NaN where missing.
+    valid: Vec<f32>,
+}
+
+impl Pass {
+    /// Plans a read of `func` for `window` at Levels 0 to `top`, as `read_levels` makes it, for
+    /// Images of `img`'s shape, with or without a validity mask as `img` has.
+    pub fn new(img: &Image, func: Func, window: Window, top: u32) -> Pass {
+        let plan = Plan::new(img, window, top);
+        let masked = img.valid.is_some();
+        let (carried, extra) = func.level0_planes();
+        let levels: Vec<LevelState> = (0..plan.levels())
+            .map(|k| {
+                let cols = plan.col_need[k];
+                let w = (cols.1 - cols.0 + 1) as usize;
+                let planes = if k == 0 { carried + extra } else { carried };
+                let gather = if k == 0 {
+                    [Vec::new(), Vec::new(), Vec::new()]
+                } else {
+                    let jc = grid_len(img.cols, k as u32 - 1);
+                    let first = plan.col_need[k - 1].0;
+                    let idx = |i: i64| (reflect(i, jc) - first) as usize;
+                    [
+                        (cols.0..=cols.1).map(|j| idx(2 * j - 1)).collect(),
+                        (cols.0..=cols.1)
+                            .map(|j| (2 * j - first) as usize)
+                            .collect(),
+                        (cols.0..=cols.1).map(|j| idx(2 * j + 1)).collect(),
+                    ]
+                };
+                let interior = interior_of(&gather);
+                let ring_planes = match (k, masked) {
+                    (0, _) => 0,
+                    (_, false) => carried,
+                    (_, true) => 2 * carried,
+                };
+                LevelState {
+                    cols,
+                    interior,
+                    rows: plan.row_need[k],
+                    next: plan.row_need[k].0,
+                    prev_rows: if k == 0 {
+                        0
+                    } else {
+                        grid_len(img.rows, k as u32 - 1)
+                    },
+                    gather,
+                    ring: vec![vec![0f32; RING * w]; ring_planes],
+                    tags: [i64::MIN; RING],
+                    row: vec![vec![0f32; w]; planes],
+                }
+            })
+            .collect();
+        let widest = levels.iter().map(LevelState::width).max().unwrap();
+        Pass {
+            func,
+            rows: img.rows,
+            cols: img.cols,
+            masked,
+            plan,
+            levels,
+            edge: [vec![0f32; widest], vec![0f32; widest], vec![0f32; widest]],
+            inputs: vec![vec![0f32; widest]; func.inputs()],
+            valid: vec![0f32; widest],
+        }
+    }
+
+    /// Allocates the Slices this read makes, in the same shape `read_levels` returns, for the
+    /// caller to keep and reuse.
+    pub fn outputs(&self) -> Vec<Vec<Slice>> {
+        let plan = &self.plan;
+        (0..plan.levels())
+            .map(|k| match (plan.row_out[k], plan.col_out[k]) {
+                (Some(rows), Some(cols)) => {
+                    let size = ((rows.1 - rows.0 + 1) * (cols.1 - cols.0 + 1)) as usize;
+                    self.func
+                        .slice_names()
+                        .iter()
+                        .map(|&name| Slice {
+                            name,
+                            level: k as u32,
+                            rows,
+                            cols,
+                            data: vec![0f32; size],
+                        })
+                        .collect()
+                }
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    /// Runs the read into `out`, which must have the shape `outputs` gives. Missing positions
+    /// are NaN, or `missing_value` where the caller gives one.
+    pub fn run(
+        &mut self,
+        img: &Image,
+        isa: Isa,
+        missing_value: Option<f32>,
+        out: &mut [Vec<Slice>],
+    ) {
+        assert!(
+            isa == Isa::Scalar || Isa::available().contains(&isa),
+            "{isa:?} is not available"
+        );
+        assert!(
+            img.rows == self.rows && img.cols == self.cols && img.valid.is_some() == self.masked,
+            "the Image differs from the one planned for"
+        );
+        self.check_shape(out);
+        for level in &mut self.levels {
+            level.next = level.rows.0;
+            level.tags = [i64::MIN; RING];
+        }
+        let func = self.func;
+        let (r0, r1) = self.levels[0].rows;
+        let (c0, c1) = self.levels[0].cols;
+        let n = self.levels[0].width();
+        for r in r0..=r1 {
+            let row = &mut self.levels[0].row;
+            match func {
+                // Converted straight into the Level 0 row.
+                Func::Raw => convert_row(img, r as usize, c0 as usize, c1 as usize, &mut row[..1]),
+                Func::Polar => {
+                    convert_row(img, r as usize, c0 as usize, c1 as usize, &mut self.inputs);
+                    let i = &self.inputs;
+                    // Every input and output row holds n values.
+                    unsafe {
+                        polar0(
+                            isa,
+                            n,
+                            i[0].as_ptr(),
+                            i[1].as_ptr(),
+                            [
+                                row[0].as_mut_ptr(),
+                                row[1].as_mut_ptr(),
+                                row[2].as_mut_ptr(),
+                                row[3].as_mut_ptr(),
+                            ],
+                        )
+                    }
+                }
+                Func::Hsv => {
+                    convert_row(img, r as usize, c0 as usize, c1 as usize, &mut self.inputs);
+                    let i = &self.inputs;
+                    // Every input and output row holds n values.
+                    unsafe {
+                        hsv0(
+                            isa,
+                            n,
+                            i[0].as_ptr(),
+                            i[1].as_ptr(),
+                            i[2].as_ptr(),
+                            [
+                                row[0].as_mut_ptr(),
+                                row[1].as_mut_ptr(),
+                                row[2].as_mut_ptr(),
+                                row[3].as_mut_ptr(),
+                                row[4].as_mut_ptr(),
+                            ],
+                        )
+                    }
+                }
+            }
+            if let Some(mask) = &img.valid {
+                // Every plane of a missing pixel is NaN, whatever its kernel made of the samples.
+                let at = r as usize * img.cols;
+                let bytes = &mask[at + c0 as usize..=at + c1 as usize];
+                for (v, &b) in self.valid.iter_mut().zip(bytes) {
+                    *v = if b == 0 { f32::NAN } else { 1.0 };
+                }
+                for plane in row.iter_mut() {
+                    let p = plane.as_mut_ptr();
+                    // The mask row and the plane hold at least n values; the kernel reads each
+                    // value before it writes it, so the plane may be both input and output.
+                    unsafe { keep_present(isa, n, self.valid.as_ptr(), p, p) };
+                }
+            }
+            self.levels[0].next = r + 1;
+            self.emit(isa, missing_value, 0, r, out);
+        }
+        for (k, level) in self.levels.iter().enumerate() {
+            assert_eq!(level.next, level.rows.1 + 1, "Level {k} was not finished");
+        }
+    }
+
+    fn check_shape(&self, out: &[Vec<Slice>]) {
+        let plan = &self.plan;
+        assert_eq!(
+            out.len(),
+            plan.levels(),
+            "output shape differs from the plan"
+        );
+        for (k, slices) in out.iter().enumerate() {
+            let expected = match (plan.row_out[k], plan.col_out[k]) {
+                (Some(_), Some(_)) => self.func.slice_names().len(),
+                _ => 0,
+            };
+            assert_eq!(slices.len(), expected, "output shape differs at Level {k}");
+            for s in slices {
+                assert!(
+                    Some(s.rows) == plan.row_out[k] && Some(s.cols) == plan.col_out[k],
+                    "output grid differs at Level {k}"
+                );
+            }
+        }
+    }
+
+    /// Row `r` of Level `k` is in `levels[k].row`. Writes the part of it the Window shows,
+    /// passes it to Level k + 1, and makes every row of the Levels above that it completes.
+    fn emit(&mut self, isa: Isa, fill: Option<f32>, k: usize, r: i64, out: &mut [Vec<Slice>]) {
+        write_out(
+            self.func,
+            isa,
+            self.masked,
+            fill,
+            &self.plan,
+            &self.levels[k],
+            k,
+            r,
+            &mut out[k],
+        );
+        if k + 1 >= self.levels.len() {
+            return;
+        }
+        let (carried, _) = self.func.level0_planes();
+        let masked = self.masked;
+        let (here, above) = self.levels.split_at_mut(k + 1);
+        let (cur, next) = (&here[k], &mut above[0]);
+
+        // Halve this row along the row into the next Level's ring.
+        let w = next.width();
+        let slot = r.rem_euclid(RING as i64) as usize;
+        let (lo, hi, first) = next.interior;
+        for p in 0..carried {
+            let src = &cur.row[p];
+            let (s, wt) = if masked {
+                let (a, b) = next.ring.split_at_mut(2 * p + 1);
+                (
+                    a[2 * p][slot * w..].as_mut_ptr(),
+                    b[0][slot * w..].as_mut_ptr(),
+                )
+            } else {
+                (next.ring[p][slot * w..].as_mut_ptr(), std::ptr::null_mut())
+            };
+            // The two ends, where a source may be mirrored, are gathered by index.
+            for (i0, i1) in [(0, lo), (hi, w)] {
+                if i0 == i1 {
+                    continue;
+                }
+                for i in i0..i1 {
+                    for t in 0..3 {
+                        self.edge[t][i] = src[next.gather[t][i]];
+                    }
+                }
+                let [a, b, c] = [0, 1, 2].map(|t| self.edge[t][i0..].as_ptr());
+                // The edge buffers hold at least w values and each ring slot w, and i0..i1 lies
+                // inside both.
+                unsafe {
+                    if masked {
+                        halve_sum(isa, i1 - i0, a, b, c, [s.add(i0), wt.add(i0)]);
+                    } else {
+                        halve(isa, i1 - i0, a, b, c, s.add(i0));
+                    }
+                }
+            }
+            // The interior is read from the row itself: 2(hi - lo) + 1 values from `first`.
+            if hi > lo {
+                let from = src[first..first + 2 * (hi - lo) + 1].as_ptr();
+                // `from` holds 2(hi - lo) + 1 values, and lo..hi lies inside each ring slot.
+                unsafe {
+                    if masked {
+                        halve_row_sum(isa, hi - lo, from, [s.add(lo), wt.add(lo)]);
+                    } else {
+                        halve_row(isa, hi - lo, from, s.add(lo));
+                    }
+                }
+            }
+        }
+        next.tags[slot] = r;
+
+        // Make every row of the next Level whose three source rows are now in the ring. Each row
+        // made is passed on at once, so the loop takes the next Level afresh on every turn.
+        loop {
+            let i = {
+                let next = &mut self.levels[k + 1];
+                if next.next > next.rows.1 {
+                    return;
+                }
+                let i = next.next;
+                let src = [
+                    reflect(2 * i - 1, next.prev_rows),
+                    2 * i,
+                    reflect(2 * i + 1, next.prev_rows),
+                ];
+                if src.iter().any(|&s| s > r) {
+                    return;
+                }
+                let slots = src.map(|s| {
+                    let slot = s.rem_euclid(RING as i64) as usize;
+                    assert_eq!(next.tags[slot], s, "row {s} left the ring too early");
+                    slot
+                });
+                for p in 0..carried {
+                    let out = next.row[p].as_mut_ptr();
+                    // Each ring slot and the output row hold w values.
+                    unsafe {
+                        if masked {
+                            let sums = slots.map(|t| next.ring[2 * p][t * w..].as_ptr());
+                            let weights = slots.map(|t| next.ring[2 * p + 1][t * w..].as_ptr());
+                            halve_skip(isa, w, sums, weights, out);
+                        } else {
+                            let [a, b, c] = slots.map(|t| next.ring[p][t * w..].as_ptr());
+                            halve(isa, w, a, b, c, out);
+                        }
+                    }
+                }
+                next.next = i + 1;
+                i
+            };
+            self.emit(isa, fill, k + 1, i, out);
+        }
+    }
+}
+
+/// Allocates the Slices a request makes, in the same shape `read_levels` returns, so that a
+/// caller can allocate once and reuse the buffers for every read of the same shape.
+pub fn plan_outputs(img: &Image, func: Func, window: Window, top: u32) -> Vec<Vec<Slice>> {
+    Pass::new(img, func, window, top).outputs()
+}
+
 /// Makes every Slice of `func` for `window` at Levels 0 to `top`, as `read_levels` does, into
-/// `out`, which must have the shape `plan_outputs` gives for the same arguments.
+/// `out`, which must have the shape `plan_outputs` gives. A caller reading many times keeps a
+/// `Pass` instead, so that nothing is allocated per read.
 pub fn read_levels_into(
     img: &Image,
     func: Func,
     isa: Isa,
     window: Window,
     top: u32,
+    missing_value: Option<f32>,
     out: &mut [Vec<Slice>],
 ) {
-    assert!(
-        isa == Isa::Scalar || Isa::available().contains(&isa),
-        "{isa:?} is not available"
-    );
-    let plan = Plan::new(img, window, top);
-    assert_eq!(
-        out.len(),
-        plan.levels(),
-        "output shape differs from the plan"
-    );
-    for (k, slices) in out.iter().enumerate() {
-        let expected = match (plan.row_out[k], plan.col_out[k]) {
-            (Some(_), Some(_)) => func.slice_names().len(),
-            _ => 0,
-        };
-        assert_eq!(slices.len(), expected, "output shape differs at Level {k}");
-        for s in slices {
-            assert!(
-                Some(s.rows) == plan.row_out[k] && Some(s.cols) == plan.col_out[k],
-                "output grid differs at Level {k}"
-            );
-        }
-    }
-
-    let (carried, extra) = func.level0_planes();
-    let mut levels: Vec<LevelState> = (0..plan.levels())
-        .map(|k| {
-            let cols = plan.col_need[k];
-            let w = (cols.1 - cols.0 + 1) as usize;
-            let planes = if k == 0 { carried + extra } else { carried };
-            let gather = if k == 0 {
-                [Vec::new(), Vec::new(), Vec::new()]
-            } else {
-                let jc = grid_len(img.cols, k as u32 - 1);
-                let first = plan.col_need[k - 1].0;
-                let idx = |i: i64| (reflect(i, jc) - first) as usize;
-                [
-                    (cols.0..=cols.1).map(|j| idx(2 * j - 1)).collect(),
-                    (cols.0..=cols.1)
-                        .map(|j| (2 * j - first) as usize)
-                        .collect(),
-                    (cols.0..=cols.1).map(|j| idx(2 * j + 1)).collect(),
-                ]
-            };
-            let interior = interior_of(&gather);
-            LevelState {
-                cols,
-                interior,
-                rows: plan.row_need[k],
-                next: plan.row_need[k].0,
-                prev_rows: if k == 0 {
-                    0
-                } else {
-                    grid_len(img.rows, k as u32 - 1)
-                },
-                gather,
-                ring: if k == 0 {
-                    Vec::new()
-                } else {
-                    vec![vec![0f32; RING * w]; carried]
-                },
-                tags: [i64::MIN; RING],
-                row: vec![vec![0f32; w]; planes],
-            }
-        })
-        .collect();
-
-    let widest = levels.iter().map(LevelState::width).max().unwrap();
-    let mut scratch = Scratch {
-        a: vec![0f32; widest],
-        b: vec![0f32; widest],
-        c: vec![0f32; widest],
-        even: vec![0f32; widest + 1],
-        odd: vec![0f32; widest],
-    };
-    let mut inputs: Vec<Vec<f32>> = vec![Vec::new(); func.inputs()];
-    let (r0, r1) = levels[0].rows;
-    let (c0, c1) = levels[0].cols;
-    let n = levels[0].width();
-    for r in r0..=r1 {
-        convert_row(img, r as usize, c0 as usize, c1 as usize, &mut inputs);
-        let row = &mut levels[0].row;
-        match func {
-            Func::Raw => row[0].copy_from_slice(&inputs[0]),
-            // Every input and output row holds n values.
-            Func::Polar => unsafe {
-                polar0(
-                    isa,
-                    n,
-                    inputs[0].as_ptr(),
-                    inputs[1].as_ptr(),
-                    [
-                        row[0].as_mut_ptr(),
-                        row[1].as_mut_ptr(),
-                        row[2].as_mut_ptr(),
-                        row[3].as_mut_ptr(),
-                    ],
-                )
-            },
-            Func::Hsv => unsafe {
-                hsv0(
-                    isa,
-                    n,
-                    inputs[0].as_ptr(),
-                    inputs[1].as_ptr(),
-                    inputs[2].as_ptr(),
-                    [
-                        row[0].as_mut_ptr(),
-                        row[1].as_mut_ptr(),
-                        row[2].as_mut_ptr(),
-                        row[3].as_mut_ptr(),
-                        row[4].as_mut_ptr(),
-                    ],
-                )
-            },
-        }
-        levels[0].next = r + 1;
-        emit(
-            func,
-            isa,
-            carried,
-            &plan,
-            &mut levels,
-            0,
-            r,
-            out,
-            &mut scratch,
-        );
-    }
-    for (k, level) in levels.iter().enumerate() {
-        assert_eq!(level.next, level.rows.1 + 1, "Level {k} was not finished");
-    }
-}
-
-/// Buffers for halving along a row: gathered sources at the edges, and the even and odd
-/// columns of the interior.
-struct Scratch {
-    a: Vec<f32>,
-    b: Vec<f32>,
-    c: Vec<f32>,
-    even: Vec<f32>,
-    odd: Vec<f32>,
+    Pass::new(img, func, window, top).run(img, isa, missing_value, out);
 }
 
 /// Finds the run of output columns whose three sources are consecutive columns, unmirrored.
@@ -282,121 +479,13 @@ fn interior_of(gather: &[Vec<usize>; 3]) -> (usize, usize, usize) {
     (lo, hi, a[lo])
 }
 
-/// Row `r` of Level `k` is in `levels[k].row`. Writes the part of it the Window shows, passes it
-/// to Level k + 1, and makes every row of the Levels above that it completes.
-#[allow(clippy::too_many_arguments)]
-fn emit(
-    func: Func,
-    isa: Isa,
-    carried: usize,
-    plan: &Plan,
-    levels: &mut [LevelState],
-    k: usize,
-    r: i64,
-    out: &mut [Vec<Slice>],
-    scratch: &mut Scratch,
-) {
-    write_out(func, isa, plan, &levels[k], k, r, &mut out[k]);
-    if k + 1 >= levels.len() {
-        return;
-    }
-    let (here, above) = levels.split_at_mut(k + 1);
-    let (cur, next) = (&here[k], &mut above[0]);
-
-    // Halve this row along the row into the next Level's ring.
-    let w = next.width();
-    let slot = r.rem_euclid(RING as i64) as usize;
-    let (lo, hi, first) = next.interior;
-    let m = hi - lo;
-    for p in 0..carried {
-        let src = &cur.row[p];
-        let dst = next.ring[p][slot * w..(slot + 1) * w].as_mut_ptr();
-        // The two ends, where a source may be mirrored, are gathered by index.
-        for (i0, i1) in [(0, lo), (hi, w)] {
-            if i0 == i1 {
-                continue;
-            }
-            for i in i0..i1 {
-                scratch.a[i] = src[next.gather[0][i]];
-                scratch.b[i] = src[next.gather[1][i]];
-                scratch.c[i] = src[next.gather[2][i]];
-            }
-            // The gather buffers hold at least w values and the ring slot w, and i0..i1 lies
-            // inside both.
-            unsafe {
-                halve(
-                    isa,
-                    i1 - i0,
-                    scratch.a[i0..].as_ptr(),
-                    scratch.b[i0..].as_ptr(),
-                    scratch.c[i0..].as_ptr(),
-                    dst.add(i0),
-                )
-            };
-        }
-        // The interior: the left source of column i is the even column, the center the odd one,
-        // and the right one the next even column, so two in-order copies serve all three.
-        if m > 0 {
-            let run = &src[first..first + 2 * m + 1];
-            for (j, pair) in run[..2 * m].as_chunks::<2>().0.iter().enumerate() {
-                scratch.even[j] = pair[0];
-                scratch.odd[j] = pair[1];
-            }
-            scratch.even[m] = run[2 * m];
-            // even holds at least m + 1 values, odd at least m, and lo..hi is inside the ring slot.
-            unsafe {
-                halve(
-                    isa,
-                    m,
-                    scratch.even.as_ptr(),
-                    scratch.odd.as_ptr(),
-                    scratch.even[1..].as_ptr(),
-                    dst.add(lo),
-                )
-            };
-        }
-    }
-    next.tags[slot] = r;
-
-    // Make every row of the next Level whose three source rows are now in the ring. Each row
-    // made is passed on at once, so the loop takes the next Level afresh on every turn.
-    loop {
-        let i = {
-            let next = &mut levels[k + 1];
-            if next.next > next.rows.1 {
-                return;
-            }
-            let i = next.next;
-            let src = [
-                reflect(2 * i - 1, next.prev_rows),
-                2 * i,
-                reflect(2 * i + 1, next.prev_rows),
-            ];
-            if src.iter().any(|&s| s > r) {
-                return;
-            }
-            let slots = src.map(|s| {
-                let slot = s.rem_euclid(RING as i64) as usize;
-                assert_eq!(next.tags[slot], s, "row {s} left the ring too early");
-                slot
-            });
-            for p in 0..carried {
-                let at = |slot: usize| next.ring[p][slot * w..].as_ptr();
-                let (a, b, c) = (at(slots[0]), at(slots[1]), at(slots[2]));
-                // Each ring slot and the output row hold w values.
-                unsafe { halve(isa, w, a, b, c, next.row[p].as_mut_ptr()) };
-            }
-            next.next = i + 1;
-            i
-        };
-        emit(func, isa, carried, plan, levels, k + 1, i, out, scratch);
-    }
-}
-
 /// Writes the columns the Window shows of row `r` of Level `k` into that Level's Slices.
+#[allow(clippy::too_many_arguments)]
 fn write_out(
     func: Func,
     isa: Isa,
+    masked: bool,
+    fill: Option<f32>,
     plan: &Plan,
     level: &LevelState,
     k: usize,
@@ -414,6 +503,17 @@ fn write_out(
     let at = ((r - rows.0) as usize) * w;
     let plane = |p: usize| &level.row[p][o..o + w];
     let mut put = |s: usize, p: usize| slices[s].data[at..at + w].copy_from_slice(plane(p));
+    // An angle made from an averaged unit vector, NaN where the vector is missing.
+    let angle = |slices: &mut [Slice], s: usize, x: usize, y: usize, f: DeriveFn| {
+        let dst = slices[s].data[at..at + w].as_mut_ptr();
+        // Both planes and the output row hold w values.
+        unsafe {
+            f(isa, w, plane(x).as_ptr(), plane(y).as_ptr(), dst);
+            if masked {
+                keep_present(isa, w, plane(x).as_ptr(), dst, dst);
+            }
+        }
+    };
     match func {
         Func::Raw => put(0, 0),
         Func::Polar => {
@@ -421,9 +521,7 @@ fn write_out(
             if k == 0 {
                 put(1, 3);
             } else {
-                let dst = slices[1].data[at..at + w].as_mut_ptr();
-                // Both planes and the output row hold w values.
-                unsafe { phase_from(isa, w, plane(1).as_ptr(), plane(2).as_ptr(), dst) };
+                angle(slices, 1, 1, 2, phase_from);
             }
         }
         Func::Hsv => {
@@ -432,10 +530,21 @@ fn write_out(
             if k == 0 {
                 put(0, 4);
             } else {
-                let dst = slices[0].data[at..at + w].as_mut_ptr();
-                // Both planes and the output row hold w values.
-                unsafe { hue_from(isa, w, plane(2).as_ptr(), plane(3).as_ptr(), dst) };
+                angle(slices, 0, 2, 3, hue_from);
+            }
+        }
+    }
+    // The caller's number in place of NaN, applied last.
+    if let (Some(v), true) = (fill, masked) {
+        for s in slices.iter_mut() {
+            for x in &mut s.data[at..at + w] {
+                if x.is_nan() {
+                    *x = v;
+                }
             }
         }
     }
 }
+
+/// A kernel that makes one plane from two.
+type DeriveFn = unsafe fn(Isa, usize, *const f32, *const f32, *mut f32);

@@ -138,6 +138,167 @@ pub unsafe fn halve<V: Vf>(n: usize, a: *const f32, b: *const f32, c: *const f32
     );
 }
 
+/// One halving along a row, reading the row itself: `out[i]` is made from `src[2i]`, `src[2i + 1]`
+/// and `src[2i + 2]` with the arithmetic of `halve`, so the bits are the same. The even and odd
+/// columns are separated by vector shuffles, which only move values.
+///
+/// `src` holds `2n + 1` values.
+#[inline(always)]
+pub unsafe fn halve_row<V: Vf>(n: usize, src: *const f32, out: *mut f32) {
+    row_pairs::<V, 1>(
+        n,
+        src,
+        [out],
+        #[inline(always)]
+        |a, b, c| [a.add(c).add(b.add(b)).mul(V::splat(0.25))],
+    );
+}
+
+/// The first half of a halving where values may be missing, as NaN: the weighted sum of the
+/// values present, and the sum of their weights, each with weights 1 2 1 and scaled by a quarter
+/// as `halve` scales, but not yet divided by the weight.
+#[inline(always)]
+pub unsafe fn halve_sum<V: Vf>(
+    n: usize,
+    a: *const f32,
+    b: *const f32,
+    c: *const f32,
+    out: [*mut f32; 2],
+) {
+    map::<V, 3, 2>(
+        n,
+        [a, b, c],
+        out,
+        #[inline(always)]
+        |[a, b, c]| sum_present(a, b, c),
+    );
+}
+
+/// `halve_sum` along a row, reading the row itself as `halve_row` does. `src` holds `2n + 1`
+/// values.
+#[inline(always)]
+pub unsafe fn halve_row_sum<V: Vf>(n: usize, src: *const f32, out: [*mut f32; 2]) {
+    row_pairs::<V, 2>(
+        n,
+        src,
+        out,
+        #[inline(always)]
+        |a, b, c| sum_present(a, b, c),
+    );
+}
+
+/// The second half of a halving where values may be missing: the weighted sums and weights of
+/// three rows, combined with weights 1 2 1 and divided. NaN where no value was present.
+#[inline(always)]
+pub unsafe fn halve_skip<V: Vf>(
+    n: usize,
+    sums: [*const f32; 3],
+    weights: [*const f32; 3],
+    out: *mut f32,
+) {
+    map::<V, 6, 1>(
+        n,
+        [
+            sums[0], sums[1], sums[2], weights[0], weights[1], weights[2],
+        ],
+        [out],
+        #[inline(always)]
+        |[sa, sb, sc, wa, wb, wc]| {
+            let quarter = V::splat(0.25);
+            let s = sa.add(sc).add(sb.add(sb)).mul(quarter);
+            let w = wa.add(wc).add(wb.add(wb)).mul(quarter);
+            let none = w.eq(V::splat(0.0));
+            [V::select(
+                none,
+                V::splat(f32::NAN),
+                s.div(V::select(none, V::splat(1.0), w)),
+            )]
+        },
+    );
+}
+
+/// `x` where `probe` is a number, and NaN where `probe` is NaN. A mask of 1.0 and NaN applies a
+/// validity mask; a Slice as the probe carries its missing values to another made beside it.
+#[inline(always)]
+pub unsafe fn keep_present<V: Vf>(n: usize, probe: *const f32, x: *const f32, out: *mut f32) {
+    map::<V, 2, 1>(
+        n,
+        [probe, x],
+        [out],
+        #[inline(always)]
+        |[p, x]| [V::select(p.eq(p), x, V::splat(f32::NAN))],
+    );
+}
+
+/// Present values with weights 1 2 1, and the sum of their weights, both scaled by a quarter. A
+/// value is present when it is not NaN. With all three present the weight is exactly 1 and the
+/// sum has the bits of `halve`, so a mask with nothing missing changes nothing, over the whole
+/// float32 range. Every operation is exact or correctly rounded, so the result is the same on
+/// every instruction set.
+#[inline(always)]
+unsafe fn sum_present<V: Vf>(a: V, b: V, c: V) -> [V; 2] {
+    let zero = V::splat(0.0);
+    let one = V::splat(1.0);
+    let (pa, pb, pc) = (a.eq(a), b.eq(b), c.eq(c));
+    let (a, b, c) = (
+        V::select(pa, a, zero),
+        V::select(pb, b, zero),
+        V::select(pc, c, zero),
+    );
+    let (wa, wb, wc) = (
+        V::select(pa, one, zero),
+        V::select(pb, one, zero),
+        V::select(pc, one, zero),
+    );
+    let quarter = V::splat(0.25);
+    [
+        a.add(c).add(b.add(b)).mul(quarter),
+        wa.add(wc).add(wb.add(wb)).mul(quarter),
+    ]
+}
+
+/// Applies `f` to the left, center and right sources of each output of a halving along a row,
+/// read from the row itself: `src[2i]`, `src[2i + 1]` and `src[2i + 2]`. `src` holds `2n + 1`
+/// values. The last outputs go through the same vector code on a padded copy.
+#[inline(always)]
+unsafe fn row_pairs<V: Vf, const NO: usize>(
+    n: usize,
+    src: *const f32,
+    outs: [*mut f32; NO],
+    f: impl Fn(V, V, V) -> [V; NO],
+) {
+    let l = V::LANES;
+    let mut i = 0;
+    // The right source of the last output in a vector is read by the second load, which ends
+    // one value past it, so a full vector needs i + l < n.
+    while i + l < n {
+        let (a, b) = V::load_even_odd(src.add(2 * i));
+        let (c, _) = V::load_even_odd(src.add(2 * i + 2));
+        let r = f(a, b, c);
+        for k in 0..NO {
+            r[k].store(outs[k].add(i));
+        }
+        i += l;
+    }
+    if i < n {
+        let rem = n - i;
+        let mut t = [0f32; 2 * MAX_LANES + 2];
+        for j in 0..2 * rem + 1 {
+            t[j] = *src.add(2 * i + j);
+        }
+        let (a, b) = V::load_even_odd(t.as_ptr());
+        let (c, _) = V::load_even_odd(t.as_ptr().add(2));
+        let r = f(a, b, c);
+        let mut tout = [0f32; MAX_LANES];
+        for k in 0..NO {
+            r[k].store(tout.as_mut_ptr());
+            for j in 0..rem {
+                *outs[k].add(i + j) = tout[j];
+            }
+        }
+    }
+}
+
 /// `complex.polar` at Level 0: magnitude, the unit vector carried to coarser Levels, and phase.
 #[inline(always)]
 pub unsafe fn polar0<V: Vf>(n: usize, re: *const f32, im: *const f32, out: [*mut f32; 4]) {

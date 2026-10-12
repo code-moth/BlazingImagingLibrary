@@ -39,6 +39,9 @@ pub unsafe trait Vf: Copy {
     unsafe fn select(m: Self::M, a: Self, b: Self) -> Self;
     unsafe fn and(a: Self::M, b: Self::M) -> Self::M;
     unsafe fn not(a: Self::M) -> Self::M;
+    /// Loads `2 * LANES` values from `p` and returns the even ones and the odd ones, in order.
+    /// It only moves values, so it is exact.
+    unsafe fn load_even_odd(p: *const f32) -> (Self, Self);
 }
 
 /// One lane, in plain Rust. It is also the reference the vector back ends must match.
@@ -123,6 +126,10 @@ unsafe impl Vf for Scalar {
     #[inline(always)]
     unsafe fn not(a: bool) -> bool {
         !a
+    }
+    #[inline(always)]
+    unsafe fn load_even_odd(p: *const f32) -> (Self, Self) {
+        (Scalar(*p), Scalar(*p.add(1)))
     }
 }
 
@@ -228,6 +235,18 @@ unsafe impl Vf for Avx2 {
     unsafe fn not(a: __m256) -> __m256 {
         _mm256_xor_ps(a, _mm256_castsi256_ps(_mm256_set1_epi32(-1)))
     }
+    #[inline]
+    #[target_feature(enable = "avx2")]
+    unsafe fn load_even_odd(p: *const f32) -> (Self, Self) {
+        let a = _mm256_loadu_ps(p);
+        let b = _mm256_loadu_ps(p.add(8));
+        // Within each 128-bit half: a0 a2 b0 b2 and a1 a3 b1 b3. Then put the halves in order.
+        let even = _mm256_shuffle_ps::<0b10_00_10_00>(a, b);
+        let odd = _mm256_shuffle_ps::<0b11_01_11_01>(a, b);
+        let even = _mm256_permute4x64_pd::<0b11_01_10_00>(_mm256_castps_pd(even));
+        let odd = _mm256_permute4x64_pd::<0b11_01_10_00>(_mm256_castps_pd(odd));
+        (Avx2(_mm256_castpd_ps(even)), Avx2(_mm256_castpd_ps(odd)))
+    }
 }
 
 /// Sixteen lanes, AVX-512.
@@ -328,6 +347,19 @@ unsafe impl Vf for Avx512 {
     #[target_feature(enable = "avx512f")]
     unsafe fn not(a: __mmask16) -> __mmask16 {
         !a
+    }
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    unsafe fn load_even_odd(p: *const f32) -> (Self, Self) {
+        let a = _mm512_loadu_ps(p);
+        let b = _mm512_loadu_ps(p.add(16));
+        // Indexes 0 to 15 pick from a and 16 to 31 from b.
+        let even = _mm512_setr_epi32(0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30);
+        let odd = _mm512_setr_epi32(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31);
+        (
+            Avx512(_mm512_permutex2var_ps(a, even, b)),
+            Avx512(_mm512_permutex2var_ps(a, odd, b)),
+        )
     }
 }
 
