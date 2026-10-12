@@ -93,6 +93,60 @@ tier = 3
 exercises = "VQ compressed 1536 x 1536"
 sha256 = "7de3c06d8d6c36547816dcd998e91c045fca443ce349eb6f5ee0e9d4216679a3"
 
+[[file]]
+path = "jpeg2000/p0_01a.ntf"
+tier = 1
+exercises = "NITF with JPEG 2000 compression: Tier 1's codec path"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3001a.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3301a.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3301c.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3301f.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3301h.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3303a.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3310a.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
+[[file]]
+path = "nitf2.1/v_3402a.ntf"
+tier = 1
+exercises = "NITF 2.1 test case; its contents are to be described once it is read"
+sha256 = ""
+
 # Wanted, but not in GDAL's download cache (404 on 12 October 2026). To be supplied by the author
 # or found elsewhere:
 #   nitf2.0/U_2001a.ntf: Lookup table with 128 entries
