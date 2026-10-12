@@ -5,14 +5,14 @@ Read this first in every session. It records the state of the work, how it is do
 ## The arrangement
 
 - **Claude writes BIL.** The specification's author leads, rules on every design decision, reviews each change, and supplies test data and other systems.
-- **The specification is the source of truth.** `docs/specification/specification.md`, version 64. A design change is made there first, by the author's ruling, and the version number goes up.
+- **The specification is the source of truth.** `docs/specification/specification.md`, version 65. A design change is made there first, by the author's ruling, and the version number goes up.
 - **Ask, don't assume, on design.** Where the specification leaves something open, propose and flag it. Do not decide it silently.
 
 ## Conventions
 
 - **Naming.** Types and enum values are UpperCamelCase. Every other name is snake_case, including names passed as text: `color.hsv.hue`, `level3`, `stored2`, `bilinear`, `rational_polynomial`. C uses the prefixes `bil_`, `Bil` and `BIL_`.
 - **American spelling** in identifiers, comments and documents.
-- **License.** LGPL 2.1 or later, with a static-linking exception (`LINKING-EXCEPTION.md`). The author closed the license review; none is planned. BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that. Everything in a shipped build must be compatible with LGPL 2.1 itself, so no package becomes LGPL 3 by accident; LGPL 3 code such as NITRO is allowed only in test-only code. `deny.toml` checks what ships, `deny-tests.toml` everything else. Apache-2.0 alone is allowed in what ships, by the author's ruling, accepting the risk that the Free Software Foundation holds it incompatible with LGPL 2.1.
+- **License.** LGPL 2.1 or later, with a static-linking exception (`LINKING-EXCEPTION.md`). The author closed the license review; none is planned. BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that. Everything in a shipped build must be compatible with LGPL 2.1 itself, so no package becomes LGPL 3 by accident; LGPL 3 code such as NITRO, SIX, libheif or hidefix is allowed only in test-only code or as an optional plugin packaged separately. `deny.toml` checks what ships, `deny-tests.toml` everything else. Apache-2.0 alone is allowed in what ships, by the author's ruling, accepting the risk that the Free Software Foundation holds it incompatible with LGPL 2.1.
 - **Uniform design.** One mechanism for each thing, with no special cases (specification section 1.6).
 - **Not in BIL.** Registration, orthorectification and analysis are layers above BIL.
 - **No reference to any earlier system by name.** The design is influenced by knowledge of previous requirements, and says no more than that.
@@ -29,11 +29,12 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## State
 
-- **Specification:** version 64. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
-- **Documents in step with version 64:** the specification and the pass 2 review (review version 5). BIL by Example (version 4) does not yet show the accuracy calls of section 13.9. The implementability assessment still lists U8 and U9 as blocking; both are now settled.
+- **Specification:** version 65. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
+- **Documents in step with version 65:** the specification, the pass 2 review (review version 5), BIL by Example (version 5) and the implementability assessment (version 3). The top-level README draws on the flyer and the specification.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
+- **Experiment 1b:** done (`RESULTS-1b.md`). The rolling buffer (`src/rolling.rs`, `read_levels_into` and `plan_outputs`, a ring of three rows a Level) gives the same bits as experiment 1 on every test and on every Window of 25 small Images, writes into the caller's Slice buffers, and is 3 to 4 times faster. `pixel.raw` takes 1.9 to 3.6 times a warm copy. `complex.polar` and `color.hsv` take 6 to 20 times a copy but 1.7 to 2.4 times their own arithmetic on the fastest instruction set; whether that meets the criterion awaits the author's ruling. Its check runs in CI. Working rows are still allocated per call.
 - **CI:** green on all four systems, and on the latest stable Rust.
-- **Open decisions in the specification:** 2 (section 16): drivers for the added sensor cases, and dictionary contents. Version 61 settled test data, registry names and Tier 1's libraries. Version 62 settled interpreter packaging (CPython from the machine, none shipped). Version 63 closed the license review, put CPython for Rust, C and C++ callers in a helper process whose round trip is benchmarked and watched, and added full geocoding accuracy (section 13.9: covariance by source and kind, carried through the chain, never dropped). Version 64 settled the mapped format (section 10.2).
+- **Open decisions in the specification:** 2 (section 16): drivers for the added sensor cases, and dictionary contents. Version 61 settled test data, registry names and Tier 1's libraries. Version 62 settled interpreter packaging (CPython from the machine, none shipped). Version 63 closed the license review, put CPython for Rust, C and C++ callers in a helper process whose round trip is benchmarked and watched, and added full geocoding accuracy (section 13.9: covariance by source and kind, carried through the chain, never dropped). Version 64 settled the mapped format (section 10.2). Version 65 applied the checking agent's findings: wording of the interpreter, a folder for attaching to a decoder, the decoder's lock file in containment, an accuracy column in section 3.3, `Contribution` records, and LGPL 3 libraries marked as test references or optional plugins.
 - **SIX is LGPL 3,** so under the shipped-build rule it is assessed when Tier 2 starts (section 10.6). Options raised with the author: an optional plugin, a named exception, or SICD and SIDD read without it.
 - **Tier 1 readers:** GeoTIFF through the Rust `tiff` crate with BIL's own GeoTIFF keys; NITF through a native Rust reader using field definitions. GDAL and NITRO (LGPL 3.0) are test references only.
 - **Packages:** `crates/bil` 0.0.1 holds the vector layer and kernels (experiment 1 now uses them from there); `crates/bil-sys` 0.0.1 holds the name; `python/` is `bil` 0.0.1 for PyPI. The author publishes with `.github/workflows/publish.yml`, which needs a `CARGO_REGISTRY_TOKEN` secret and PyPI trusted publishing for environment `pypi`.
@@ -49,7 +50,7 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## CI
 
-- `.github/workflows/ci.yml` runs format, lint (warnings are errors), build and experiment 1's `--check` on `ubuntu-latest`, `ubuntu-24.04-arm`, `windows-latest` and `macos-latest`. Further jobs check licenses and sources with cargo-deny (`deny.toml` for what ships, `deny-tests.toml` for everything), build the crates and the Python package, and fetch the test data.
+- `.github/workflows/ci.yml` runs format, lint (warnings are errors), build, and the `--check` of experiments 1 and 1b on `ubuntu-latest`, `ubuntu-24.04-arm`, `windows-latest` and `macos-latest`. Further jobs check licenses and sources with cargo-deny (`deny.toml` for what ships, `deny-tests.toml` for everything), build the crates and the Python package, and fetch the test data.
 - Every source file starts with an SPDX license line.
 - A separate job lints on the latest stable Rust and may fail without failing the build. It reports lints a newer compiler adds, so the pin can be raised deliberately.
 - Job logs need authentication this workspace does not have. Lint messages are raised as annotations, which can be read without it:
@@ -58,7 +59,11 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## Next step
 
-**Experiment 1b: the rolling buffer.** The same arithmetic as experiment 1, with rows streamed through every Level on a buffer of a few rows, and output written into the caller's buffers. It passes when the bitwise tests still pass unchanged and the whole pass is within a small factor of a copy into warm memory. Then add missing data and NaN skipping, with their own bitwise tests.
+**Missing data and NaN skipping** in the rolling buffer, with their own bitwise tests: a validity mask on the Fragment, NaN in the Slice or the caller's `missing_value`, and halving weights that skip missing values. Then vectorize the two scalar copies that remain (conversion from native samples, and the even and odd split), which are most of what Levels 1 to 4 add.
+
+## Checking
+
+Before pushing, run the `bil-checker` agent (`.claude/agents/bil-checker.md`) over everything written or changed: it checks style and agreement with the specification and these notes, and reports without editing. Fix what it finds, or tell the author why not.
 
 ## After that
 
