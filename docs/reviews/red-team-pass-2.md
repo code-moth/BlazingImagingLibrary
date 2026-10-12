@@ -13,7 +13,7 @@ Each finding gives the problem, a proposed resolution and the decision it needs.
 
 ### U1. Repeated names are numbered three different ways
 
-**Status:** Open · **Where:** sections 5 and 14.1
+**Status:** Resolved in version 57 · **Where:** sections 5 and 14.1
 
 **Problem.** Three rules number things that repeat, and no two agree.
 
@@ -29,9 +29,13 @@ A caller who learns one rule guesses wrong for the others. A Slice name also cha
 
 **Decision needed.** Whether the first instance of a repeated Slice name is numbered.
 
+**Ruling.** Accepted. Every instance of a repeated Slice name is numbered.
+
+**What changed in the specification.** Version 57. Section 5: repeated names become `red_1`, `red_2`, as field names already are in brackets. Positions are indexes and count from 0; repeat numbers count from 1.
+
 ### U2. One quantity has two names, and one name has several meanings
 
-**Status:** Open · **Where:** sections 9.3, 9.4 and 9.5
+**Status:** Resolved in version 57 · **Where:** sections 9.3, 9.4 and 9.5
 
 **Problem.**
 
@@ -47,9 +51,13 @@ A caller who learns one rule guesses wrong for the others. A Slice name also cha
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Sections 5, 9.3 and 9.4: `video.planes` yields `chroma_blue` and `chroma_red`; every `luminance` is linear luminance from the declared primaries; `temperature_k` becomes `temperature`, and units are stated in definitions, never in names.
+
 ### U3. Decibels are reached three ways
 
-**Status:** Open · **Where:** sections 7 and 9.2
+**Status:** Resolved in version 57 · **Where:** sections 7 and 9.2
 
 **Problem.** `complex.power` yields `db` as a Slice beside `power`. `sar.calibrated_db` is a separate function, and it has no `rcs` although `sar.calibrated` does. The `log10` normalization, with a `gain_offset` after it, makes decibels from anything. A caller cannot predict which form a quantity in decibels takes.
 
@@ -57,9 +65,13 @@ A caller who learns one rule guesses wrong for the others. A Slice name also cha
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Sections 5, 9 and 9.2: `complex.power` yields `power` and `power_db`; `sar.calibrated` yields each quantity and its `_db` form, including `rcs_db`; `sar.calibrated_db` is removed. `log10` stays for formats that store values on a log scale.
+
 ### U4. Color conversion has two routes, and one uses lookups
 
-**Status:** Open · **Where:** sections 7 and 9.3
+**Status:** Resolved in version 57 · **Where:** sections 7 and 9.3
 
 **Problem.** Section 9.3 now says color is computed by formula from the four H.273 properties, with no per-pixel lookup tables. Section 7 still lists the `matrix` normalization for "color space conversion, luminance", with "RGB to luminance" taking its matrix from "color space in metadata", and `lookup_table` for tone curves. That is a second route to the same result, with its own source of parameters, and one of them is a per-pixel lookup.
 
@@ -70,9 +82,13 @@ A caller who learns one rule guesses wrong for the others. A Slice name also cha
 
 **Decision needed.** Whether `lookup_table` stays for tone curves.
 
+**Ruling.** Accepted. `lookup_table` stays only for values the format stores through a table.
+
+**What changed in the specification.** Version 57. Sections 7 and 9.3: color is converted only by the color functions. `matrix` is for band synthesis, the RGB-to-luminance case is removed, and tone curves leave `lookup_table`.
+
 ### U5. "What a function needs" has two mechanisms
 
-**Status:** Open · **Where:** sections 7, 10 and 14.2
+**Status:** Resolved in version 57 · **Where:** sections 7, 10 and 14.2
 
 **Problem.** A function's inputs reach it two ways.
 
@@ -87,9 +103,13 @@ A SAR calibration polynomial missing from a file therefore cannot be supplied in
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Sections 7, 10 and 14.2: normalization parameters are fields, filled in the dictionary's order, so a companion file can supply them. `list_required_fields` lists every input.
+
 ### U6. Wavelength is held twice
 
-**Status:** Open · **Where:** sections 3.1, 9.1 and 14.2
+**Status:** Resolved in version 57 · **Where:** sections 3.1, 9.1 and 14.2
 
 **Problem.** A band's wavelength is a coordinate attached to the component index (section 3.1), which `pixel.nearest` and `pixel.integrate` read. It is also the dictionary item `common.band_center` (section 14.2). Nothing says they are the same, so a driver could fill one and not the other.
 
@@ -97,9 +117,13 @@ A SAR calibration polynomial missing from a file therefore cannot be supplied in
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Section 3.1: where a dictionary item describes the same thing as a coordinate, the coordinate's field is that item: `common.band_center` for wavelength, `common.collection_time` for frame time at frame 0.
+
 ### U7. "Borrowed" and "Streamed" each mean two things
 
-**Status:** Open · **Where:** sections 4, 5, 6 and 8.3
+**Status:** Resolved in version 57 · **Where:** sections 4, 5, 6 and 8.3
 
 **Problem.**
 
@@ -115,9 +139,13 @@ A SAR calibration polynomial missing from a file therefore cannot be supplied in
 
 **Decision needed.** The names of the access classes.
 
+**Ruling.** Accepted, with the access classes `Borrowed`, `Converted` and `Decoded`.
+
+**What changed in the specification.** Version 57. Sections 4, 6 and 8: `Borrowed` means stored bytes only, and video is shown as deferred; borrowed arrays are read-only under `Shared` mapping and writable under `Private`; access classes describe the data, and delivery is a separate choice.
+
 ### U8. Resolution is chosen three ways, and geocoding takes a fourth
 
-**Status:** Open · **Where:** sections 5 and 13.4
+**Status:** Resolved in version 57 · **Where:** sections 5 and 13.4
 
 **Problem.** A request chooses its resolution through `levels`, a list of whole numbers, through the `stored_level` option, and through `level_source`. The level names a Slice reports, such as `stored2.level1`, cannot be asked for by name. Geocoding then takes a Window and a Level number in `for_window(window, level)`, which cannot express a stored level or a `step`, although every Slice now carries the `origin` and `scale` that say exactly where it sits.
 
@@ -128,9 +156,13 @@ A SAR calibration polynomial missing from a file therefore cannot be supplied in
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Sections 5 and 13.4: a request's `levels` takes names such as `stored2.level1`, with a number as short form; the `stored_level` option is removed; `for_slice(slice)` builds the geocoding chain from the Slice, and `for_window` remains as a short form.
+
 ### U9. "No value" is said two ways
 
-**Status:** Open · **Where:** sections 3.3 and 14
+**Status:** Resolved in version 57 · **Where:** sections 3.3 and 14
 
 **Problem.** Section 3.3 says a call either delivers or returns an error. It also gives fields a `Missing` status, "the field has no value at that index", and a derived item with a missing input is `Missing`. Nothing says what `read_field` does with a name the file does not hold: an error, or a delivered value with status `Missing`.
 
@@ -138,9 +170,13 @@ A SAR calibration polynomial missing from a file therefore cannot be supplied in
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Sections 3.3 and 14.4: an unknown name is an error; a known field with no value is delivered as `Missing`.
+
 ### U10. Some definitions still describe an earlier design
 
-**Status:** Open · **Where:** sections 3, 5 and 7
+**Status:** Resolved in version 57 · **Where:** sections 3, 5 and 7
 
 **Problem.**
 
@@ -153,9 +189,13 @@ A SAR calibration polynomial missing from a file therefore cannot be supplied in
 
 **Decision needed.** Accept, including how a representation is declared.
 
+**Ruling.** Accepted, with the representation declared by the driver for each Image.
+
+**What changed in the specification.** Version 57. Sections 3, 5, 7 and 10: the definitions of Slice function, Level and normalization match the design, and Representation is defined and listed by `list_images`.
+
 ### U11. Plugins register in more than one way, under different rules
 
-**Status:** Open · **Where:** sections 9.6 and 10
+**Status:** Resolved in version 57 · **Where:** sections 9.6 and 10
 
 **Problem.**
 
@@ -171,9 +211,13 @@ A SAR calibration polynomial missing from a file therefore cannot be supplied in
 
 **Decision needed.** Whether `read_slice_direct` is kept.
 
+**Ruling.** Accepted. `read_slice_direct` is kept, only where it reproduces the core's result exactly.
+
+**What changed in the specification.** Version 57. Sections 9, 9.6 and 10: families belong to whoever defines them, with the core open to packages of the BIL project; one call, `register_plugin`, with the others as short forms; `read_slice_direct` checked by the Codec agreement test.
+
 ### U12. Memory is bounded by several unrelated limits
 
-**Status:** Open · **Where:** sections 4, 10.3, 12, 13.6 and 14.3
+**Status:** Resolved in version 57 · **Where:** sections 4, 10.3, 12, 13.6 and 14.3
 
 **Problem.** "Bounded memory" is a rule of section 12, but the limits that enforce it are counted in different units, and some are missing.
 
@@ -195,9 +239,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. New section 3.4 lists `OpenOptions`, `SliceOptions` and `WriteOptions` with every default, and gives each kind of held data a limit and a report through `describe_held`. Terrain tiles use the Fragment cache.
+
 ### U13. Where a field can attach is listed three ways
 
-**Status:** Open · **Where:** sections 3.1, 14.1 and 14.2
+**Status:** Resolved in version 57 · **Where:** sections 3.1, 14.1 and 14.2
 
 **Problem.** Section 14.1 says a field attaches to "a Source, an Image, or an index of an Image, such as frame". Section 14.2 adds "a component" for dictionary items. Section 3.1 attaches coordinates to row, column, component and frame. The three lists do not agree.
 
@@ -205,9 +253,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Section 14.1 holds the one list of attachments: a Source, an Image, or one index, whether row, column, component, frame or an additional index.
+
 ### U14. The catalog rule and the catalog disagree
 
-**Status:** Open · **Where:** sections 9 and 15
+**Status:** Resolved in version 57 · **Where:** sections 9 and 15
 
 **Problem.**
 
@@ -227,9 +279,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Whether a display stretch belongs in BIL.
 
+**Ruling.** Accepted, keeping the display stretch.
+
+**What changed in the specification.** Version 57. Sections 9, 9.1, 9.2, 9.5 and 15: caller-named parameters pass the first check; `pixel.pair` is a general tool; a fourth kind, Present, holds a display stretch, with `pixel.stretch(low, high)`; the interferogram allowance becomes a plain re-expression of a formed interferogram; `depth.points` uses the `camera` step.
+
 ### U15. The packaging rules contradict the FFmpeg decision
 
-**Status:** Open · **Where:** sections 10, 10.5 and 16
+**Status:** Resolved in version 57 · **Where:** sections 10, 10.5 and 16
 
 **Problem.**
 
@@ -241,9 +297,13 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Sections 10 and 16: the Packaging test asks for the source section 10.5 sets; existing bindings crates come before BIL's own; the FFmpeg reasoning is restated, since its wrappers no longer fail Packaging.
+
 ### U16. Some statements were left behind by later decisions
 
-**Status:** Open · **Where:** sections 1.6, 1.7 and 10.4
+**Status:** Resolved in version 57 · **Where:** sections 1.6, 1.7 and 10.4
 
 **Problem.**
 
@@ -254,6 +314,10 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 **Proposed resolution.** Update each statement. Section 1.6: "NaN in a Slice, or the caller's `missing_value`". Section 1.7: "Analysis sits above BIL". Section 10.4: the Missing data test holds under the default, and One grid requires the same size, origin and scale.
 
 **Decision needed.** Accept.
+
+**Ruling.** Accepted.
+
+**What changed in the specification.** Version 57. Sections 1.6, 1.7 and 10.4: missing pixels may take `missing_value`; analysis, not image processing, sits above BIL; the Missing data test holds under the defaults, and One grid checks origin and scale.
 
 ## Critical findings
 

@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 56: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 57: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 56. Where an example needs something the specification does not yet define, it says so in a **Gap** note. Section 18 collects the gaps.
+- **Only calls the specification defines.** Every call, option and name comes from version 57. Where an example needs something the specification does not yet define, it says so in a **Gap** note. Section 18 collects the gaps.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -56,6 +56,7 @@ for index in range(len(source.list_images())):
 ```python
 source = bil.open_source_with("gdal", "scene.tif")
 source.describe_decoding()   # driver and codec chosen, with their versions
+source.describe_held()       # every kind of held data, with counts and bytes
 ```
 
 ### 1.5 Open with options
@@ -171,7 +172,8 @@ thumb = image.read_slice("pixel.raw.intensity", whole_image, level=8, decimate_f
 ```python
 image.list_stored_levels()   # stored1 at 1/2, stored2 at 1/4 ...
 
-as_stored = image.read_slice("color.rgb.green", window, stored_level="stored2")
+as_stored = image.read_slice("color.rgb.green", window, level="stored2")
+refined   = image.read_slice("color.rgb.green", window, level="stored2.level1")
 from_file = image.read_slice("color.rgb.green", window, level=4, level_source="Stored")
 from_file.level_name          # e.g. "stored2.level2"
 ```
@@ -259,7 +261,7 @@ ndvi_like = image.read_slice(pair, window)
 ### 4.9 Thermal infrared
 
 ```python
-counts, temperature = image.read_slices("thermal.calibrated", ["counts", "temperature_k"], window)
+counts, temperature = image.read_slices("thermal.calibrated", ["counts", "temperature"], window)
 bt = image.read_slice("spectral.brightness_temperature.tirs1", window)
 ```
 
@@ -271,7 +273,7 @@ sicd = bil.open_source("collect.nitf").image(0)
 magnitude = sicd.read_slice("complex.polar.magnitude", window)
 phase     = sicd.read_slice("complex.polar.phase", window)
 power     = sicd.read_slice("complex.power.power", window)   # avoids the square root
-db        = sicd.read_slice("complex.power.db", window)
+db        = sicd.read_slice("complex.power.power_db", window)
 real_imag = sicd.read_slices("complex.cartesian", ["real", "imag"], window)
 ```
 
@@ -279,7 +281,7 @@ real_imag = sicd.read_slices("complex.cartesian", ["real", "imag"], window)
 
 ```python
 sigma0    = sicd.read_slice("sar.calibrated.sigma0", window)
-sigma0_db = sicd.read_slice("sar.calibrated_db.sigma0", window)
+sigma0_db = sicd.read_slice("sar.calibrated.sigma0_db", window)
 ```
 
 ### 4.12 Quad-pol SAR
@@ -391,7 +393,7 @@ suv = pet.read_slice("nuclear.uptake.suv", bil.Window(0, 0, 256, 256, frame=40))
 ```python
 slide = bil.open_source("biopsy.svs").image(0)
 slide.list_stored_levels()                     # the scanner's pyramid
-low   = slide.read_slice("color.rgb.red", slide_window, stored_level="stored3")
+low   = slide.read_slice("color.rgb.red", slide_window, level="stored3")
 field = slide.read_slices("color.rgb", ["red", "green", "blue"], bil.Window(81_920, 40_960, 2048, 2048))
 ```
 
@@ -521,10 +523,10 @@ fragment.status
 ### 7.5 A stored level as native pixels
 
 ```python
-native_overview = image.read_fragment(window, stored_level="stored2")
+native_overview = image.read_fragment(window, level="stored2")
 ```
 
-> **Gap.** The caller's form of `read_fragment` is used in section 10.2 but not defined. The driver's form takes a stored level number, while Slices name stored levels as `stored2`.
+> **Gap.** The caller's form of `read_fragment` is used in section 10.2 of the specification but not defined. This example names the stored level as a request does.
 
 ## 8. Frames, time and coordinates
 
@@ -544,7 +546,6 @@ luma.write_frame_index("flight.ts.idx")  # a later open that names it does not s
 video = bil.open_source("flight.ts", bil.OpenOptions(frame_index="flight.ts.idx"))
 ```
 
-> **Gap.** The `OpenOptions` field that names a saved frame index is not named. `frame_index` is a guess.
 
 ### 8.3 Nested collection cycles
 
@@ -710,7 +711,7 @@ if pixels[0].status == bil.Status.Complete:
 
 ```python
 overview = image.read_slice("pixel.raw.intensity", window, level=3)
-chain    = model.for_window(window, 3)        # the image_window step undoes the Level
+chain    = model.for_slice(overview)          # built from the Slice's origin and scale
 corner   = chain.image_to_world([(0.0, 0.0)], terrain)
 ```
 
@@ -842,7 +843,7 @@ ahead = luma.open_reader()   # a second Reader, holding its own place in the str
 
 ```python
 plan = image.plan_slice("pixel.raw.intensity", window)
-plan.access_class   # Borrowed, Streamed or SinglePass
+plan.access_class   # Borrowed, Converted or Decoded; delivery is reported separately
 ```
 
 ## 14. Safety and audit
@@ -857,7 +858,6 @@ source = bil.open_source("inbox/received.ntf", options)
 
 With `isolation` set to `Untrusted` in the installation's configuration, its C and C++ drivers run in a separate process.
 
-> **Gap.** The `OpenOptions` field that marks a Source untrusted is not named. `untrusted` is a guess.
 
 ### 14.2 Audit what is installed
 
@@ -944,11 +944,11 @@ except bil.Error as error:
 ### 16.2 Corrupt blocks as missing data
 
 ```python
-tile = image.read_slice("pixel.raw.intensity", window, corrupt_as_missing=True)
+source = bil.open_source("damaged.ntf", bil.OpenOptions(corrupt_as_missing=True))
+tile   = source.image(0).read_slice("pixel.raw.intensity", window)
 tile.status   # Partial
 ```
 
-> **Gap.** The option that delivers corrupt blocks as missing data is not named. `corrupt_as_missing` is a guess.
 
 ### 16.3 A step that cannot answer
 
@@ -1034,8 +1034,6 @@ Writing calls against the specification shows where it is not yet complete enoug
 | Caller's `read_fragment` | 7.5 | Its signature, and how it names a stored level |
 | Streamed and buffered requests | 5.2, 5.3 | How several Slices and Levels come back from one streamed request, and how buffers are passed |
 | Function parameters | 4.6, 4.7 | The parameter names of several slice functions, and how a selector with parameters is passed to `read_slices` |
-| `OpenOptions` | 1.5, 8.2, 14.1 | One full list of fields and defaults, including the saved frame index and the untrusted flag |
-| Corrupt data as missing | 16.2 | The option's name |
 | Geo model names | 11.1 | How models are named in `list_geo_models` |
 | Making steps | 11.6 | How a caller makes a step to concatenate |
 | Surfaces that are not needed | 11.10 | An `image_to_world` with no surface, for chains that end in a plane or a patient |

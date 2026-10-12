@@ -5,7 +5,7 @@ Read this first in every session. It records the state of the work, how it is do
 ## The arrangement
 
 - **Claude writes BIL.** The specification's author leads, rules on every design decision, reviews each change, and supplies test data and other systems.
-- **The specification is the source of truth.** `docs/specification/specification.md`, version 56. A design change is made there first, by the author's ruling, and the version number goes up.
+- **The specification is the source of truth.** `docs/specification/specification.md`, version 57. A design change is made there first, by the author's ruling, and the version number goes up.
 - **Ask, don't assume, on design.** Where the specification leaves something open, propose and flag it. Do not decide it silently.
 
 ## Conventions
@@ -29,7 +29,8 @@ These give bitwise-identical results across Windows and across instruction sets.
 
 ## State
 
-- **Specification:** version 56. Pass 2 red team review: 32 findings open (U1 to U16, R26 to R41), awaiting the author's rulings.
+- **Specification:** version 57. Pass 2 red team review: U1 to U16 resolved in version 57; R26 to R41 (16 findings) await the author's rulings.
+- **Documents in step with version 57:** the specification, the pass 2 review (review version 2) and BIL by Example (version 2). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
 - **CI:** green on all four systems, and on the latest stable Rust.
 - **Open decisions in the specification:** 9 (section 16).

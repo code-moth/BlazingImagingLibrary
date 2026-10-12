@@ -165,7 +165,7 @@ BIL is a unifying interface, so its design is symmetric: each thing is done one 
 | Pixels for algorithms | A Slice: 2D float32, on the grid its Level sets |
 | Reading | One request: any Slices, at any Levels, delivered any way |
 | Naming a Slice | Three parts: family, function and name |
-| Missing pixels | A validity mask on a Fragment, and NaN in a Slice |
+| Missing pixels | A validity mask on a Fragment, and NaN in a Slice, or the caller's `missing_value` |
 | How a request turned out | One status, carried by every result |
 | Values along an index | A field attached to that index, of which a coordinate is one view |
 | Essential metadata in every format | The dictionary: each item provided, derived or taken from a companion file |
@@ -216,7 +216,7 @@ Existing projects were surveyed on 12 October 2026, and Appendix A.15 lists them
 
 - **Format coverage.** GDAL leads, and BIL builds on it and on the other libraries of Appendix A rather than competing with them.
 - **Python tools for intelligence imagery.** GRDL and SarPy already exist. BIL can sit beneath them as a fast reader.
-- **Image processing.** It sits above BIL in every case, so it is no part of BIL's claim.
+- **Analysis.** It sits above BIL. BIL prepares data for analysis (section 9), and analysis is no part of BIL's claim.
 
 **Risks to the gap.** GRDL is closest in purpose and is growing quickly. GDAL could add more sensor models. BIL's case therefore rests on the combination above, not on any single feature.
 
@@ -287,8 +287,9 @@ A driver opens the file and produces Fragments. The core applies a slice functio
 | Coordinate | A physical value with a unit, attached to an index: time, range, wavelength or ground position. |
 | `Fragment` | The native pixels of a Window. Each pixel is a scalar or a vector. Zero-copy where the storage allows. |
 | `Slice` | One named 2D float32 array for a Window. A single Fragment can yield several. |
-| Level | A resolution level of a Slice. Level 0 is full size, and each further level halves the rows and columns using a named downsampling method, bilinear by default. |
-| Slice function | A pointwise or local mapping, defined for one sensor representation, from a Fragment to one or more named Slices. `color.hsv` yields `hue`, `saturation` and `value`. |
+| Level | A resolution level of a Slice. Level n holds the Image pixels whose row and column are multiples of 2ⁿ, made by a named downsampling method, `bilinear` by default. Level 0 is full size. |
+| Slice function | A pointwise or local mapping, defined for one or more representations, from the Fragments of one Image, or of several related Images, to one or more named Slices. `color.hsv` yields `hue`, `saturation` and `value`. |
+| Representation | What an Image's samples are, named with its parameters: for example intensity, color, a mosaic with its pattern, complex, spectral with its band coordinates, or a polarization camera with its angles. A driver declares it for each Image, and it decides which slice functions apply. |
 | Field | One named item of metadata with its value, decoded when first needed and then held. Essential items share one name across formats, through the metadata dictionary (section 14). |
 | `Driver` | A plugin that opens Sources of one format family and produces Fragments. |
 
@@ -313,6 +314,8 @@ BIL addresses data by index and describes it by coordinate.
 | Examples | Row, column, component, frame | Time, range, wavelength, ground position |
 
 Every coordinate attaches to one index. A coordinate is a metadata field attached to that index, seen along the whole of it (section 14).
+
+**One field, not two.** Where a dictionary item describes the same thing as a coordinate, the coordinate's field is that item. The wavelength coordinate of the component index is `common.band_center`, and the time coordinate of the frame index at frame 0 is `common.collection_time`. A driver fills one field, never two.
 
 | Index | Coordinates that can attach to it |
 | --- | --- |
@@ -377,9 +380,57 @@ Every call returns a result, and everything that is delivered carries a status. 
 | `Ambiguous` | More than one answer exists | Not used | As in the fold of a coordinate grid | Not used |
 
 - **Per element, where elements differ.** A set of positions carries a status for each position. For pixels, the per-pixel form of the status is the validity mask of a Fragment and NaN in a Slice.
+- **An unknown name is an error, and a known one with no value is `Missing`.** A field name that is not defined for this Source is an error. A defined field or a dictionary item that has no value here is delivered with status `Missing` and no value. The same holds along an index.
 - **Corrupt data is an error by default.** A caller may ask for a corrupt block to be delivered as missing data instead, and the result is then `Partial`.
 - **A failure never becomes a crash.** A failure inside BIL is caught at the interface and returned as an error.
 - **In C.** Every function returns a status code, and the value comes back through an argument.
+
+### 3.4 Options and held data
+
+Every option is listed here, with its default, and every kind of data BIL holds between calls has a stated limit and a report.
+
+**`OpenOptions`**, given to `open_source`
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `mapping` | `Shared` | `Shared`, `Private` or `Off` (section 4) |
+| `max_image_pixels` | None | Refuse an Image larger than this (section 10.3) |
+| `max_decoded_bytes` | None | Refuse a compressed block that decodes to more than this |
+| `max_field_group_bytes` | None | Refuse a metadata group larger than this |
+| `untrusted` | False | Open the Source as untrusted, for `isolation` (section 10.3) |
+| `companion` | The file's name with `.metadata` added | A companion file to read (section 14.2) |
+| `frame_index` | None | A saved frame index to use instead of scanning (section 3.2) |
+| `max_held_positions` | 1,000 | Index positions for which metadata is held (section 14.3) |
+| `max_held_group_bytes` | None | Bytes of extracted metadata groups held |
+| `corrupt_as_missing` | False | Deliver a corrupt block as missing data, with status `Partial` (section 3.3) |
+
+**`SliceOptions`**, given to any read
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `level_method` | `bilinear` | The downsampling method (section 5) |
+| `level_source` | `Computed` | `Stored` lets BIL start from a stored level it chooses |
+| `decimate_first` | 0 | Halvings taken by striding before the level method |
+| `missing_value` | None | A number to fill missing positions with, instead of NaN |
+
+**`WriteOptions`**, given to `create_source`
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `keep_markings` | True | Write markings (section 11) |
+| `keep_identity` | False | Write identity fields |
+
+**Held data**
+
+| What is held | Limit | Reported by |
+| --- | --- | --- |
+| Decoded Fragments | `set_cache_size`, 16 by default (section 4) | `describe_held` and `describe_cache` |
+| Metadata attached to an index | `max_held_positions` | `describe_held` |
+| Extracted metadata groups | `max_held_group_bytes` | `describe_held` |
+| Terrain tiles | None of their own: terrain is read through BIL's drivers, so its tiles sit in the Fragment cache of the terrain Sources | `describe_held` on those Sources |
+| The frame index | None: it holds one entry for each frame | `describe_held` |
+
+`describe_held()` reports, for a Source, every kind of held data with its count and bytes. `describe_cache()` is its short form for the Fragment cache.
 
 ## 4. Fragment
 
@@ -431,7 +482,7 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 
 **Borrowed data**
 
-- **Read-only.** Borrowed pixels cannot be changed. In Python they appear as a read-only NumPy array.
+- **Read-only under `Shared` mapping.** Borrowed pixels cannot be changed, and in Python they appear as a read-only NumPy array. Under `Private` mapping they can be changed, and the changes stay in the caller's memory.
 - **It keeps its Source open.** A borrowed Fragment, and in Python its array, holds a reference to its Source for as long as it lives.
 - **A choice of mapping.** `mapping` in `OpenOptions` is `Shared` by default. `Private` maps the file copy-on-write, so a caller can change the array without touching the file. `Off` reads into owned buffers, for network file systems where mapping is unreliable.
 - **Files that change are not supported.** Mapping a file while another process changes or shortens it is not supported, and on most systems it can end the reading process.
@@ -544,7 +595,7 @@ This rule has three consequences:
 2. **Normalize** them, if asked, using parameters from metadata or the caller (section 7).
 3. **Map** to one float32 value for each Slice requested.
 
-**Several Slices from one Fragment.** A slice function is defined for one sensor representation and yields an ordered set of one or more named Slices from a single Fragment. Each Slice is still a 2D float32 array.
+**Several Slices from one read.** A slice function declares the representations it accepts and yields an ordered set of one or more named Slices. It reads the Fragment of one Image, or the Fragments of several related Images. Each Slice is still a 2D float32 array.
 
 | Representation | Slice function | Slices it yields |
 | --- | --- | --- |
@@ -561,7 +612,7 @@ Which function to use depends on circumstance. The same color Fragment can be re
 **The Level sets the grid.** A Slice is the caller's chosen representation of a Fragment, and its Level is part of that choice. At a given Level, every Slice of an Image has the same size and maps a Slice position to an Image position in the same way, whichever slice function made it.
 
 - **Some data is stored unevenly.** Video chroma at half size, the color sites of a mosaic sensor, the angles of a polarization camera and the fields of interlaced video each cover the Image at less than its full resolution.
-- **The slice function evens it out.** It interpolates such data onto the grid of the Level asked for. At Level 0, `luma`, `chroma_u` and `chroma_v` therefore line up pixel for pixel, and so do the four color sites of a mosaic.
+- **The slice function evens it out.** It interpolates such data onto the grid of the Level asked for. At Level 0, `luma`, `chroma_blue` and `chroma_red` therefore line up pixel for pixel, and so do the four color sites of a mosaic.
 - **Levels then work as for any Slice.** Coarser Levels are made from those values by the level method.
 - **The stored samples stay available.** Interpolating never replaces the data. One color site, one polarizer angle or one field is read unaltered from the Fragment as a strided view with a `step` of 2, and stored chroma is read from its own Image.
 
@@ -573,11 +624,13 @@ Which function to use depends on circumstance. The same color Fragment can be re
 **Names taken from metadata.** A name found in a file is made into a Slice name by one rule.
 
 1. **Converted to snake\_case.** Letters become lower case, and every run of other characters becomes one underscore. "Near Infrared (B8)" becomes `near_infrared_b8`.
-2. **Made unique.** A name that repeats gains a number: `red`, then `red_2`.
+2. **Made unique.** Where a name repeats, every instance carries its number, counted from 1: `red_1`, `red_2`. A name that occurs once has no number. Field names follow the same rule, in brackets (section 14.1).
 3. **The original is kept.** Every Slice carries the name as the file wrote it, as its `label`.
 4. **Wavelengths carry enough digits.** Bands named by wavelength take as many decimal places as are needed to tell them apart: `nm550`, or `nm549_6` and `nm550_4` where two bands would otherwise share a name.
 
-Names are snake\_case, unique within their function and held in a stable order. A Slice can also be selected by its position in that order, counting from 0, but the name is the primary key.
+**Units are stated, not named.** A Slice's unit is part of its definition and is never part of its name: `temperature`, not `temperature_k`.
+
+Names are snake\_case, unique within their function and held in a stable order. A Slice can also be selected by its position in that order. A position is an index, so it counts from 0, as every index in BIL does. A repeat number is not an index, and counts from 1. The name is the primary key.
 
 **Selecting a Slice.** A name has one form, and there are no short forms.
 
@@ -621,8 +674,8 @@ hv    = bil.SliceSelector("complex.polar.magnitude", component="hv")
 | --- | --- |
 | `slices` | One or more Slices, from one slice function or from several |
 | `window` | The Window |
-| `levels` | One or more Levels |
-| `options` | The level method, level source, stored level and `decimate_first` |
+| `levels` | One or more Levels, by name: `level3`, `stored2`, `stored2.level1`. A whole number n is a short form of `leveln`. |
+| `options` | The level method, level source, `decimate_first` and `missing_value` (section 3.4) |
 | `delivery` | Returned as arrays, written into buffers the caller owns, or streamed as row blocks |
 
 - **Any combination.** Several Slices, at several Levels, streamed, is one request like any other.
@@ -634,7 +687,7 @@ hv    = bil.SliceSelector("complex.polar.magnitude", component="hv")
 pub struct SliceRequest {
     pub slices: Vec<SliceSelector>,
     pub window: Window,
-    pub levels: Vec<u32>,        // [0] asks for full resolution only
+    pub levels: Vec<LevelName>,  // ["level0"] asks for full resolution only; a number n stands for "leveln"
     pub options: SliceOptions,
     pub delivery: Delivery,
 }
@@ -702,7 +755,7 @@ Averaging suits most Slices but not all, so each Slice name declares its kind wh
 
 For range, the block at each halving is centered on the reduced value's own pixel, so a range Slice sits on the same grid as every other Slice at that Level. Missing values are left out, and the result is NaN only when all nine are missing. The `x`, `y` and `z` Slices of `depth.points` are taken together from whichever pixel in the block has the minimum range, so a reduced point is always a real point.
 
-Because levels are made after the slice function, reduced `power` and reduced `db` differ. `power` is the physically meaningful one to reduce.
+Because levels are made after the slice function, reduced `power` and reduced `power_db` differ. `power` is the physically meaningful one to reduce.
 
 **What a reduced read costs.** A value that summarizes an area can only be made by reading that area. A computed Level therefore reads all the full-resolution data under its Window, and an averaged view of a whole Image means processing the whole Image. Two other routes cost less, and each gives something up.
 
@@ -734,9 +787,9 @@ Because levels are made after the slice function, reduced `power` and reduced `d
 
 - **Listed.** `list_stored_levels` reports each stored level with its name, its size, its scale and position relative to full resolution, and its method where the file states one.
 - **Named.** Stored levels are named `stored1`, `stored2` and so on, from the finest to the coarsest. The scale is reported and is not part of the name, because stored levels do not always halve.
-- **Read directly.** The `stored_level` option reads a Slice or a Fragment from one stored level as it stands. The Window is still given in full-resolution rows and columns, and covers the stored pixels whose centers fall inside it.
+- **Read directly.** Naming a stored level, such as `stored2`, in a request's `levels` reads a Slice or a Fragment from it as it stands. The Window is still given in full-resolution rows and columns, and covers the stored pixels whose centers fall inside it.
 - **Used to make a Level.** With `level_source` set to `Stored`, BIL starts from the coarsest stored level that is no coarser than the Level asked for, and makes the remaining halvings with the level method. A stored level qualifies only when what remains is a whole number of halvings. If none qualifies, the Level is computed from full resolution.
-- **Only when asked.** The default `level_source` is `Computed`. BIL never substitutes stored data for computed data unasked.
+- **Only when asked.** The default `level_source` is `Computed`. BIL never substitutes stored data for computed data unasked. `level_source` exists only to let BIL choose a stored level itself; a caller who wants a particular one names it.
 - **Reported.** `plan_slice` says which stored level a read will use, if any.
 
 **Level names.** Every Slice reports how its resolution was made, so a stored value is never mistaken for a computed one.
@@ -750,14 +803,15 @@ Because levels are made after the slice function, reduced `power` and reduced `d
 
 `read_slice_levels` returns its Slices under the same names.
 
-**Read options.** Options travel with any read as `SliceOptions`. The short forms also take `level` directly.
+**Read options.** Options travel with any read as `SliceOptions`. The short forms also take `level` directly, by name or number.
 
 ```python
 half   = image.read_slice("cfa.demosaic.green", window, level=1)
 levels = image.read_slice_levels("pixel.raw.intensity", window, 4)   # level0 to level4
 
 image.list_stored_levels()                         # stored1 at 1/4, stored2 at 1/16, ...
-view   = image.read_slice("color.rgb.green", window, stored_level="stored2")
+view   = image.read_slice("color.rgb.green", window, level="stored2")
+finer  = image.read_slice("color.rgb.green", window, level="stored2.level1")
 quick  = image.read_slice("pixel.raw.intensity", window, level=8, level_method="decimate")
 ```
 
@@ -765,7 +819,6 @@ quick  = image.read_slice("pixel.raw.intensity", window, level=8, level_method="
 pub struct SliceOptions {
     pub level_method: &'static str,  // "bilinear" unless another is chosen
     pub level_source: LevelSource,   // Computed unless Stored is chosen
-    pub stored_level: Option<&'static str>,  // "stored2": read that stored level as it stands
     pub decimate_first: u32,         // halvings taken by striding before level_method; 0 by default
     pub missing_value: Option<f32>,  // None: missing positions are NaN; Some(v): filled with v
 }
@@ -832,22 +885,22 @@ pub struct SliceFunction {
 
 For intensity imagery, the `pixel.raw` slice is either the stored bytes themselves or one direct conversion from them, with no intermediate copy.
 
-Intensity imagery is the simplest case: one component per pixel and no normalization. BIL treats it as a first-class path with three access classes.
+Intensity imagery is the simplest case: one component per pixel and no normalization. BIL treats it as a first-class path with three access classes. An access class describes the data and nothing else. How the result is delivered, returned, written into the caller's buffers or streamed, is a separate choice, and `plan_slice` reports both.
 
 | Stored intensity data | Access class | Full-size copies made by BIL | How |
 | --- | --- | --- | --- |
 | Float32, native byte order, uncompressed | `Borrowed` | 0 | The Slice points at the stored bytes |
 | Float32, one band of an interleaved cube | `Borrowed` | 0 | The Slice is a strided view of that band |
-| 8 or 16-bit integer, caller streams | `Streamed` | 0 | Converted a row block at a time into a cache-sized buffer |
-| 8 or 16-bit integer, caller needs the whole array | `SinglePass` | 1 (the output) | Converted straight from the mapped file into the output |
-| Opposite byte order, or bit-packed | `SinglePass` | 1 (the output) | Swap or unpack in the same loop as the conversion |
-| Compressed (JPEG 2000, JPEG, video) | `SinglePass` | 1 (the output), beyond the decoder's own buffer | Converted as rows leave the decoder |
+| 8 or 16-bit integer, streamed | `Converted` | 0 | Converted a row block at a time into a cache-sized buffer |
+| 8 or 16-bit integer, returned whole | `Converted` | 1 (the output) | Converted straight from the mapped file into the output |
+| Opposite byte order, or bit-packed | `Converted` | 1 (the output) | Swap or unpack in the same loop as the conversion |
+| Compressed (JPEG 2000, JPEG, video) | `Decoded` | 1 (the output), beyond the decoder's own buffer | Converted as rows leave the decoder |
 
 **The decoder's buffer.** A decoder always writes its output into a buffer of its own, and BIL cannot avoid that copy. The counts above are the copies BIL makes beyond it. Where a decoded block is kept in the Fragment cache, that buffer is the cached Fragment, not a further copy.
 
 **Why integer data is never literally zero-copy.** Stored 8 and 16-bit bytes are not float32 values, so one conversion must run. BIL's commitment is that this conversion is the only work done.
 
-**What rules out borrowing.** A local slice function or a filtered Level always computes new values, so it is `Streamed` or `SinglePass`, never `Borrowed`. A `decimate` Level of borrowable data computes nothing, so it stays `Borrowed`.
+**What rules out borrowing.** A local slice function or a filtered Level always computes new values, so it is `Converted` or `Decoded`, never `Borrowed`. A `decimate` Level of borrowable data computes nothing, so it stays `Borrowed`.
 
 **Requirements**
 
@@ -867,7 +920,7 @@ Intensity imagery is the simplest case: one component per pixel and no normaliza
 
 Normalization is a known function whose parameters come from the image's metadata or from the caller.
 
-- **It is pointwise.** It uses only the pixel's values and its absolute row and column.
+- **It is pointwise.** It uses only the pixel's values, its absolute row and column, the coordinates of its frame, and the values at the same position in a calibration Image.
 - **It lives inside slice functions.** A Fragment is never normalized.
 - **The core owns the functions; drivers supply the parameters.** A driver's job is to map its format's metadata onto the functions below.
 - **Parameters can vary by frame.** A value such as the gate range of a LIDAR frame is a coordinate of the frame, and a normalization may use it.
@@ -881,8 +934,8 @@ Normalization is a known function whose parameters come from the image's metadat
 | `gain_offset` | a × value + b, per component | Radiance calibration, scale and offset, black level |
 | `polynomial2d` | Polynomial in row and column | SAR radiometric scale factors that vary with range |
 | `interpolated_grid` | Coarse grid of factors, interpolated by position | Calibration vectors, flat-field and vignetting correction |
-| `lookup_table` | Value to value | Palettes, amplitude tables, tone curves |
-| `matrix` | Linear combination across components | Color space conversion, luminance, band synthesis |
+| `lookup_table` | Value to value | Values the format stores through a table: palettes and amplitude tables |
+| `matrix` | Linear combination across components | Band synthesis. Color conversion is done by the color functions of section 9.3 only. |
 | `planck` | Inverse Planck law with sensor constants | Brightness temperature |
 | `pixel_gain_offset` | A gain and offset for every pixel, read from a calibration Image | Infrared non-uniformity correction, flat fields, dark frames |
 | `log10` | The base-10 logarithm of the value. Values of zero or less become missing data. | Data to be viewed on a logarithmic scale; decibels, with a `gain_offset` after it |
@@ -893,11 +946,10 @@ Normalization is a known function whose parameters come from the image's metadat
 | Need | Function | Parameters from |
 | --- | --- | --- |
 | Radiometric correction of SAR across range | `polynomial2d` or `interpolated_grid` | Metadata |
-| RGB to luminance | `matrix` | Color space in metadata |
 | Atmospheric correction of multispectral bands | `gain_offset` per band | Supplied by the caller |
 | Range correction of LIDAR intensity | Intensity multiplied by the square of range | The pixel's own range component, or the gate range of its frame |
 
-**Parameter precedence.** Values supplied by the caller override values from metadata. If a slice function's parameters are available from neither, `list_slice_functions` does not offer it for that Image.
+**Parameters are fields.** A normalization's parameters are fields, as every other input of a function is. A driver maps them from native fields, and they are filled in the same order as dictionary items: the caller first, then the format, then a derivation, then a companion file (section 14.2). A missing calibration can therefore be supplied in a companion file. If a function's inputs are available from none of these, `list_slice_functions` does not offer it for that Image, and `list_required_fields` says which are missing.
 
 ## 8. Fragment case catalog
 
@@ -946,17 +998,17 @@ Extraction is deferred: the frame is part of the Window. Reading a Fragment only
 
 | Case | Native pixel | Zero-copy | Slice families |
 | --- | --- | --- | --- |
-| YUV 4:2:0 or 4:2:2 | Two related Images: luma at full size, 1 × U8 or U16, and chroma at reduced size, 2 × U8 or U16 | Borrowed from the decoder | `video` |
-| RGB or 4:4:4 video | 3 × U8 or U16 | Borrowed from the decoder | `color` |
-| Monochrome or infrared video | 1 × U8 or U16 | Borrowed from the decoder | `pixel`, `thermal` |
+| YUV 4:2:0 or 4:2:2 | Two related Images: luma at full size, 1 × U8 or U16, and chroma at reduced size, 2 × U8 or U16 | Deferred; the decoder's buffer is used without a copy | `video` |
+| RGB or 4:4:4 video | 3 × U8 or U16 | Deferred; the decoder's buffer is used without a copy | `color` |
+| Monochrome or infrared video | 1 × U8 or U16 | Deferred; the decoder's buffer is used without a copy | `pixel`, `thermal` |
 | Raw cine | Bayer per frame | No | `cfa` |
-| Full-motion video with KLV | As video, plus per-frame metadata | Borrowed from the decoder | `video` |
+| Full-motion video with KLV | As video, plus per-frame metadata | Deferred; the decoder's buffer is used without a copy | `video` |
 | Sequences, bursts, multi-page TIFF | Any still case × frames | As the still | As the still |
 | Wide-area motion imagery | Very large monochrome or RGB frames, from tens of megapixels to over a gigapixel, at 1 to 12 frames a second | No; JPEG or JPEG 2000 blocks | `pixel`, `color` |
-| Live streams | Any video case, forward-only | Borrowed from the decoder | `video` |
-| Interlaced video | Two fields per frame, captured at different times | Borrowed from the decoder | `video` |
-| Fisheye and 360° cameras | As video, with a fisheye or equirectangular projection | Borrowed from the decoder | `video`, `color` |
-| Endoscopy and surgical video | As video; sometimes stereo, or with a fluorescence channel | Borrowed from the decoder | `video`, `color` |
+| Live streams | Any video case, forward-only | Deferred; the decoder's buffer is used without a copy | `video` |
+| Interlaced video | Two fields per frame, captured at different times | Deferred; the decoder's buffer is used without a copy | `video` |
+| Fisheye and 360° cameras | As video, with a fisheye or equirectangular projection | Deferred; the decoder's buffer is used without a copy | `video`, `color` |
+| Endoscopy and surgical video | As video; sometimes stereo, or with a fluorescence channel | Deferred; the decoder's buffer is used without a copy | `video`, `color` |
 
 ### 8.4 Derived and non-camera rasters
 
@@ -1006,9 +1058,10 @@ Each slice function is defined for one sensor representation and declares the na
 - **Specified names** are listed in full below.
 - **Enumerated names** are described by their rule and marked *enumerated*.
 - **Local functions** are marked *local*. All others are pointwise.
+- **Decibels.** A Slice in decibels sits beside its linear Slice in the same function, named with `_db`, as `power_db` sits beside `power`. The `log10` normalization of section 7 remains for formats that store values on a log scale.
 - **Choosing a component.** On an Image with several components, a function defined for one component takes that component's name as a parameter, shown here as `complex.polar(hv)`.
 - **Parameters.** Brackets in the tables below show a function's parameters. They are passed as named values in a `SliceSelector` (section 5), never as part of the name.
-- **Driver functions.** Drivers may register further functions under their own family.
+- **Families belong to whoever defines them.** The core families are open to packages of the BIL project, such as `bil-extras`. Any other plugin registers its functions under a family of its own.
 
 **What belongs in the catalog.** Sensors store data in the form that suits the sensor. BIL delivers it in the form that analysis starts from. A slice function belongs in BIL when it does one of three things.
 
@@ -1017,16 +1070,18 @@ Each slice function is defined for one sensor representation and declares the na
 | Undo the storage | Brings the data onto a regular grid with every component present | Demosaicing, chroma upsampling, fields, unpacking, palettes, class labels and members |
 | Calibrate | Turns sensor values into a physical quantity of the scene | Radiance, reflectance, backscatter, temperature, height, range, activity |
 | Re-express | Decomposes the measurement into the standard form that analysis of that kind of data begins with | Color spaces, complex parts, Stokes terms with degree and angle of polarization, Pauli components, the peak along an axis |
+| Present | Maps values for display, with the statistics it needs passed in by the caller | A display stretch |
 
-A function that re-expresses must pass four checks:
+A function that presents must be pointwise and take every statistic it uses from the caller, so it stays independent of the Window. A function that re-expresses must pass four checks:
 
-1. **The data's own values only.** It brings in nothing from outside the collection: no reference spectrum, scene model or analyst's threshold.
+1. **The data's own values only.** It brings in nothing from outside the collection: no reference spectrum, scene model or analyst's threshold. Parameters the caller names explicitly, such as weights or response curves, are allowed: they are part of the request, not information BIL brings in.
 2. **A standard definition.** It has one accepted formula, with named parameters at most.
 3. **General to the data type.** It is a first step for almost any analysis of that kind of data, not for one application.
 4. **Local.** It is pointwise or uses a small fixed neighborhood, so it stays independent of the Window (section 5).
 
 - **Preparation is still local.** Work that needs the whole scene, such as speckle filtering, atmospheric correction or orthorectification, is outside BIL even where it prepares data (section 15).
-- **One allowance.** `insar.interferogram` combines two collections, against the first check. It is kept because it is the first step of all interferometric work, and only where the two Images are declared related in one Source.
+- **The interferogram.** `insar.interferogram` re-expresses an interferogram already formed: one complex Image with its coherence beside it (section 8.2). Forming an interferogram from two collections is image formation, outside BIL (section 15).
+- **General tools.** `pixel.pair` and the other functions of the `pixel` family are general tools that take the components the caller names. The named indices, such as NDVI, stay in the extras package.
 - **Analysis goes to the extras package.** A function that derives new information about the scene, such as an index, a comparison with a reference or a clinical measure, is analysis. Those that are widely useful are provided by the extras package (section 9.6).
 
 ### 9.1 Any representation: the pixel family
@@ -1042,6 +1097,7 @@ A function that re-expresses must pass four checks:
 | `pixel.nearest(coordinate_name, value)` | `value` | The component whose coordinate is nearest the value |
 | `pixel.integrate(coordinate_name, from, to)` | `value` | The average of the components whose coordinates lie between two values |
 | `pixel.peak(coordinate_name)` | `value`, `coordinate` | The largest component, and the coordinate at which it occurs |
+| `pixel.stretch(low, high)` | `value` | (value − low) / (high − low), limited to 0 to 1, with the limits passed in by the caller: a display stretch |
 
 
 ### 9.2 Complex, SAR and polarimetry
@@ -1050,14 +1106,13 @@ A function that re-expresses must pass four checks:
 | --- | --- | --- |
 | `complex.cartesian` | `real`, `imag` | The two parts of the sample |
 | `complex.polar` | `magnitude`, `phase` | Square root of power; angle in radians |
-| `complex.power` | `power`, `db` | Real squared plus imaginary squared; 10 × log10 of that |
-| `sar.calibrated` | `sigma0`, `beta0`, `gamma0`, `rcs` | Calibrated backscatter, from metadata polynomials or tables |
-| `sar.calibrated_db` | `sigma0`, `beta0`, `gamma0` | The same in decibels |
+| `complex.power` | `power`, `power_db` | Real squared plus imaginary squared; 10 × log10 of that |
+| `sar.calibrated` | `sigma0`, `beta0`, `gamma0`, `rcs`, and `sigma0_db`, `beta0_db`, `gamma0_db`, `rcs_db` | Calibrated backscatter, from metadata polynomials or tables, and the same in decibels |
 | `pol.channels` | One per channel, named from the Image: `hh`, `hv`, `vh`, `vv` (*enumerated*) | Magnitude of each channel |
 | `pol.pauli` | `single_bounce`, `double_bounce`, `volume` | Pauli decomposition magnitudes |
 | `pol.span` | `span` | Total power across channels |
 | `pol.pair(a, b)` | `ratio`, `phase_difference` | Power ratio and phase difference between two channels |
-| `insar.interferogram` | `phase`, `magnitude`, `coherence` | Wrapped phase and magnitude. Coherence comes from a second Image on the same grid. Offered only where the two Images are declared related in one Source (section 9). |
+| `insar.interferogram` | `phase`, `magnitude`, `coherence` | Wrapped phase and magnitude of a formed interferogram. Coherence comes from a second Image on the same grid, declared related in the same Source. |
 
 ### 9.3 Color, video and mosaic sensors
 
@@ -1069,7 +1124,7 @@ A function that re-expresses must pass four checks:
 | `color.lab` | `lightness`, `green_red`, `blue_yellow` | Perceptual lightness and opponent colors, from linear values, relative to the white point of the declared primaries |
 | `color.luminance` | `luminance` | Linear luminance, with weights from the declared primaries |
 | `palette.lookup` | `index`, `red`, `green`, `blue`, `luminance` | The index, and the looked-up color |
-| `video.planes` | `luma`, `chroma_u`, `chroma_v` | Luma, with chroma from its own Image upsampled to the luma grid (*local*) |
+| `video.planes` | `luma`, `chroma_blue`, `chroma_red` | Luma, with chroma from its own Image upsampled to the luma grid (*local*) |
 | `video.rgb` | `red`, `green`, `blue` | Color from luma and upsampled chroma, using the matrix and range the stream declares (*local*) |
 | `video.fields` | `top`, `bottom` | The two fields of an interlaced frame, each interpolated to the full height (*local*) |
 | `cfa.mosaic` | `stored`, `linear` | The mosaic as stored; with black and white levels applied |
@@ -1079,6 +1134,10 @@ A function that re-expresses must pass four checks:
 | `polcam.angles` | `angle0`, `angle45`, `angle90`, `angle135` | Each polarizer angle alone, interpolated to the full grid (*local*) |
 | `polcam.stokes` | `s0`, `s1`, `s2` | Stokes terms, from the four angles interpolated to the full grid (*local*) |
 | `polcam.linear` | `degree`, `angle` | Degree and angle of linear polarization, from the same interpolated angles (*local*) |
+
+**One meaning of `luminance`.** Every Slice named `luminance` is linear luminance from the declared primaries, or from the defaults below where none is declared. That includes those of `cfa.demosaic`, `cfa.binned` and `palette.lookup`.
+
+**Color conversion is done here only.** The color functions of this section are the one route from one color representation to another. The normalization functions of section 7 do not convert color.
 
 **How color is described.** BIL describes color with the four properties of ITU-T H.273, the coding-independent code points that video, AVIF and HEIF already use. It adopts the vocabulary, not a library.
 
@@ -1118,7 +1177,7 @@ A function that re-expresses must pass four checks:
 | `spectral.brightness_temperature` | One per thermal band, by band name (*enumerated*) | Temperature in kelvin |
 | `spectral.integrate(from_nm, to_nm)` | `value` | Average over a wavelength range. This is the generic `pixel.integrate` of 9.1 applied to wavelength. |
 | `spectral.response(curves)` | One per supplied curve, named by the caller (*enumerated*) | Bands weighted by each response curve |
-| `thermal.calibrated` | `counts`, `radiance`, `temperature_k` | Sensor counts; radiance; temperature in kelvin |
+| `thermal.calibrated` | `counts`, `radiance`, `temperature` | Sensor counts; radiance; temperature in kelvin |
 
 ### 9.5 Other rasters
 
@@ -1129,7 +1188,7 @@ A function that re-expresses must pass four checks:
 | `class.members` | One per class, named from the class table, such as `water`, `forest`, `urban` (*enumerated*) | 1.0 where the pixel is in that class, else 0.0 |
 | `depth.sensor` | `range`, `intensity` | Range in meters; return intensity |
 | `depth.corrected` | `intensity` | Intensity corrected for the square of range |
-| `depth.points` | `x`, `y`, `z` | The position of each pixel, from its range and the camera geometry. Together the three Slices are an organized point cloud. |
+| `depth.points` | `x`, `y`, `z` | The position of each pixel, from its range and the Image's own `camera` step (section 13). Together the three Slices are an organized point cloud. |
 | `depth.waveform` | One per range bin, named by its range (*enumerated*) | The return at each range |
 | `nuclear.activity` | `activity` | Activity concentration in becquerels per milliliter, from counts with the calibration factor and decay correction the metadata states |
 
@@ -1138,7 +1197,7 @@ A function that re-expresses must pass four checks:
 Functions that analyze, rather than prepare, are not part of `bil`. The widely useful ones are provided by `bil-extras`, a separate package from the BIL project under the same license.
 
 - **Same names.** Each keeps its place in its family, so `spectral.indices.ndvi` is named the same whether or not it is in the core.
-- **Same mechanism.** The package registers its functions with `register_slice_function`, as a driver does, and they run in the same single pass as core functions.
+- **Same mechanism.** The package registers its functions through the one registration call of section 10, as any plugin does, and they run in the same single pass as core functions. As a package of the BIL project, it may add to the core families.
 - **Same tests.** Window independence and the other conformance tests apply unchanged (section 10.4).
 - **Offered when installed.** Without the package, `list_slice_functions` does not offer them.
 
@@ -1161,15 +1220,15 @@ A driver teaches BIL one format family by describing the Images in a Source, pro
 | --- | --- | --- |
 | Recognize a format | `probe` | Returns a confidence, first for the container and then for its content |
 | Open | `open_source` | One file, a set of files or a stream |
-| Describe | `list_images` | Size, pixel type, component names, frame count, coordinates, layout and stored levels of each Image, and how the Images are related |
+| Describe | `list_images` | Size, pixel type, representation, component names, frame count, coordinates, layout and stored levels of each Image, and how the Images are related |
 | Read pixels | `read_fragment` | From the full-resolution Image or one of its stored levels. Borrowed or owned, following the zero-copy rule. Marks any pixels that were never recorded. |
 | Hold decoder state | `open_reader` | One Reader for each thread that reads. The Image itself holds nothing that changes (section 4). |
 | Declare concurrency | `concurrency` | `Parallel`, `OneHandlePerThread` or `Serial`, as below |
 | Expose metadata | `list_field_groups`, `read_field_group` | Named fields, one group at a time and only when asked (section 14) |
-| Supply normalization parameters | `read_normalization` | The format's parameters, mapped to the functions of section 7 |
+| Supply normalization parameters | `read_normalization` | The format's parameters, mapped to the functions of section 7. They become fields, filled in the order of section 14.2. |
 | Expose geocoding | `list_geo_models` | The format's geo models, as chains of the steps in section 13 |
-| Optional: direct float output | `read_slice_direct` | For decoders that can emit float32 rows themselves |
-| Optional: extra slice functions | `register_slice_function` | Under the driver's own family, with its Slice names specified or enumerated |
+| Optional: direct float output | `read_slice_direct` | For decoders that can emit float32 rows themselves. Allowed only for a slice function whose result it reproduces exactly; the Codec agreement test checks it against the core's own path. |
+| Optional: extra slice functions | `register_slice_function` | Under the driver's own family, with its Slice names specified or enumerated. A short form of `register_plugin`. |
 | Optional: pixel layout | `describe_pixels` | Describes where the pixels are so the compiled core reads them itself; the route scripted drivers take |
 | Optional: additional data | `read_auxiliary` | Named extra records, such as tables and arrays, that are not pixels or fields |
 
@@ -1225,7 +1284,7 @@ A caller can also name the driver explicitly with `open_source_with`.
 - **Reported.** `describe_decoding()` on a Source gives the driver and codec chosen, with their versions.
 - **Recorded.** Everything BIL writes records the driver and codec, with their versions, that read its input (section 11).
 
-**Plugin kinds.** Bringing every candidate library into the design needs more than one kind of plugin. All kinds register through the same mechanism and are chosen by the same order of preference.
+**Plugin kinds.** Bringing every candidate library into the design needs more than one kind of plugin. All kinds register through one call, `register_plugin`, which takes a description of the plugin and its kind, and all are chosen by the same order of preference. `bil_register_driver`, `register_slice_function`, `register_level_method` and the scripted `register_driver` are short forms of it.
 
 | Plugin kind | What it does | Planned plugins |
 | --- | --- | --- |
@@ -1257,16 +1316,16 @@ A caller can also name the driver explicitly with `open_source_with`.
 
 Every library in Appendix A is also part of the plugin design for now. Each will be assessed case by case before it is built.
 
-**Existing wrappers first.** For each C or C++ library, BIL first considers an existing Rust wrapper crate, so that it is not responsible for building the library or tracking its interface. A wrapper is used when it passes all four tests below. Where none does, BIL writes its own bindings in `bil-sys`.
+**Existing wrappers first.** For each C or C++ library, BIL first considers an existing Rust wrapper crate, so that it is not responsible for building the library or tracking its interface. A wrapper is used when it passes all four tests below. Where none does, BIL depends on an existing bindings crate where one passes, and writes its own bindings in `bil-sys` only where none does.
 
 | Test | A wrapper fails it when |
 | --- | --- |
 | Maintenance | It lags the library's releases, has no active maintainer, or is hard to build on a supported platform |
 | Performance | It adds copies, locks or conversions on the pixel path beyond what the library itself requires. hdf5-metno's lock around every read is not counted, because the HDF5 library allows one call at a time anyway |
 | Capability | It hides calls BIL needs, such as region decoding, access to raw decoded buffers or reading from memory |
-| Packaging | It cannot build the library into BIL as a private copy (section 10.5) |
+| Packaging | It cannot supply the library from the source that section 10.5 sets for it |
 
-**FFmpeg: bindings and a thin layer of BIL's own.** FFmpeg is the first case decided by these tests, and neither full wrapper passes them. rsmpeg and ffmpeg-next both link an FFmpeg already installed rather than supplying one, so they fail Packaging. ffmpeg-next is in maintenance mode, so it is weak on Maintenance. BIL therefore depends on rusty\_ffmpeg, the bindings crate under rsmpeg, and writes its own small safe layer over it.
+**FFmpeg: bindings and a thin layer of BIL's own.** FFmpeg is the first case decided this way. ffmpeg-next is in maintenance mode, so it is weak on Maintenance. BIL's deferred Fragments and its direct path from decoded planes need raw access to packets and planes either way, so a full safe layer over FFmpeg would add little that BIL does not have to bypass. BIL therefore depends on rusty\_ffmpeg, the bindings crate under rsmpeg, and writes its own small safe layer over it.
 
 - **Why a thin layer.** BIL uses a narrow part of FFmpeg: opening, reading packets without decoding them, seeking to key frames, decoding, and receiving frames, together with the packets of KLV data streams. Deferred Fragments and the direct path from decoded planes into the fused loop (section 12) need raw access in any case.
 - **BIL does not generate bindings.** rusty\_ffmpeg provides them, and it is regenerated for each FFmpeg release.
@@ -1435,11 +1494,11 @@ A driver is finished when it passes one suite of tests, which is the same for ev
 | --- | --- |
 | Faithful Fragment | Fragment values equal the stored values of reference files, with the stated pixel type and significant bits |
 | Window independence | A Slice of any Window equals the same region cut from a Slice of the whole Image, for every slice function and Level the driver offers |
-| One grid | At a given Level, every Slice of an Image has the same size |
+| One grid | At a given Level, every Slice of an Image has the same size, origin and scale |
 | Plan against actual | The size, access class, stored level and blocks decoded that `plan_slice` reports match what the read then does |
 | Zero-copy | A Fragment is `Borrowed` whenever the zero-copy rule is met |
 | Bounded memory | A small Window read from a very large file stays within a fixed memory budget |
-| Missing data | Pixels that were never recorded, and fill values, are NaN in every Slice |
+| Missing data | Pixels that were never recorded, and fill values, are NaN in every Slice under the default options, and take the caller's `missing_value` when one is set |
 | Metadata on demand | Opening extracts only what describes the Images, and each group is extracted on first request |
 | Markings | Marking fields reach everything written, and identity fields are written empty |
 | Containment | The driver makes no network request and writes no file that the caller did not ask for |
@@ -1614,7 +1673,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 5. **Vector instructions chosen at run time.** Each loop has AVX2, AVX-512 and NEON versions, selected from the processor's features.
 6. **Caller-owned buffers.** `read_slice_into` and `stream_slice` allocate nothing per call.
 7. **Parallel rows and tiles.** Large Windows are split across threads. Gains flatten after a few cores, because memory bandwidth becomes the limit. How far decoding itself runs in parallel follows the driver's declared `concurrency` (section 10).
-8. **Cheap variants offered.** Where a Slice needs costly arithmetic, a cheaper relative is provided: `power` avoids the square root in `magnitude`, and both avoid the arctangent in `phase` and the logarithm in `db`.
+8. **Cheap variants offered.** Where a Slice needs costly arithmetic, a cheaper relative is provided: `power` avoids the square root in `magnitude`, and both avoid the arctangent in `phase` and the logarithm in `power_db`.
 9. **No-copy hand-off to Python.** Slices and Fragments are exposed as NumPy arrays over the same memory, including strided and borrowed ones. Borrowed arrays are read-only. The interpreter lock is released during every read.
 10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release.
 
@@ -1681,7 +1740,8 @@ The statuses are those of section 3.3. A position is `Complete`, `Missing`, `Not
 | --- | --- |
 | `list_geo_models()` | The models this Image carries, most rigorous first |
 | `read_geo_model(model_name, frame)` | The chain for one frame |
-| `for_window(window, level)` | The same chain with BIL's `image_window` step in front |
+| `for_slice(slice)` | The same chain with BIL's `image_window` step in front, built from the Slice's `origin` and `scale`, so it covers any Window, Level, stored level or `step` |
+| `for_window(window, level)` | A short form of `for_slice` for a computed Level, before any Slice is read |
 | `image_to_world(positions, surface)` | World positions, as 64-bit values, for pixel positions, each with a status |
 | `world_to_image(positions)` | Pixel positions for world positions, each with a status |
 | `list_steps()` | Each step of a chain, with its spaces and parameters |
@@ -1748,7 +1808,7 @@ A `Terrain` is what a caller passes as the `surface` argument of `image_to_world
 1. **Heights come out above the ellipsoid.** Elevation data is usually stored relative to a geoid, which approximates mean sea level, while sensor models work in height above the ellipsoid. The two can differ by tens of meters. `Terrain` converts, using the vertical reference stated in the data.
 2. **Interpolation is `bilinear` by default.** `nearest` and `bicubic` are also available.
 3. **Voids are missing data.** Where the terrain has no value, `Terrain` falls back in a stated order: to a coarser terrain if one was given, then to a constant height, and otherwise it reports the position as `Missing`.
-4. **Tiles are read on demand.** A lookup touches only the tiles it needs, and recently used tiles are kept, so the cost follows the request.
+4. **Tiles are read on demand.** A lookup touches only the tiles it needs, and recently used tiles stay in the Fragment cache of their Source, so the cost follows the request (section 3.4).
 5. **Surface or bare earth is reported.** A terrain model may describe the bare ground, or the surface including buildings and vegetation. `Terrain` says which, because it changes where a line of sight lands.
 6. **No terrain is fetched by default.** With no surface given, `image_to_world` uses a constant height. That is the reference height the geo model states, such as the height offset of RPC coefficients, or zero above the ellipsoid where the model states none. The result says which surface was used. Remote terrain is read only when the caller opens it with `open_terrain` (section 1.3).
 
@@ -1884,7 +1944,7 @@ Geocoding, normalization parameters and coordinates are built from metadata, and
 | Value | Text, integer, 64-bit float, boolean, date and time, bytes, a list of one of these, or a group of further fields |
 | Unit | The unit of the value, where the file or the specification states one |
 | Origin | `SelfDescribed`, `Specified`, `Derived`, `Companion` or `Caller` |
-| Attachment | A Source, an Image, or an index of an Image, such as frame |
+| Attachment | A Source, an Image, or one index of an Image: row, column, component, frame or a declared additional index |
 | Handling | `Ordinary`, `Marking` or `Identity`. It decides what a writer does with the field (section 11). |
 
 **Where names come from**
@@ -1919,7 +1979,7 @@ BIL keeps a dictionary of the essential metadata that its users need, so that ev
 
 A value the caller adds with `add_field` comes before all three, with the origin `Caller`.
 
-**What the dictionary holds.** Each item has a name in the `common` namespace, a definition, a value type, a unit, and what it attaches to: the Source, an Image, a frame or a component.
+**What the dictionary holds.** Each item has a name in the `common` namespace, a definition, a value type, a unit, and what it attaches to, as section 14.1 lists.
 
 **Provided items.** A native field provides an item only when it is plainly the same thing.
 
@@ -1972,9 +2032,9 @@ The mapping lives in the native field's definition, which names the dictionary i
 
 **Left out on purpose.** Security classification is not a dictionary item. Classification schemes differ between formats and nations, and a wrong mapping does harm, so markings are always read and written in their native form.
 
-**What a function needs.** Slice functions, normalization functions and geocoding steps each declare the dictionary items they need. `spectral.toa_reflectance`, for example, needs the sun elevation and the Earth–Sun distance.
+**What a function needs.** Slice functions, normalization functions and geocoding steps each declare every input they need: dictionary items and normalization parameters alike. `spectral.toa_reflectance`, for example, needs the sun elevation and the Earth–Sun distance.
 
-- `list_required_fields(function_name)` lists them, with whether each is available for this Source and its origin.
+- `list_required_fields(function_name)` lists every input of either kind, with whether each is available for this Source and its origin.
 - `list_slice_functions` offers a function only when everything it needs is available. A function that is held back can be enabled by supplying the missing items in a companion file.
 
 **Companion files.** A companion file holds metadata that a file does not, beside the file it describes.
@@ -2007,7 +2067,7 @@ The calls exist on a Source and on each of its Images.
 | --- | --- |
 | `list_field_groups()` | The names of the groups present. Extracts nothing. |
 | `list_fields(group_name)` | The names of the fields in a group |
-| `read_field(field_name)` | The value, with its type, unit and origin |
+| `read_field(field_name)` | The value, with its type, unit and origin. An unknown name is an error; a known field with no value is delivered as `Missing` (section 3.3). |
 | `read_field_at(field_name, index)` | The value at one position along the index the field attaches to, such as one frame. For a field with its own times, the latest value at or before that position, with its time. |
 | `describe_field(field_name)` | The field's definition, without its value. For a dictionary item, also its origin, and the native field or the formula and inputs behind it. |
 | `list_required_fields(function_name)` | The dictionary items a function needs, with whether each is available and its origin |
@@ -2051,14 +2111,14 @@ Anything that needs a wide or data-dependent neighborhood, more than one frame, 
 | Multi-frame operations | Frame differencing, background estimation, stabilization | The image processing code BIL feeds |
 | Registration and other higher-level processing | Registration, segmentation, orthorectification | A layer above BIL; not considered in this specification |
 | Image formation | Reconstructing an image from MRI k-space, CT projections, SAR phase history, interferograms or coded-aperture measurements | A layer above BIL. BIL reads the measurements themselves as arrays. |
-| Whole-image statistics | Display stretches | Allowed as a slice function only when the statistics are passed in as parameters |
+| Whole-image statistics | Computing the statistics for a display stretch | Above BIL. Applying a stretch with statistics passed in is a slice function of the kind Present (section 9). |
 | Non-raster data | Event cameras, photon-counting and list-mode PET event lists, moving-target radar reports, localization microscopy, unorganized point clouds, vector overlays | Not covered by BIL until binned into a 2D array |
 
 Four things inside BIL do read neighboring pixels: demosaicing, chroma upsampling, the interpolation of mosaic sites, polarizer angles and video fields, and filtered downsampling. Each uses a small fixed neighborhood tied to the Image grid, so results stay window-independent. None changes the size of a Slice: at a given Level, every Slice of an Image has the same size.
 
 ## 16. Open decisions
 
-Nine points are not yet settled, and fifty-six have been decided. Each lists the current proposal.
+Nine points are not yet settled, and fifty-seven have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2086,6 +2146,7 @@ Nine points are not yet settled, and fifty-six have been decided. Each lists the
 - [x] **Color description.** Decided: color is described by the four H.273 properties, from metadata or a stated default, and computed by formula in BIL's own loops. Color profiles are exposed as fields and not applied; color management is a layer above BIL (section 9.3).
 - [x] **Values for `color.hsv`.** Decided: hue, saturation and value are computed from the encoded values as stored, as most software does (section 9.3).
 - [x] **What the catalog holds.** Decided: a slice function belongs in BIL when it undoes the storage, calibrates, or re-expresses the measurement in a standard form that analysis starts from. Analysis goes to the `bil-extras` package. BIL is not for diagnostic use (sections 1.2 and 9).
+- [x] **Consistency, second review.** Decided: one rule for repeated names; one name and one meaning for each quantity; decibels beside their linear Slices; color converted only by the color functions; every input of a function a field; coordinates are dictionary items where the same; access classes describe the data only; Levels named in requests and geocoding built from the Slice; unknown names are errors and absent values `Missing`; one registration call; every option and held limit in section 3.4; one list of attachments; a display stretch as a kind of slice function; and packaging rules that match the FFmpeg decision (U1 to U16 of the second review).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, and the formula for each derived one. The first entries are in section 14.2, and the list is settled as drivers are built.
 - [x] **Sensor geometry.** Decided: geocoding is a chain of steps between named coordinate spaces, covering affine, RPC, SAR and camera models, with Community Sensor Model plugins as one kind of step (section 13).
@@ -2122,7 +2183,7 @@ Nine points are not yet settled, and fifty-six have been decided. Each lists the
 - [x] **License and responsibility.** Decided: BIL is a Rust library with a C-callable interface over it, delivered as one shared library. BIL answers for what its own packages contain, which is only LGPL-compatible builds. Users answer for what they install and pass on. `list_drivers` reports each library's license as built (section 10.6).
 - [ ] **License review.** A legal review of the contents of BIL's packages before the first release, including whether Apache-2.0 and LGPL 3 components are covered by "or later" (section 10.6).
 - [x] **Writable formats.** Decided: ENVI, TIFF and GeoTIFF (uncompressed or Deflate), and NumPy `.npy`, each through BIL's own writer (section 11).
-- [x] **Wrapper crates.** Decided: an existing wrapper is considered first for every C or C++ library, and used when it brings no maintenance or performance problems and no limits on capability (section 10).
+- [x] **Wrapper crates.** Decided: an existing wrapper is considered first for every C or C++ library, and used when it passes the four tests of maintenance, performance, capability and packaging. Otherwise an existing bindings crate is used where one passes, and BIL's own bindings only where none does (section 10).
 - [x] **Reaching FFmpeg.** Decided: through the existing rusty\_ffmpeg bindings, with a thin safe layer of BIL's own. BIL does not generate bindings or build FFmpeg (section 10).
 - [x] **Where FFmpeg comes from.** Decided: FFmpeg 6 or later, always the shared copy from conda or the system package manager. BIL never carries it, and for FFmpeg the one-step test means one step through such a package manager. The rule applies to FFmpeg only (section 10.5).
 
