@@ -30,13 +30,25 @@ These give bitwise-identical results across Windows and across instruction sets.
 ## State
 
 - **Specification:** version 56. Pass 2 red team review: 32 findings open (U1 to U16, R26 to R41), awaiting the author's rulings.
-- **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
+- **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
+- **CI:** green on all four systems, and on the latest stable Rust.
 - **Open decisions in the specification:** 9 (section 16).
 
 ## The workspace
 
 - Linux on x86 with AVX2 and AVX-512, two cores, Rust 1.97. macOS, Windows and ARM only through CI.
-- Package registries and GitHub are reachable. Most other sites are not, so real test imagery comes from the author.
+- Package registries and GitHub are reachable. Most other sites are not, so real test imagery comes from the author. `static.rust-lang.org` is not reachable, so no other Rust toolchain can be installed here.
+- **The toolchain is pinned** to 1.97.0 in `rust-toolchain.toml`. In a fresh workspace rustup tries to download it by that name and fails. The installed stable is the same 1.97.0, so expose it under the pinned name:
+  `ln -s stable-x86_64-unknown-linux-gnu ~/.rustup/toolchains/1.97.0-x86_64-unknown-linux-gnu`
+- **The working clone** is `/home/claude/blazingimaginglibrary`, the path the session expects.
+
+## CI
+
+- `.github/workflows/ci.yml` runs format, lint (warnings are errors), build and experiment 1's `--check` on `ubuntu-latest`, `ubuntu-24.04-arm`, `windows-latest` and `macos-latest`.
+- A separate job lints on the latest stable Rust and may fail without failing the build. It reports lints a newer compiler adds, so the pin can be raised deliberately.
+- Job logs need authentication this workspace does not have. Lint messages are raised as annotations, which can be read without it:
+  `curl -s https://api.github.com/repos/code-moth/BlazingImagingLibrary/check-runs/JOB_ID/annotations`
+- Code compiled only on some processors must be linted there too: two warnings appeared only on ARM, from `cfg(target_arch)` code.
 
 ## Next step
 
