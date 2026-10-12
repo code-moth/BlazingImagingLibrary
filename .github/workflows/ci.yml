@@ -34,6 +34,10 @@ jobs:
       - name: Experiment 1, correctness
         # Bitwise Window independence and agreement across instruction sets, and accuracy.
         run: cargo run --release --bin exp1 -- --check
+      - name: Experiment 1b, correctness
+        # The same bitwise tests through the rolling buffer, against experiment 1's whole planes,
+        # and reused buffers.
+        run: cargo run --release --bin exp1b -- --check
 
   latest-stable:
     # Reports lints that a newer compiler adds, without failing the build.

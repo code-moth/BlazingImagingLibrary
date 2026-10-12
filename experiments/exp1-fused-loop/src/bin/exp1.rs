@@ -2,137 +2,9 @@
 //! Runs experiment 1 and prints its report.
 
 use bil_exp1::simd::Isa;
-use bil_exp1::{halve, hsv0, polar0, read_levels, Func, Image, Samples, Slice, Window};
+use bil_exp1::testing::{bit_diffs, full, make, random_window, Rng};
+use bil_exp1::{halve, hsv0, polar0, read_levels, Func, Samples};
 use std::time::Instant;
-
-struct Rng(u64);
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 >> 12;
-        self.0 ^= self.0 << 25;
-        self.0 ^= self.0 >> 27;
-        self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
-    }
-    fn below(&mut self, n: usize) -> usize {
-        (self.next() % n as u64) as usize
-    }
-    fn unit(&mut self) -> f64 {
-        (self.next() >> 11) as f64 / (1u64 << 53) as f64
-    }
-}
-
-/// Smooth structure plus noise, so filtering has something to do.
-fn field(rng: &mut Rng, r: usize, c: usize) -> f64 {
-    let x = r as f64 * 0.013 + (c as f64 * 0.007).sin() * 3.0;
-    let y = c as f64 * 0.011 + (r as f64 * 0.005).cos() * 2.0;
-    0.5 + 0.3 * (x.sin() * y.cos()) + 0.2 * rng.unit()
-}
-
-fn make(kind: &str, rows: usize, cols: usize, seed: u64) -> Image {
-    let mut rng = Rng(seed);
-    match kind {
-        "U16" => {
-            let v = (0..rows * cols)
-                .map(|i| (field(&mut rng, i / cols, i % cols) * 4095.0) as u16)
-                .collect();
-            Image {
-                rows,
-                cols,
-                comps: 1,
-                samples: Samples::U16(v),
-            }
-        }
-        "F32" => {
-            let v = (0..rows * cols)
-                .map(|i| (field(&mut rng, i / cols, i % cols) * 1000.0) as f32)
-                .collect();
-            Image {
-                rows,
-                cols,
-                comps: 1,
-                samples: Samples::F32(v),
-            }
-        }
-        "ComplexI16" | "ComplexF32" => {
-            let mut v = Vec::with_capacity(rows * cols * 2);
-            for i in 0..rows * cols {
-                let a = field(&mut rng, i / cols, i % cols) * 9000.0;
-                let p = rng.unit() * std::f64::consts::TAU;
-                v.push(a * p.cos());
-                v.push(a * p.sin());
-            }
-            if kind == "ComplexI16" {
-                Image {
-                    rows,
-                    cols,
-                    comps: 1,
-                    samples: Samples::ComplexI16(v.iter().map(|x| *x as i16).collect()),
-                }
-            } else {
-                Image {
-                    rows,
-                    cols,
-                    comps: 1,
-                    samples: Samples::ComplexF32(v.iter().map(|x| *x as f32).collect()),
-                }
-            }
-        }
-        "U8x3" | "U16x3" => {
-            let scale = if kind == "U8x3" { 255.0 } else { 65535.0 };
-            let mut v = Vec::with_capacity(rows * cols * 3);
-            for i in 0..rows * cols {
-                let base = field(&mut rng, i / cols, i % cols);
-                for k in 0..3 {
-                    // Some gray pixels, where hue is undefined.
-                    let x = if i % 97 == 0 {
-                        base
-                    } else {
-                        (base + 0.25 * k as f64 * rng.unit()).min(1.0)
-                    };
-                    v.push(x * scale);
-                }
-            }
-            if kind == "U8x3" {
-                Image {
-                    rows,
-                    cols,
-                    comps: 3,
-                    samples: Samples::U8(v.iter().map(|x| *x as u8).collect()),
-                }
-            } else {
-                Image {
-                    rows,
-                    cols,
-                    comps: 3,
-                    samples: Samples::U16(v.iter().map(|x| *x as u16).collect()),
-                }
-            }
-        }
-        _ => unreachable!(),
-    }
-}
-
-fn full(img: &Image) -> Window {
-    Window {
-        row_start: 0,
-        col_start: 0,
-        row_count: img.rows,
-        col_count: img.cols,
-    }
-}
-
-/// Number of values that differ in their bits between two Slices over their common indices.
-fn bit_diffs(window_slice: &Slice, whole: &Slice) -> usize {
-    let mut d = 0;
-    for r in window_slice.rows.0..=window_slice.rows.1 {
-        for c in window_slice.cols.0..=window_slice.cols.1 {
-            if window_slice.at(r, c).to_bits() != whole.at(r, c).to_bits() {
-                d += 1;
-            }
-        }
-    }
-    d
-}
 
 const TOP: u32 = 4;
 
@@ -181,24 +53,7 @@ fn main() {
             let mut compared = 0usize;
             let mut diffs = 0usize;
             for t in 0..windows_per_case {
-                let rc = 1 + rng.below(if t % 4 == 0 { 20 } else { 400 });
-                let cc = 1 + rng.below(if t % 4 == 0 { 20 } else { 400 });
-                let r0 = match t % 5 {
-                    0 => 0,
-                    1 => rows - rc,
-                    _ => rng.below(rows - rc + 1),
-                };
-                let c0 = match t % 7 {
-                    0 => 0,
-                    1 => cols - cc,
-                    _ => rng.below(cols - cc + 1),
-                };
-                let win = Window {
-                    row_start: r0,
-                    col_start: c0,
-                    row_count: rc,
-                    col_count: cc,
-                };
+                let win = random_window(&mut rng, rows, cols, t);
                 let got = read_levels(&img, *func, *isa, win, TOP);
                 for (lw, lwhole) in got.iter().zip(&whole) {
                     for (s, w) in lw.iter().zip(lwhole) {

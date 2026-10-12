@@ -2,14 +2,14 @@
 //! BIL experiment 1: one fused pass that makes a slice function's Slices at every Level from
 //! 0 to n, with Window independence exact to the bit, on scalar, AVX2 and AVX-512 code.
 //!
-//! The rules follow specification version 56, section 5:
+//! The rules follow section 5 of the specification:
 //! - Level n holds the Image pixels whose row and column are multiples of 2^n.
 //! - Each halving applies weights 1 2 1, divided by 4, along rows and then columns.
 //! - Angles (phase, hue) are reduced as unit vectors.
 //! - At an Image edge, values are mirrored about the first and last grid point of each Level.
 //!
-//! Not covered here, and named in the report: missing data, rolling row buffers, threads,
-//! stored levels and other kinds of Slice.
+//! Not covered here, and named in the report: missing data, threads, stored levels and other
+//! kinds of Slice. Rolling row buffers are experiment 1b, in `rolling`.
 
 // The experiment keeps kernels short and close to the specification's formulas.
 #![allow(
@@ -20,6 +20,13 @@
 
 // The vector layer and kernels now live in the `bil` crate.
 pub use bil::{kernels, simd};
+
+/// Experiment 1b: the same pass on a rolling buffer of a few rows, into the caller's buffers.
+pub mod rolling;
+pub use rolling::{plan_outputs, read_levels_into};
+
+/// Test images and comparisons for the experiment programs.
+pub mod testing;
 
 #[cfg(target_arch = "x86_64")]
 use simd::{Avx2, Avx512};
