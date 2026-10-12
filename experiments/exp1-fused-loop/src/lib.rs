@@ -259,7 +259,7 @@ fn convert_row(img: &Image, r: usize, c0: usize, c1: usize, bufs: &mut [Vec<f32>
                 for ((x, y), s) in a[0]
                     .iter_mut()
                     .zip(b[0].iter_mut())
-                    .zip(src.chunks_exact(2))
+                    .zip(src.as_chunks::<2>().0)
                 {
                     *x = conv(s[0]);
                     *y = conv(s[1]);
@@ -272,7 +272,7 @@ fn convert_row(img: &Image, r: usize, c0: usize, c1: usize, bufs: &mut [Vec<f32>
                     .iter_mut()
                     .zip(b[0].iter_mut())
                     .zip(c[0].iter_mut())
-                    .zip(src.chunks_exact(3))
+                    .zip(src.as_chunks::<3>().0)
                 {
                     *x = conv(s[0]);
                     *y = conv(s[1]);
