@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 65: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 66: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 65. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 66. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 

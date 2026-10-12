@@ -1,6 +1,6 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Version 3 brings the document in step with specification version 65: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Version 3 brings the document in step with specification version 66: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.
 
-**What has changed between versions 56 and 65**
+**What has changed between versions 56 and 66**
 
 | Change | Where it bears |
 | --- | --- |
@@ -10,6 +10,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 | Decoding on request, and the mapped format's layout, start-up, readiness and slot marking, are designed | H8 |
 | Geocoding carries full accuracy records (section 13.9), which adds partial derivatives to every step | H7 |
 | Tier 1 reads GeoTIFF and NITF with Rust readers, and 22 real NITF test files are pinned | Section 7 |
+| Speed aims to be as fast as each function's arithmetic allows, measured against a copy and against that arithmetic (version 66) | H1, section 8 |
 
 ## 1. Verdict
 
@@ -93,7 +94,7 @@ Each problem says what it is, why it is hard, how likely and how damaging it is,
 
 **How to retire it.** A two-week experiment: three slice functions (`pixel.raw`, `complex.polar`, `color.hsv`) on two sample types, two instruction sets, Levels 0 to 4 in one pass, with the Window independence test run bitwise over thousands of random Windows. Measure speed against a plain memory copy, compile time and code size.
 
-**What happened.** Agreement is now required to a tolerance (R27), and experiment 1 ran this plan with two sample types for each function, on scalar, AVX2 and AVX-512 code. Bitwise agreement held everywhere at little cost, the kernels ran at memory speed, and the program built in 13 seconds at 0.6 MB. The whole pass missed the speed criterion, at 5 to 90 times a copy, because it made whole planes. Experiment 1b's rolling buffer kept every bit and brought `pixel.raw` to 1.9 to 3.6 times a copy. `complex.polar` and `color.hsv` are limited by their own arithmetic, at 6 to 20 times a copy and 1.7 to 2.4 times their arithmetic alone. Whether that meets the criterion is for the author to rule (`RESULTS.md` and `RESULTS-1b.md` in `experiments/exp1-fused-loop`).
+**What happened.** Agreement is now required to a tolerance (R27), and experiment 1 ran this plan with two sample types for each function, on scalar, AVX2 and AVX-512 code. Bitwise agreement held everywhere at little cost, the kernels ran at memory speed, and the program built in 13 seconds at 0.6 MB. The whole pass missed the speed criterion, at 5 to 90 times a copy, because it made whole planes. Experiment 1b's rolling buffer kept every bit and brought `pixel.raw` to 1.6 to 2.8 times a copy. `complex.polar` and `color.hsv` are limited by their own arithmetic, at 1.3 to 2.9 times that arithmetic alone. The author ruled that the criterion guides the design, as fast as each function's arithmetic allows, and section 12 now says so. Experiment 1b also added missing data with NaN skipping, checked bitwise (`RESULTS.md` and `RESULTS-1b.md` in `experiments/exp1-fused-loop`).
 
 ### H2. Containing many C and C++ libraries in one process
 
@@ -268,7 +269,7 @@ These are the backing libraries whose health matters most to the early tiers. He
 
 ## 7. What the specification must settle before coding
 
-These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 65, every one is settled.
+These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 66, every one is settled.
 
 **Before Tier 1**
 
@@ -298,7 +299,7 @@ These are the points where code cannot be written, or would have to be rewritten
 
 Each is small, answers one question, and can change the design while change is cheap. Experiments 1, 3 and 5 can run in this workspace. Experiment 2 needs large NITF files from the author, and experiment 4 needs CI on macOS and Windows.
 
-1. **The fused loop (H1). Done, in experiments 1 and 1b: correct to the bit, and fast for `pixel.raw`; see H1 for the speed of the other functions.** Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy.
+1. **The fused loop (H1). Done, in experiments 1 and 1b: correct to the bit, with missing data, and close to the cost of each function's arithmetic.** Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy. Version 66 replaced that speed test with one against each function's own arithmetic as well.
 2. **JPEG 2000 on real NITF (H3).** Time region and reduced-resolution reads on large files with OpenJPEG and, if possible, Kakadu. Pass when a small Window's cost does not grow with the file, or the shortfall is known and a route around it is chosen.
 3. **Containing C errors (H2).** One libjpeg-family library and GDAL behind BIL's C layer, with corrupt files from a fuzzer. Pass when no corrupt file crashes the process or leaves global state changed.
 4. **Packaging (H2).** BIL as a Python wheel and a conda package, with private GDAL and PROJ, loaded beside rasterio and pyproj. Pass when both read correctly in one process on Linux, macOS and Windows.

@@ -1827,7 +1827,7 @@ pub struct WriteOptions {
 
 ## 12. Performance requirements
 
-A Slice costs at most one pass over its Window, and that pass is built to run at the speed memory can be read and written.
+A Slice costs at most one pass over its Window, and that pass is built to run at the speed memory can be read and written, or at the speed of its arithmetic where that is slower.
 
 **Bounded memory.** These follow from the purpose in section 1.1 and apply to every driver.
 
@@ -1849,7 +1849,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 7. **Parallel rows and tiles.** Large Windows are split across threads. Gains flatten after a few cores, because memory bandwidth becomes the limit. How far decoding itself runs in parallel follows the driver's declared `concurrency` (section 10).
 8. **Cheap variants offered.** Where a Slice needs costly arithmetic, a cheaper relative is provided: `power` avoids the square root in `magnitude`, and both avoid the arctangent in `phase` and the logarithm in `power_db`.
 9. **No-copy hand-off to Python.** Slices and Fragments are exposed as NumPy arrays over the same memory, including strided and borrowed ones. Borrowed arrays are read-only. The interpreter lock is released during every read.
-10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release. The round trip to the interpreter's helper process is benchmarked in the same way (section 10.1).
+10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window, and against its own arithmetic alone on data already in memory. The aim is the least cost each function's arithmetic allows: a function that only converts should run near the speed of a copy, and one that needs an arctangent or a square root for every pixel should run near the speed of that arithmetic. The figures guide the design, and no single factor applies to every function. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release. The round trip to the interpreter's helper process is benchmarked in the same way (section 10.1).
 
 ## 13. Geocoding
 
@@ -2420,7 +2420,7 @@ Two points are not yet settled, and sixty-eight have been decided. Each lists th
 - [x] **Threads and plugins.** Decided: a Source and an Image may be shared between threads, and a Reader belongs to one thread at a time. Each driver declares its concurrency as `Parallel`, `OneHandlePerThread` or `Serial`. `bil_register_driver` carries an interface version (sections 4 and 10).
 - [x] **Codec choice and probing.** Decided: the driver and codec are chosen when a Source is opened and never switched. Both are reported and recorded in what BIL writes. Probing looks at the container, then its content, and ties follow a configured order (section 10).
 - [x] **Field names and time.** Decided: a field name is a list of parts, with escaped dots and numbered repeats. Text is Unicode, and a date and time states whether its zone is known. Local times take their zone from a stated offset, then, where an optional time-zone lookup is installed, the sensor location or the footprint. Otherwise they are taken as local time (section 14).
-- [x] **Performance claims.** Decided: specialized loops cover the six common sample types and the rest convert through a float32 row buffer. Copy counts exclude the decoder's own buffer. Benchmarks run on dedicated machines with thresholds, outside the build (sections 6 and 12).
+- [x] **Performance claims.** Decided: specialized loops cover the six common sample types and the rest convert through a float32 row buffer. Copy counts exclude the decoder's own buffer. Benchmarks run on dedicated machines with thresholds, outside the build. Each function aims to be as fast as its arithmetic allows, measured against a copy and against that arithmetic alone (sections 6 and 12).
 - [x] **Color description.** Decided: color is described by the four H.273 properties, from metadata or a stated default, and computed by formula in BIL's own loops. Color profiles are exposed as fields and not applied; color management is a layer above BIL (section 9.3).
 - [x] **Values for `color.hsv`.** Decided: hue, saturation and value are computed from the encoded values as stored, as most software does (section 9.3).
 - [x] **What the catalog holds.** Decided: a slice function belongs in BIL when it undoes the storage, calibrates, or re-expresses the measurement in a standard form that analysis starts from. Analysis goes to the `bil-extras` package. BIL is not for diagnostic use (sections 1.2 and 9).

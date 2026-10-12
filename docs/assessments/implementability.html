@@ -151,7 +151,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
     </div>
     <svg class="motif" viewBox="0 0 90 33" role="img" aria-label="Ten hard problems"><rect class="px in" x="0" y="0" width="14" height="14" rx="2"/><rect class="px in" x="19" y="0" width="14" height="14" rx="2"/><rect class="px in" x="38" y="0" width="14" height="14" rx="2"/><rect class="px in" x="57" y="0" width="14" height="14" rx="2"/><rect class="px in" x="76" y="0" width="14" height="14" rx="2"/><rect class="px in" x="0" y="19" width="14" height="14" rx="2"/><rect class="px in" x="19" y="19" width="14" height="14" rx="2"/><rect class="px in" x="38" y="19" width="14" height="14" rx="2"/><rect class="px in" x="57" y="19" width="14" height="14" rx="2"/><rect class="px in" x="76" y="19" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>3</dd></div><div><dt>As of</dt><dd>12 October 2026</dd></div><div><dt>Specification</dt><dd>Version 65</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Blocking items</dt><dd>None left; all settled</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>3</dd></div><div><dt>As of</dt><dd>12 October 2026</dd></div><div><dt>Specification</dt><dd>Version 66</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Blocking items</dt><dd>None left; all settled</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,8 +164,8 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#sources">Sources</a></li></ol>
       </details>
       <main>
-<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Version 3 brings the document in step with specification version 65: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.</p>
-<p><strong>What has changed between versions 56 and 65</strong></p>
+<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Version 3 brings the document in step with specification version 66: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.</p>
+<p><strong>What has changed between versions 56 and 66</strong></p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -197,6 +197,10 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <tr>
 <td>Tier 1 reads GeoTIFF and NITF with Rust readers, and 22 real NITF test files are pinned</td>
 <td>Section 7</td>
+</tr>
+<tr>
+<td>Speed aims to be as fast as each function's arithmetic allows, measured against a copy and against that arithmetic (version 66)</td>
+<td>H1, section 8</td>
 </tr>
 </tbody>
 </table></div>
@@ -450,7 +454,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </ul>
 <p><strong>Likelihood and impact.</strong> Likely to cost more time than planned. High impact, because every Slice passes through it.</p>
 <p><strong>How to retire it.</strong> A two-week experiment: three slice functions (<code>pixel.raw</code>, <code>complex.polar</code>, <code>color.hsv</code>) on two sample types, two instruction sets, Levels 0 to 4 in one pass, with the Window independence test run bitwise over thousands of random Windows. Measure speed against a plain memory copy, compile time and code size.</p>
-<p><strong>What happened.</strong> Agreement is now required to a tolerance (R27), and experiment 1 ran this plan with two sample types for each function, on scalar, AVX2 and AVX-512 code. Bitwise agreement held everywhere at little cost, the kernels ran at memory speed, and the program built in 13 seconds at 0.6 MB. The whole pass missed the speed criterion, at 5 to 90 times a copy, because it made whole planes. Experiment 1b's rolling buffer kept every bit and brought <code>pixel.raw</code> to 1.9 to 3.6 times a copy. <code>complex.polar</code> and <code>color.hsv</code> are limited by their own arithmetic, at 6 to 20 times a copy and 1.7 to 2.4 times their arithmetic alone. Whether that meets the criterion is for the author to rule (<code>RESULTS.md</code> and <code>RESULTS-1b.md</code> in <code>experiments/exp1-fused-loop</code>).</p>
+<p><strong>What happened.</strong> Agreement is now required to a tolerance (R27), and experiment 1 ran this plan with two sample types for each function, on scalar, AVX2 and AVX-512 code. Bitwise agreement held everywhere at little cost, the kernels ran at memory speed, and the program built in 13 seconds at 0.6 MB. The whole pass missed the speed criterion, at 5 to 90 times a copy, because it made whole planes. Experiment 1b's rolling buffer kept every bit and brought <code>pixel.raw</code> to 1.6 to 2.8 times a copy. <code>complex.polar</code> and <code>color.hsv</code> are limited by their own arithmetic, at 1.3 to 2.9 times that arithmetic alone. The author ruled that the criterion guides the design, as fast as each function's arithmetic allows, and section 12 now says so. Experiment 1b also added missing data with NaN skipping, checked bitwise (<code>RESULTS.md</code> and <code>RESULTS-1b.md</code> in <code>experiments/exp1-fused-loop</code>).</p>
 <h3 id="h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</h3>
 <p><strong>What.</strong> BIL loads GDAL, NITRO, SIX, LibRaw, HDF5, NetCDF, OpenJPEG, FFmpeg, PROJ and others into the caller's process, beside other packages that may hold their own copies.</p>
 <p><strong>Why it is hard.</strong></p>
@@ -726,7 +730,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Video and isolation are the riskiest Tier 2 work.</strong> Both need many rounds of testing against real streams and real systems, so each depends on the author's test data and CI more than on code.</li>
 </ul>
 <h2 id="7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</h2>
-<p>These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 65, every one is settled.</p>
+<p>These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 66, every one is settled.</p>
 <p><strong>Before Tier 1</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -808,7 +812,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <h2 id="8-the-first-experiments-in-order">8. The first experiments, in order</h2>
 <p>Each is small, answers one question, and can change the design while change is cheap. Experiments 1, 3 and 5 can run in this workspace. Experiment 2 needs large NITF files from the author, and experiment 4 needs CI on macOS and Windows.</p>
 <ol>
-<li><strong>The fused loop (H1). Done, in experiments 1 and 1b: correct to the bit, and fast for <code>pixel.raw</code>; see H1 for the speed of the other functions.</strong> Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy.</li>
+<li><strong>The fused loop (H1). Done, in experiments 1 and 1b: correct to the bit, with missing data, and close to the cost of each function's arithmetic.</strong> Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy. Version 66 replaced that speed test with one against each function's own arithmetic as well.</li>
 <li><strong>JPEG 2000 on real NITF (H3).</strong> Time region and reduced-resolution reads on large files with OpenJPEG and, if possible, Kakadu. Pass when a small Window's cost does not grow with the file, or the shortfall is known and a route around it is chosen.</li>
 <li><strong>Containing C errors (H2).</strong> One libjpeg-family library and GDAL behind BIL's C layer, with corrupt files from a fuzzer. Pass when no corrupt file crashes the process or leaves global state changed.</li>
 <li><strong>Packaging (H2).</strong> BIL as a Python wheel and a conda package, with private GDAL and PROJ, loaded beside rasterio and pyproj. Pass when both read correctly in one process on Linux, macOS and Windows.</li>
@@ -862,7 +866,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><a href="https://github.com/uclouvain/openjpeg">OpenJPEG on GitHub</a>, on its maintenance status.</li>
 </ul>
       </main>
-      <footer>BIL Implementability, version 3, an assessment of the Blazing Imaging Library (BIL) specification, first made against version 56 and brought in step with version 65, as of 12 October 2026.</footer>
+      <footer>BIL Implementability, version 3, an assessment of the Blazing Imaging Library (BIL) specification, first made against version 56 and brought in step with version 66, as of 12 October 2026.</footer>
     </div>
   </div>
 </div>

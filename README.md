@@ -6,7 +6,7 @@ BIL is one interface to imaging sensor data in any format. It extracts the subse
 
 BIL is written in Rust, with a C-callable interface over it delivered as one shared library, and a Python interface on the same core. It is licensed under the LGPL, version 2.1 or later, with a static-linking exception.
 
-> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 65, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary. The first experiments on BIL's core have passed on correctness, and on speed for `pixel.raw`; the speed criterion for arithmetic-heavy functions awaits a ruling. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
+> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 66, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
 
 ## Why BIL is needed
 
@@ -114,7 +114,7 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 
 | Document | What it is |
 | --- | --- |
-| [Specification](docs/specification/specification.md), version 65 | The source of truth for the design |
+| [Specification](docs/specification/specification.md), version 66 | The source of truth for the design |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 5 | Calls for every use case, in Python, Rust and C |
 | [Implementability](docs/assessments/implementability.md), version 3 | Whether BIL can be built, where it may go wrong, and what to try first |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |
@@ -126,7 +126,7 @@ Each document has a rendered `.html` page beside its Markdown source.
 
 **Experiment 1, the fused loop.** One pass makes a slice function's Slices at Levels 0 to 4. Over 2,400 random Windows and about 580 million values, no value differed in a single bit between a Window and the whole Image, or between scalar, AVX2 and AVX-512 code.
 
-**Experiment 1b, the rolling buffer.** The same arithmetic, streamed through every Level on a ring of three rows, into buffers the caller owns. The same tests pass with the same bits, as do every Window of 25 small Images, and the pass is about 3 to 4 times faster than experiment 1. `pixel.raw` takes about twice a memory copy at Level 0. `complex.polar` and `color.hsv` are limited by their arithmetic, and take 1.7 to 1.8 times that arithmetic alone at Level 0.
+**Experiment 1b, the rolling buffer.** The same arithmetic, streamed through every Level on a ring of three rows, into buffers the caller owns, with nothing allocated per read. The same tests pass with the same bits, as do every Window of 25 small Images, and the pass is 3 to 5 times faster than experiment 1 on the fastest instruction set. `pixel.raw` takes 1.6 times a memory copy at Level 0. `complex.polar` and `color.hsv` are limited by their arithmetic, and take 1.3 to 1.6 times that arithmetic alone at Level 0. Missing data follows section 5 of the specification, with three details proposed to the author, checked bitwise against an independent reference, and costs nothing where no pixel can be missing.
 
 ```sh
 cargo run --release --bin exp1b             # the full report, including speed
