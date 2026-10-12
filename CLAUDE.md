@@ -36,7 +36,7 @@ The specification requires agreement between Windows, instruction sets and machi
 - **Open decisions in the specification:** 6 (section 16). Version 61 settled test data, registry names and Tier 1's libraries.
 - **Tier 1 readers:** GeoTIFF through the Rust `tiff` crate with BIL's own GeoTIFF keys; NITF through a native Rust reader using field definitions. GDAL and NITRO (LGPL 3.0) are test references only.
 - **Packages:** `crates/bil` 0.0.1 holds the vector layer and kernels (experiment 1 now uses them from there); `crates/bil-sys` 0.0.1 holds the name; `python/` is `bil` 0.0.1 for PyPI. The author publishes with `.github/workflows/publish.yml`, which needs a `CARGO_REGISTRY_TOKEN` secret and PyPI trusted publishing for environment `pypi`.
-- **Test data:** `testdata/manifest.toml` lists real files and their checksums; `testdata/fetch.py` downloads them. The CI job `test data` fetches them, since this workspace cannot, and reports unpinned checksums as annotations to copy into the manifest.
+- **Test data:** 22 real NITF files pinned from GDAL's download cache, among them 8 NITF 2.1 files and `jpeg2000/p0_01a.ntf`, the one JPEG 2000 NITF the cache holds. Four wanted NITF 2.0 files are not in the cache (listed at the end of the manifest). `testdata/manifest.toml` lists real files and their checksums; `testdata/fetch.py` downloads them. The CI job `test data` fetches them, since this workspace cannot, and reports unpinned checksums as annotations to copy into the manifest.
 
 ## The workspace
 

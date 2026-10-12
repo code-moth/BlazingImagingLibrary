@@ -97,55 +97,55 @@ sha256 = "7de3c06d8d6c36547816dcd998e91c045fca443ce349eb6f5ee0e9d4216679a3"
 path = "jpeg2000/p0_01a.ntf"
 tier = 1
 exercises = "NITF with JPEG 2000 compression: Tier 1's codec path"
-sha256 = ""
+sha256 = "68e3a78e3c6176894f571d75879ead4984f9442bad8560b8bbf127695bdb5ad3"
 
 [[file]]
 path = "nitf2.1/v_3001a.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "ff2836ac87cd998dea69d0fc64d7ab17de4c05824740da0f37a512a84a2b8d15"
 
 [[file]]
 path = "nitf2.1/v_3301a.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "31a4f57562e7878793154d827ac072dd896b7416391565e1d78ffda9e853d6a0"
 
 [[file]]
 path = "nitf2.1/v_3301c.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "7b915aeb1b0f827c00c61888dbc83e7d597587418a6cb7289f8fd251efcd4fc3"
 
 [[file]]
 path = "nitf2.1/v_3301f.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "a30e3e2e29dda3ab52da62ddc5ddff67d59c19d4c72a48218dd8d07e04d64f80"
 
 [[file]]
 path = "nitf2.1/v_3301h.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "c4c7d29c0466b3b912c910b24cd55fe22564f41fc65cf3feba51a99fe4ffb5f7"
 
 [[file]]
 path = "nitf2.1/v_3303a.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "e7a0dc6f4c770f1cf68b822571f018a0804ae32df323294ba7e8d95272ced9cc"
 
 [[file]]
 path = "nitf2.1/v_3310a.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "419bec61c7bf244586680b8c64f03588e6d54ae6f603d49b844b52bf63dba8d0"
 
 [[file]]
 path = "nitf2.1/v_3402a.ntf"
 tier = 1
 exercises = "NITF 2.1 test case; its contents are to be described once it is read"
-sha256 = ""
+sha256 = "09cd83ffe732b9ef0bae2562e959137312ce17a681410f811e45b43d169a19c1"
 
 # Wanted, but not in GDAL's download cache (404 on 12 October 2026). To be supplied by the author
 # or found elsewhere:
