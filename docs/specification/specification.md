@@ -1,6 +1,6 @@
 # Blazing Imaging Library (BIL) Specification
 
-Oct 10, 2026 · @Master
+Oct 12, 2026 · @Master
 
 ## 1. Purpose and scope
 
@@ -1514,6 +1514,8 @@ bil.register_driver(VendorDriver)
 
 **Embedded interpreter.** BIL includes an embedded Python interpreter, so scripted drivers work for Rust, C and C++ callers as well as from Python.
 
+- **CPython.** The interpreter is CPython, the standard Python, because scripted drivers call existing Python libraries, and many of those, such as NumPy, are built for it alone. Smaller interpreters run only a subset of Python and none of its compiled libraries.
+- **Taken from the machine, not shipped.** BIL uses the Python installed on the machine, as it uses any library a package manager supplies (section 10.5). BIL's packages contain no interpreter. Where no Python is installed, a scripted driver fails with an error that says so, and everything else works.
 - **Started on first use.** The interpreter starts only when a scripted driver is first needed. Callers that never use one pay nothing.
 - **One interpreter.** When BIL is itself running inside Python, it uses that interpreter and does not start a second.
 - **Kept off the pixel path.** The interpreter runs when a Source is opened and when additional data is read. Pixel reads from a `PixelLayout` never enter it, so they run in parallel as for any other driver.
@@ -2275,7 +2277,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Six points are not yet settled, and sixty-three have been decided. Each lists the current proposal.
+Six points are not yet settled, and sixty-four have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2332,7 +2334,8 @@ Six points are not yet settled, and sixty-three have been decided. Each lists th
 - [x] **Backing libraries and licenses.** Decided: Tier 1 reads GeoTIFF and NITF with Rust readers, and keeps GDAL and NITRO as test references, so Tier 1 needs no LGPL 3.0 library and no C++ build. Each library of a later tier is assessed when its tier starts, for license, maintenance, availability from package managers and conformance (section 10). Every library in Appendix A stays in the plugin design until then.
 - [x] **Python-authored drivers.** Decided: allowed, as the scripted drivers of section 10.1.
 - [x] **Scripted drivers outside Python.** Decided: BIL includes an embedded interpreter, so Rust, C and C++ callers can use scripted drivers.
-- [ ] **Interpreter packaging.** Whether the embedded interpreter is shipped inside BIL or taken from the Python already installed on the machine.
+- [x] **Interpreter packaging.** Decided: the interpreter is CPython, taken from the Python installed on the machine, and BIL's packages contain none. Inside Python, BIL uses that interpreter. Without an installed Python, only scripted drivers are unavailable (section 10.1).
+- [ ] **Interpreter process.** Whether CPython runs inside the caller's process or in a helper process, for Rust, C and C++ callers. The proposal is a helper process. It keeps a failing script, and any conflict between the caller's libraries and Python's, out of the caller's process, and it works with whichever Python 3 version is installed. It costs a round trip between processes when a Source is opened and when additional data is read, never for pixels.
 - [x] **NaN for missing data.** Decided: a Slice value with no data behind it is NaN by default. `missing_value` in `SliceOptions` fills such positions with a number the caller chooses (section 5).
 - [x] **Registry names.** Decided: hold the names with genuine first releases rather than empty placeholders. `bil` 0.0.1 on crates.io holds the vector layer and kernels from experiment 1, `bil-sys` 0.0.1 holds the name for native bindings, and `bil` 0.0.1 on PyPI holds the Python name. The project's owner publishes them through the repository's Publish workflow. If `bil` is taken on PyPI, the package is `blazing-imaging` and still imports as `bil`.
 - [x] **Default demosaicing method.** Decided: `bilinear`, the same method used for the resolution levels, so both come from a single pass. `malvar_he_cutler` remains available.
