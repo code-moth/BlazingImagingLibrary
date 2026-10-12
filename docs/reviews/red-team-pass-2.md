@@ -383,7 +383,7 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 ### R29. Stored levels are not on the Level grid
 
-**Status:** Open · **Where:** section 5
+**Status:** Resolved in version 60 · **Where:** section 5
 
 **Problem.** A computed Level n sits on Image pixels at multiples of 2ⁿ. A stored overview usually does not. In a typical TIFF overview, pixel i of the first overview averages full-resolution pixels 2i and 2i+1, so its center lies at 2i + 0.5. With `level_source` set to `Stored`, a Level made from that overview sits half a pixel away from the same Level computed from full resolution. That breaks "every Slice of an Image at a given Level shares one grid" and makes results depend on which source was used. Version 46 fixed alignment for computed Levels only.
 
@@ -395,6 +395,10 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 - **Tested.** The One grid test checks origin and scale as well as size.
 
 **Decision needed.** Whether a misaligned stored level is refused, or resampled onto the grid by a local function.
+
+**Ruling.** Misaligned stored levels are not allowed to make a Level.
+
+**What changed in the specification.** Version 60, section 5. `list_stored_levels` reports whether each stored level is aligned with the Level grid. `level_source` = `Stored` uses only aligned stored levels, and otherwise computes the Level from full resolution, as `plan` reports. A name such as `stored2.level1` is an error when `stored2` is misaligned. A misaligned stored level can still be read as it stands, with its true origin and scale.
 
 ### R30. Writing loses geocoding, and ENVI cannot hold every sample type
 

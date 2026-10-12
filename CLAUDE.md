@@ -5,7 +5,7 @@ Read this first in every session. It records the state of the work, how it is do
 ## The arrangement
 
 - **Claude writes BIL.** The specification's author leads, rules on every design decision, reviews each change, and supplies test data and other systems.
-- **The specification is the source of truth.** `docs/specification/specification.md`, version 59. A design change is made there first, by the author's ruling, and the version number goes up.
+- **The specification is the source of truth.** `docs/specification/specification.md`, version 60. A design change is made there first, by the author's ruling, and the version number goes up.
 - **Ask, don't assume, on design.** Where the specification leaves something open, propose and flag it. Do not decide it silently.
 
 ## Conventions
@@ -29,8 +29,8 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## State
 
-- **Specification:** version 59. Pass 2 red team review: every finding resolved except R29 (stored levels are not on the Level grid), which awaits the author's ruling. Version 58 closed the interface gaps; version 59 applies the red team rulings.
-- **Documents in step with version 59:** the specification, the pass 2 review (review version 4) and BIL by Example (version 4). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
+- **Specification:** version 60. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
+- **Documents in step with version 60:** the specification, the pass 2 review (review version 5) and BIL by Example (version 4, unaffected by version 60). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
 - **CI:** green on all four systems, and on the latest stable Rust.
 - **Open decisions in the specification:** 9 (section 16).
