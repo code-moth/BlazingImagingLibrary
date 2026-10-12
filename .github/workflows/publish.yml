@@ -1,0 +1,49 @@
+name: Publish
+
+# Run by hand, from the Actions tab, by the project's owner.
+# Needs a CARGO_REGISTRY_TOKEN secret for crates.io, and the PyPI project set up for trusted
+# publishing from this workflow (environment "pypi").
+
+on:
+  workflow_dispatch:
+    inputs:
+      crates:
+        description: "Publish bil and bil-sys to crates.io"
+        type: boolean
+        default: true
+      python:
+        description: "Publish bil to PyPI"
+        type: boolean
+        default: true
+
+jobs:
+  crates:
+    if: ${{ inputs.crates }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo publish -p bil-sys
+          cargo publish -p bil
+
+  python:
+    if: ${{ inputs.python }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build
+        run: |
+          cp LICENSE LINKING-EXCEPTION.md python/
+          python3 -m pip install --upgrade build
+          python3 -m build python
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist

@@ -52,3 +52,45 @@ jobs:
             grep -E "^(error|warning)|: (error|warning)" clippy.txt | head -20 | sed 's/^/::warning::/'
             exit 1
           }
+
+  licenses:
+    # Every dependency's license must be on the allow-list in deny.toml.
+    name: licenses and sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
+
+  packages:
+    # The packages that would be published must build.
+    name: packages build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Rust crates
+        run: cargo package -p bil -p bil-sys
+      - name: Python package
+        run: |
+          cp LICENSE LINKING-EXCEPTION.md python/
+          python3 -m pip install --upgrade build
+          python3 -m build python
+
+  test-data:
+    # Downloads the real test files and checks them against testdata/manifest.toml.
+    # Unpinned checksums, and the files each source offers, are reported as annotations.
+    name: test data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        with:
+          path: testdata/cache
+          key: testdata-${{ hashFiles('testdata/manifest.toml') }}
+          restore-keys: testdata-
+      - name: Fetch and check
+        run: python3 testdata/fetch.py --list
+

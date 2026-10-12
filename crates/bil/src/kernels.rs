@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 //! Slice function kernels, written once over `Vf` and compiled for each instruction set.
 //!
 //! Each kernel maps rows of f32 component buffers to rows of f32 planes. A row is processed in

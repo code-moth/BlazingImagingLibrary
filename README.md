@@ -10,10 +10,12 @@ BIL is written in Rust, with a C-callable interface over it delivered as one sha
 
 | Path | Contents |
 | --- | --- |
-| `docs/specification/` | The specification, version 59: Markdown source and the rendered page |
+| `docs/specification/` | The specification, version 61: Markdown source and the rendered page |
 | `docs/reviews/` | The two red team reviews of the specification |
 | `docs/assessments/` | BIL by Example, and the implementability assessment |
 | `docs/tools/` | The scripts that render the documents |
+| `crates/bil/`, `crates/bil-sys/`, `python/` | The packages: early previews that hold the names |
+| `testdata/` | The manifest of real test files and the script that fetches them |
 | `experiments/exp1-fused-loop/` | Experiment 1: the fused loop, every Level in one pass, bitwise Window independence |
 | `CLAUDE.md` | Working notes: the state of the work and the next step |
 

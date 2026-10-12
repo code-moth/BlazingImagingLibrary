@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["experiments/exp1-fused-loop"]
+members = ["crates/bil", "crates/bil-sys", "experiments/exp1-fused-loop"]
 
 [profile.release]
 opt-level = 3

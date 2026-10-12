@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 //! Runs experiment 1 and prints its report.
 
 use bil_exp1::simd::Isa;

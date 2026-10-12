@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 //! BIL experiment 1: one fused pass that makes a slice function's Slices at every Level from
 //! 0 to n, with Window independence exact to the bit, on scalar, AVX2 and AVX-512 code.
 //!
@@ -17,8 +18,8 @@
     clippy::excessive_precision
 )]
 
-pub mod kernels;
-pub mod simd;
+// The vector layer and kernels now live in the `bil` crate.
+pub use bil::{kernels, simd};
 
 #[cfg(target_arch = "x86_64")]
 use simd::{Avx2, Avx512};

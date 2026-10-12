@@ -5,7 +5,7 @@ Read this first in every session. It records the state of the work, how it is do
 ## The arrangement
 
 - **Claude writes BIL.** The specification's author leads, rules on every design decision, reviews each change, and supplies test data and other systems.
-- **The specification is the source of truth.** `docs/specification/specification.md`, version 60. A design change is made there first, by the author's ruling, and the version number goes up.
+- **The specification is the source of truth.** `docs/specification/specification.md`, version 61. A design change is made there first, by the author's ruling, and the version number goes up.
 - **Ask, don't assume, on design.** Where the specification leaves something open, propose and flag it. Do not decide it silently.
 
 ## Conventions
@@ -33,19 +33,23 @@ The specification requires agreement between Windows, instruction sets and machi
 - **Documents in step with version 60:** the specification, the pass 2 review (review version 5) and BIL by Example (version 4, unaffected by version 60). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
 - **CI:** green on all four systems, and on the latest stable Rust.
-- **Open decisions in the specification:** 9 (section 16).
+- **Open decisions in the specification:** 6 (section 16). Version 61 settled test data, registry names and Tier 1's libraries.
+- **Tier 1 readers:** GeoTIFF through the Rust `tiff` crate with BIL's own GeoTIFF keys; NITF through a native Rust reader using field definitions. GDAL and NITRO (LGPL 3.0) are test references only.
+- **Packages:** `crates/bil` 0.0.1 holds the vector layer and kernels (experiment 1 now uses them from there); `crates/bil-sys` 0.0.1 holds the name; `python/` is `bil` 0.0.1 for PyPI. The author publishes with `.github/workflows/publish.yml`, which needs a `CARGO_REGISTRY_TOKEN` secret and PyPI trusted publishing for environment `pypi`.
+- **Test data:** `testdata/manifest.toml` lists real files and their checksums; `testdata/fetch.py` downloads them. The CI job `test data` fetches them, since this workspace cannot, and reports unpinned checksums as annotations to copy into the manifest.
 
 ## The workspace
 
 - Linux on x86 with AVX2 and AVX-512, two cores, Rust 1.97. macOS, Windows and ARM only through CI.
-- Package registries and GitHub are reachable. Most other sites are not, so real test imagery comes from the author. `static.rust-lang.org` is not reachable, so no other Rust toolchain can be installed here.
+- **Only GitHub is reliably reachable.** In some sessions crates.io, PyPI and every other site fail to resolve, so build with `--offline` and add no dependency that is not already in `Cargo.lock`. Real test files are fetched by CI or supplied by the author. `static.rust-lang.org` is not reachable, so no other Rust toolchain can be installed here.
 - **The toolchain is pinned** to 1.97.0 in `rust-toolchain.toml`. In a fresh workspace rustup tries to download it by that name and fails. The installed stable is the same 1.97.0, so expose it under the pinned name:
   `ln -s stable-x86_64-unknown-linux-gnu ~/.rustup/toolchains/1.97.0-x86_64-unknown-linux-gnu`
 - **The working clone** is `/home/claude/blazingimaginglibrary`, the path the session expects.
 
 ## CI
 
-- `.github/workflows/ci.yml` runs format, lint (warnings are errors), build and experiment 1's `--check` on `ubuntu-latest`, `ubuntu-24.04-arm`, `windows-latest` and `macos-latest`.
+- `.github/workflows/ci.yml` runs format, lint (warnings are errors), build and experiment 1's `--check` on `ubuntu-latest`, `ubuntu-24.04-arm`, `windows-latest` and `macos-latest`. Further jobs check licenses and sources with cargo-deny (`deny.toml`), build the crates and the Python package, and fetch the test data.
+- Every source file starts with an SPDX license line.
 - A separate job lints on the latest stable Rust and may fail without failing the build. It reports lints a newer compiler adds, so the pin can be raised deliberately.
 - Job logs need authentication this workspace does not have. Lint messages are raised as annotations, which can be read without it:
   `curl -s https://api.github.com/repos/code-moth/BlazingImagingLibrary/check-runs/JOB_ID/annotations`

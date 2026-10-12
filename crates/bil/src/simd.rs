@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 //! A small vector abstraction with one scalar and two x86 back ends.
 //!
 //! Every operation is an IEEE operation that is correctly rounded (add, sub, mul, div, sqrt),

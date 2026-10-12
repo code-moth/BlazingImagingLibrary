@@ -1,0 +1,11 @@
+[package]
+name = "bil-sys"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.97"
+license = "LGPL-2.1-or-later"
+description = "Native bindings used by the Blazing Imaging Library (bil). Placeholder: no bindings yet."
+repository = "https://github.com/code-moth/BlazingImagingLibrary"
+readme = "README.md"
+
+[dependencies]

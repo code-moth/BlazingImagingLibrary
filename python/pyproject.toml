@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bil"
+version = "0.0.1"
+description = "Blazing Imaging Library: reads imaging sensor data from any format as native Fragments or 2D float32 Slices. Early preview: no reading interface yet."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LGPL-2.1-or-later"
+license-files = ["LICENSE", "LINKING-EXCEPTION.md"]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+[project.urls]
+Repository = "https://github.com/code-moth/BlazingImagingLibrary"

@@ -2,7 +2,9 @@
 name = "bil-exp1"
 version = "0.1.0"
 edition = "2021"
+publish = false
 license = "LGPL-2.1-or-later"
 description = "BIL experiment 1: the fused loop, all Levels in one pass, bitwise window independence"
 
 [dependencies]
+bil = { path = "../../crates/bil" }

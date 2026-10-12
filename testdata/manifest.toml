@@ -1,0 +1,118 @@
+# Real test files for BIL. The files themselves are not kept in git: `fetch.py` downloads them
+# into testdata/cache/ and checks each against its SHA-256. A file whose checksum is not yet
+# recorded is downloaded and its checksum reported, so it can be pinned here.
+#
+# Source: GDAL's download cache, which mirrors the NITF Test Bed files once published by the
+# U.S. National Imagery and Mapping Agency. The source page states no terms of use; the
+# author of BIL has approved their use for testing.
+
+[sources.gdal_cache]
+bases = [
+  "https://download-cache.osgeo.org/gdal/data/nitf/",
+  "https://download.osgeo.org/gdal/data/nitf/",
+]
+listing_pages = ["nitf2.0/scen_2_0.html", "nitf2.1/", "nitf2.1/scen_2_1.html", "jpeg2000/"]
+
+# Each file: where it is, which tier needs it, and what it exercises.
+
+[[file]]
+path = "nitf2.0/U_1001a.ntf"
+tier = 1
+exercises = "Uncompressed 1024 x 1024 8-bit mono, with geographic data"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_1034a.ntf"
+tier = 1
+exercises = "1-bit mono with no table, image not at 0,0"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_2001a.ntf"
+tier = 1
+exercises = "Lookup table with 128 entries"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_3001a.ntf"
+tier = 1
+exercises = "Uncompressed 1024 x 1024 24-bit color, blocked, IMODE S"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_3002a.ntf"
+tier = 1
+exercises = "Uncompressed 256 x 256 24-bit color, blocked, IMODE B"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_3010a.ntf"
+tier = 1
+exercises = "Uncompressed 1024 x 1052 8-bit color with lookup table, 128 blocks"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_4002a.ntf"
+tier = 1
+exercises = "Single block 255 x 257, 13 significant bits in 16"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_4005a.ntf"
+tier = 1
+exercises = "Four blocks of 1024 x 1024, 11 significant bits in 16"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_4007a.ntf"
+tier = 1
+exercises = "Six blocks, 255 x 257, 13 significant bits in 16"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_1114a.ntf"
+tier = 1
+exercises = "A text segment of one byte"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_1122a.ntf"
+tier = 1
+exercises = "Several image segments, labels, a BMP and text in one file"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_1130f.ntf"
+tier = 1
+exercises = "Overflow of user-defined and extended header data"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_1125d.ntf"
+tier = 1
+exercises = "Segment and label lengths that do not match: a malformed-file case"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_4001b.ntf"
+tier = 2
+exercises = "JPEG, single block 2048 x 2048 mono"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_4017a.ntf"
+tier = 2
+exercises = "12-bit JPEG, 64 x 64 mono"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_2010a.ntf"
+tier = 2
+exercises = "JPEG YCbCr color"
+sha256 = ""
+
+[[file]]
+path = "nitf2.0/U_3058b.ntf"
+tier = 3
+exercises = "VQ compressed 1536 x 1536"
+sha256 = ""
