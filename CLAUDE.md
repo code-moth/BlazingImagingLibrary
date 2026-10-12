@@ -29,8 +29,8 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## State
 
-- **Specification:** version 60. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
-- **Documents in step with version 60:** the specification, the pass 2 review (review version 5) and BIL by Example (version 4, unaffected by version 60). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
+- **Specification:** version 61. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
+- **Documents in step with version 61:** the specification, the pass 2 review (review version 5) and BIL by Example (version 4, unaffected by versions 60 and 61). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
 - **CI:** green on all four systems, and on the latest stable Rust.
 - **Open decisions in the specification:** 6 (section 16). Version 61 settled test data, registry names and Tier 1's libraries.
