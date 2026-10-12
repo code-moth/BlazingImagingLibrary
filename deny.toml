@@ -3,8 +3,8 @@
 # LGPL 2.1 itself, so that no package becomes LGPL 3 by accident (the author's ruling).
 # Test-only code is checked separately, against deny-tests.toml.
 #
-# Apache-2.0 alone is not listed: the Free Software Foundation holds it incompatible
-# with the 2.1 licenses. Crates offered as "MIT OR Apache-2.0" still pass through MIT.
+# Apache-2.0 alone is allowed, by the author's ruling, which accepts the risk: the Free
+# Software Foundation holds it incompatible with the 2.1 licenses, though not with LGPL 3.
 
 [graph]
 all-features = true
@@ -16,6 +16,8 @@ exclude-unpublished = true
 [licenses]
 allow = [
   "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
