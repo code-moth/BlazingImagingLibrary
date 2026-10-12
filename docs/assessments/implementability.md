@@ -1,6 +1,6 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Version 3 brings the document in step with specification version 66: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 and 4 bring the document in step with specification version 67: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.
 
-**What has changed between versions 56 and 66**
+**What has changed between versions 56 and 67**
 
 | Change | Where it bears |
 | --- | --- |
@@ -11,6 +11,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 | Geocoding carries full accuracy records (section 13.9), which adds partial derivatives to every step | H7 |
 | Tier 1 reads GeoTIFF and NITF with Rust readers, and 22 real NITF test files are pinned | Section 7 |
 | Speed aims to be as fast as each function's arithmetic allows, measured against a copy and against that arithmetic (version 66) | H1, section 8 |
+| `missing_weights` chooses how coarse Levels weight missing data: `Equal` or `PixelCount` (version 67) | H1 |
 
 ## 1. Verdict
 
@@ -269,7 +270,7 @@ These are the backing libraries whose health matters most to the early tiers. He
 
 ## 7. What the specification must settle before coding
 
-These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 66, every one is settled.
+These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 67, every one is settled.
 
 **Before Tier 1**
 

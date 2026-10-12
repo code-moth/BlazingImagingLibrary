@@ -455,6 +455,7 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `level_source` | `Computed` | `Stored` lets BIL start from a stored level it chooses |
 | `decimate_first` | 0 | Halvings taken by striding before the level method |
 | `missing_value` | None | A number to fill missing positions with, instead of NaN |
+| `missing_weights` | `Equal` | How a Level weights the values below it where some are missing: `Equal` or `PixelCount` (section 5) |
 | `timeout` | None | The longest a read may wait, as for the next frame of a live stream. A read that exceeds it is an error. |
 | `cancel` | None | A handle the caller can trigger from another thread to stop the read, which then returns an error |
 
@@ -730,7 +731,7 @@ hv    = bil.SliceSelector("complex.polar.magnitude", component="hv")
 | `slices` | One or more Slices, from one slice function or from several |
 | `window` | The Window |
 | `levels` | One or more Levels, by name: `level3`, `stored2`, `stored2.level1`. A whole number n is a short form of `leveln`. |
-| `options` | The level method, level source, `decimate_first` and `missing_value` (section 3.4) |
+| `options` | The level method, level source, `decimate_first`, `missing_value` and `missing_weights` (section 3.4) |
 | `delivery` | Returned as arrays, written into buffers the caller owns, or streamed as row blocks |
 
 - **Any combination.** Several Slices, at several Levels, streamed, is one request like any other.
@@ -881,15 +882,21 @@ pub struct SliceOptions {
     pub level_source: LevelSource,   // Computed unless Stored is chosen
     pub decimate_first: u32,         // halvings taken by striding before level_method; 0 by default
     pub missing_value: Option<f32>,  // None: missing positions are NaN; Some(v): filled with v
+    pub missing_weights: MissingWeights, // Equal unless PixelCount is chosen
 }
 
 pub enum LevelSource { Computed, Stored }
+pub enum MissingWeights { Equal, PixelCount }
 ```
 
 **Missing data.** A Slice value with no data behind it is NaN. This covers three cases: pixels that were never recorded, pixels that were never imaged, and pixels the format marks with a fill value. Some formats store only part of the 2D array, so the unrecorded positions have no description in the file. When BIL unpacks such data to a full array, each of those positions still needs a number, and that number is NaN.
 
 - **Every Slice of a missing pixel is NaN,** whichever slice function made it. `pixel.mask.valid` gives the same information as 1.0 or 0.0 for callers that prefer a mask.
 - **Averaging skips missing values.** Resolution levels and local functions leave NaN out and rescale the remaining weights. A result is NaN only when every value that would contribute is missing.
+    - **Two ways to weight a Level.** Each Level is made from the Level below it, and `missing_weights` in `SliceOptions` chooses how the values below are weighted where some are missing.
+    - **`Equal`, the default.** Each present value below has its filter weight alone. A Level is the average of the present values of the Level below. This is the common case.
+    - **`PixelCount`.** Each present value below has its filter weight times the share of present full-resolution pixels behind it. A Level is then the average of the present full-resolution pixels under the whole filter, as if it were made from full resolution in one step.
+    - **The same where nothing is missing.** With every pixel present, both give exactly the values of an Image with no missing data.
 - **A number in place of NaN, on request.** One NaN spreads through a Fourier transform or a convolution, and code of that kind does not expect it. `missing_value` in `SliceOptions` fills missing positions with a number the caller chooses. NaN remains the default.
     - **Filled last.** The fill is applied to the finished Slice, after the slice function and the Level, so averaging still leaves missing values out and every other value is unchanged.
     - **Still reported.** The status stays `Partial`. A caller who needs to know which positions were filled asks for `pixel.mask.valid` in the same request.
@@ -2455,7 +2462,7 @@ Two points are not yet settled, and sixty-eight have been decided. Each lists th
 - [x] **Scripted drivers outside Python.** Decided: Rust, C and C++ callers can use scripted drivers, through CPython in a helper process (section 10.1).
 - [x] **Interpreter packaging.** Decided: the interpreter is CPython, taken from the Python installed on the machine, and BIL's packages contain none. Inside Python, BIL uses that interpreter. Without an installed Python, only scripted drivers are unavailable (section 10.1).
 - [x] **Interpreter process.** Decided: for Rust, C and C++ callers, CPython runs in a helper process. The cost of the round trip is benchmarked and watched, and the choice is reviewed if it becomes prohibitive (section 10.1).
-- [x] **NaN for missing data.** Decided: a Slice value with no data behind it is NaN by default. `missing_value` in `SliceOptions` fills such positions with a number the caller chooses (section 5).
+- [x] **NaN for missing data.** Decided: a Slice value with no data behind it is NaN by default. `missing_value` in `SliceOptions` fills such positions with a number the caller chooses. `missing_weights` chooses whether a Level weights the values below it equally, the default, or by the present full-resolution pixels behind each (section 5).
 - [x] **Registry names.** Decided: hold the names with genuine first releases rather than empty placeholders. `bil` 0.0.1 on crates.io holds the vector layer and kernels from experiment 1, `bil-sys` 0.0.1 holds the name for native bindings, and `bil` 0.0.1 on PyPI holds the Python name. The project's owner publishes them through the repository's Publish workflow. If `bil` is taken on PyPI, the package is `blazing-imaging` and still imports as `bil`.
 - [x] **Default demosaicing method.** Decided: `bilinear`, the same method used for the resolution levels, so both come from a single pass. `malvar_he_cutler` remains available.
 - [x] **Downsampling method.** Decided: bilinear interpolation, with weights 1 2 1 at each halving, built into the interface as resolution levels. Its aliasing is recorded, and `binomial5`, with weights 1 4 6 4 1, is the first added method. Other named methods can be added as extensions (section 5).

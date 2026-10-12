@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 66: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 67: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 66. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 67. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -486,6 +486,19 @@ mask     = image.read_slice("pixel.mask.valid", window)   # to know which values
 
 ```python
 saturated = image.read_slice("pixel.mask.saturated", window)
+```
+
+### 6.4 Coarse Levels that count the pixels behind them
+
+```python
+# Equal, the default: each Level averages the present values of the Level below.
+overview = image.read_slice("pixel.raw.intensity", window, level=4)
+
+# PixelCount: as if each Level were made from full resolution at once, so a value next to a large
+# gap is not pulled toward the few pixels that happen to survive at the Level below.
+faithful = image.read_slice("pixel.raw.intensity", window, level=4,
+                            missing_weights=bil.MissingWeights.PixelCount)
+share    = image.read_slice("pixel.mask.valid_fraction", window, level=4)   # how much was present
 ```
 
 ## 7. Fragments: the native data
@@ -1121,4 +1134,4 @@ Version 1 of this document found these gaps in the calling interface. Version 58
 
 **Settled since, in version 59.** A writer writes the geo model without being asked (R30). A live stream has one position for all Readers, and a frame no longer held is `Missing` (R34).
 
-**Added since, in versions 62 to 65.** Every position can carry its accuracy, with `relative_accuracy`, `circular_error`, `linear_error` and `error_ellipse` (examples 11.11 to 11.14). Scripted drivers run in a helper process for Rust, C and C++ callers (example 15.1). External decoding through the mapped format needs no change to the caller's code, so it has no example of its own.
+**Added since, in versions 62 to 67.** Every position can carry its accuracy, with `relative_accuracy`, `circular_error`, `linear_error` and `error_ellipse` (examples 11.11 to 11.14). Scripted drivers run in a helper process for Rust, C and C++ callers (example 15.1). `missing_weights` chooses how coarse Levels weight missing data (example 6.4). External decoding through the mapped format needs no change to the caller's code, so it has no example of its own.
