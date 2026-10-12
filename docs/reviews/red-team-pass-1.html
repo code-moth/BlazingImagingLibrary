@@ -1,0 +1,927 @@
+<title>BIL Red Team Findings</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: a sticky contents rail beside one reading column; tables and code may run wider than prose and scroll in their own boxes. */
+:root {
+  --bg: #f6f8f9;
+  --surface: #ffffff;
+  --fg: #17222b;
+  --muted: #586773;
+  --rule: #d8e0e5;
+  --rule-strong: #9fadb8;
+  --code-bg: #ebf0f3;
+  --accent: #0a6a8a;
+  --accent-soft: #d9ecf2;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151a;
+    --surface: #151d24;
+    --fg: #e2e9ee;
+    --muted: #93a2ae;
+    --rule: #26323b;
+    --rule-strong: #4c5b67;
+    --code-bg: #1a252d;
+    --accent: #62c1dc;
+    --accent-soft: #143642;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151a;
+  --surface: #151d24;
+  --fg: #e2e9ee;
+  --muted: #93a2ae;
+  --rule: #26323b;
+  --rule-strong: #4c5b67;
+  --code-bg: #1a252d;
+  --accent: #62c1dc;
+  --accent-soft: #143642;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.shell { max-width: 1200px; margin-inline: auto; padding-inline: 20px; padding-block: 32px 80px; }
+
+/* ---- header ---- */
+.masthead { display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: flex-end; justify-content: space-between; padding-bottom: 28px; border-bottom: 2px solid var(--fg); }
+.masthead-text { min-width: 0; flex: 1 1 420px; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.lede { margin: 14px 0 0; max-width: 62ch; color: var(--muted); font-size: 1.05rem; }
+.motif { width: 168px; max-width: 100%; height: auto; flex: 0 0 auto; }
+.motif .px { fill: var(--rule); }
+.motif .px.in { fill: var(--accent); }
+
+.control { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; margin: 0; border-bottom: 1px solid var(--rule); }
+.control div { padding: 14px 16px 14px 0; min-width: 0; }
+.control dt { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.control dd { margin: 2px 0 0; font-weight: 500; }
+
+/* ---- layout ---- */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 32px; }
+.rail { display: none; }
+.toc-inline { border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); padding: 12px 16px; margin-bottom: 28px; }
+.toc-inline summary { cursor: pointer; font-weight: 600; }
+@media (min-width: 1040px) {
+  .layout { grid-template-columns: 250px minmax(0, 1fr); gap: 56px; }
+  .rail { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: 8px; }
+  .toc-inline { display: none; }
+}
+.toc-title { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.toc ol ol { margin: 2px 0 6px 12px; padding-left: 10px; border-left: 1px solid var(--rule); }
+.toc a { display: block; padding: 3px 0; color: var(--fg); text-decoration: none; font-size: 0.9rem; line-height: 1.35; }
+.toc ol ol a { color: var(--muted); font-size: 0.82rem; }
+.toc a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+.column { min-width: 0; }
+
+/* ---- content ---- */
+main { min-width: 0; max-width: 900px; }
+main > h2:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 20px); }
+h2 { font-size: 1.75rem; line-height: 1.15; margin: 56px 0 14px; padding-top: 28px; border-top: 1px solid var(--rule-strong); }
+h3 { font-size: 1.25rem; line-height: 1.2; margin: 34px 0 10px; }
+main p, main ul, main ol { max-width: 72ch; }
+main p { margin: 0 0 14px; }
+main ul, main ol { margin: 0 0 16px; padding-left: 1.4em; }
+main li { margin-bottom: 6px; }
+main li > p { margin-bottom: 6px; }
+strong { font-weight: 600; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 0.1em 0.34em; border-radius: 3px; }
+pre { background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; margin: 0 0 16px; overflow-x: auto; line-height: 1.5; }
+pre code { background: none; padding: 0; font-size: 0.82rem; }
+
+.table-wrap { overflow-x: auto; margin: 4px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 0.9rem; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 9px 14px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); background: var(--bg); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; }
+td code { white-space: nowrap; }
+
+ul.tasks { list-style: none; padding-left: 0; display: flex; flex-direction: column; gap: 10px; max-width: 78ch; }
+ul.tasks li { position: relative; margin: 0; padding-left: 32px; }
+ul.tasks li::before { content: ""; position: absolute; left: 0; top: 0.2em; width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--rule-strong); background: var(--surface); }
+ul.tasks li.done::before { background: var(--accent); border-color: var(--accent); }
+ul.tasks li.done::after { content: ""; position: absolute; left: 6px; top: calc(0.2em + 3px); width: 5px; height: 9px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+ul.tasks li.done { color: var(--muted); }
+
+.diagram { margin: 8px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.diagram-scroll { overflow-x: auto; padding: 8px; }
+.diagram svg { display: block; width: 100%; min-width: 640px; height: auto; font-family: var(--font-body); }
+.diagram figcaption { padding: 8px 14px 10px; border-top: 1px solid var(--rule); font-size: 0.82rem; color: var(--muted); }
+.d-title { font-size: 15px; font-weight: 600; fill: var(--fg); }
+.d-name { font-size: 13px; font-weight: 600; fill: var(--fg); }
+.d-line { font-size: 11.5px; }
+.d-ink { fill: var(--fg); }
+.d-quiet { fill: var(--muted); }
+.d-box { fill: none; stroke: var(--rule-strong); stroke-width: 1.25; }
+.d-box.d-main { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.d-edges path { fill: none; stroke: var(--rule-strong); stroke-width: 1.25; }
+.d-head { fill: var(--rule-strong); }
+
+.fid { font-family: var(--font-mono); font-weight: 500; font-size: 0.8em; color: var(--accent); margin-right: 0.35em; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 14px; color: var(--muted); font-size: 0.9rem; }
+.chip { display: inline-block; font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--rule-strong); color: var(--muted); white-space: nowrap; }
+.chip.open { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.chip.resolved, .chip.accepted { border-color: var(--fg); color: var(--fg); }
+td a { color: var(--fg); text-decoration: none; }
+td a:hover { color: var(--accent); text-decoration: underline; }
+main h3 { margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--rule); }
+main h2 + p + h3 { border-top: 0; padding-top: 0; margin-top: 28px; }
+main li > ul, main li > ol { margin-top: 6px; }
+footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.85rem; max-width: 72ch; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="masthead-text">
+      <p class="eyebrow">Red team review · Version 29</p>
+      <h1>BIL Red Team Findings</h1>
+      <p class="lede">25 weaknesses found in version 23 of the Blazing Imaging Library specification, each with a proposed resolution and the decision it needs.</p>
+    </div>
+    <svg class="motif" viewBox="0 0 166 52" role="img" aria-label="0 of 25 findings open"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="152" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="152" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px" x="114" y="38" width="14" height="14" rx="2"/></svg>
+  </header>
+  <dl class="control">
+    <div><dt>Review version</dt><dd>29</dd></div>
+    <div><dt>As of</dt><dd>12 October 2026</dd></div>
+    <div><dt>Specification reviewed</dt><dd>Version 23</dd></div>
+    <div><dt>Findings</dt><dd>7 critical, 11 serious, 7 lesser</dd></div>
+    <div><dt>Status</dt><dd>0 open, 25 resolved</dd></div>
+    <div><dt>Method</dt><dd>Paper review; nothing was run</dd></div>
+  </dl>
+
+  <div class="layout">
+    <nav class="rail toc" aria-label="Contents">
+      <p class="toc-title">Contents</p>
+      <ol><li><a href="#how-to-use-this-document">How to use this document</a></li><li><a href="#summary">Summary</a></li><li><a href="#critical-findings">Critical findings</a><ol><li><a href="#r1">R1 Stored pyramids have no home</a></li><li><a href="#r2">R2 There is no cache of decoded tiles</a></li><li><a href="#r3">R3 Video does not fit the model</a></li><li><a href="#r4">R4 The markings rule contradicts itself</a></li><li><a href="#r5">R5 Decoded data can spill, and BIL may reach the network unasked</a></li><li><a href="#r6">R6 Sixty parsers of untrusted files run in the caller's process</a></li><li><a href="#r7">R7 The scale has no phasing</a></li></ol></li><li><a href="#serious-findings">Serious findings</a><ol><li><a href="#r8">R8 The zero-copy rule is missing conditions</a></li><li><a href="#r9">R9 Grid alignment is not specified</a></li><li><a href="#r10">R10 The sample types cannot hold the specification's own cases</a></li><li><a href="#r11">R11 A Fragment has one sample type, and a slice function has one Image</a></li><li><a href="#r12">R12 Slice selection is a string with no grammar</a></li><li><a href="#r13">R13 There is no threading model and no error model</a></li><li><a href="#r14">R14 Results depend on what is installed</a></li><li><a href="#r15">R15 BIL's libraries will meet other copies in the same process</a></li><li><a href="#r16">R16 Geocoding re-implements rigorous sensor models, with no validation target</a></li><li><a href="#r17">R17 Metadata has six holes</a></li><li><a href="#r18">R18 The license position needs legal review</a></li></ol></li><li><a href="#lesser-findings">Lesser findings</a><ol><li><a href="#r19">R19 Some slice functions are image processing</a></li><li><a href="#r20">R20 Color is under-specified</a></li><li><a href="#r21">R21 NaN spreads through downstream code</a></li><li><a href="#r22">R22 A cut across frames costs one read per frame</a></li><li><a href="#r23">R23 The bilinear filter lets through aliasing</a></li><li><a href="#r24">R24 The naming rule is broken by its own calls</a></li><li><a href="#r25">R25 Some performance claims overreach</a></li></ol></li><li><a href="#what-held-up">What held up</a></li></ol>
+    </nav>
+    <div class="column">
+      <details class="toc-inline toc">
+        <summary>Contents</summary>
+        <ol><li><a href="#how-to-use-this-document">How to use this document</a></li><li><a href="#summary">Summary</a></li><li><a href="#critical-findings">Critical findings</a><ol><li><a href="#r1">R1 Stored pyramids have no home</a></li><li><a href="#r2">R2 There is no cache of decoded tiles</a></li><li><a href="#r3">R3 Video does not fit the model</a></li><li><a href="#r4">R4 The markings rule contradicts itself</a></li><li><a href="#r5">R5 Decoded data can spill, and BIL may reach the network unasked</a></li><li><a href="#r6">R6 Sixty parsers of untrusted files run in the caller's process</a></li><li><a href="#r7">R7 The scale has no phasing</a></li></ol></li><li><a href="#serious-findings">Serious findings</a><ol><li><a href="#r8">R8 The zero-copy rule is missing conditions</a></li><li><a href="#r9">R9 Grid alignment is not specified</a></li><li><a href="#r10">R10 The sample types cannot hold the specification's own cases</a></li><li><a href="#r11">R11 A Fragment has one sample type, and a slice function has one Image</a></li><li><a href="#r12">R12 Slice selection is a string with no grammar</a></li><li><a href="#r13">R13 There is no threading model and no error model</a></li><li><a href="#r14">R14 Results depend on what is installed</a></li><li><a href="#r15">R15 BIL's libraries will meet other copies in the same process</a></li><li><a href="#r16">R16 Geocoding re-implements rigorous sensor models, with no validation target</a></li><li><a href="#r17">R17 Metadata has six holes</a></li><li><a href="#r18">R18 The license position needs legal review</a></li></ol></li><li><a href="#lesser-findings">Lesser findings</a><ol><li><a href="#r19">R19 Some slice functions are image processing</a></li><li><a href="#r20">R20 Color is under-specified</a></li><li><a href="#r21">R21 NaN spreads through downstream code</a></li><li><a href="#r22">R22 A cut across frames costs one read per frame</a></li><li><a href="#r23">R23 The bilinear filter lets through aliasing</a></li><li><a href="#r24">R24 The naming rule is broken by its own calls</a></li><li><a href="#r25">R25 Some performance claims overreach</a></li></ol></li><li><a href="#what-held-up">What held up</a></li></ol>
+      </details>
+      <main>
+<h2 id="how-to-use-this-document">How to use this document</h2>
+<p>Each finding is a weakness in the specification, with a proposed resolution and the decision it needs from you.</p>
+<ul>
+<li><strong>Work through them in any order.</strong> Give the finding's number and your ruling, and both this document and the specification are updated.</li>
+<li><strong>Every finding carries a status.</strong> It starts as Open, and moves to Accepted, Rejected or Deferred. An accepted finding is marked Resolved once the specification has changed, with the version that changed it.</li>
+<li><strong>The resolutions are proposals.</strong> They are my suggestions, not decisions, and several offer more than one option.</li>
+<li><strong>This was a paper review.</strong> The specification was read end to end and checked against itself and against what is known of the formats and libraries. Nothing was run.</li>
+</ul>
+<h2 id="summary">Summary</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Severity</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#r1">R1. Stored pyramids have no home</a></td>
+<td>Critical</td>
+<td><span class="chip resolved">Resolved in version 24</span></td>
+</tr>
+<tr>
+<td><a href="#r2">R2. There is no cache of decoded tiles</a></td>
+<td>Critical</td>
+<td><span class="chip resolved">Resolved in version 25</span></td>
+</tr>
+<tr>
+<td><a href="#r3">R3. Video does not fit the model</a></td>
+<td>Critical</td>
+<td><span class="chip resolved">Resolved in version 25</span></td>
+</tr>
+<tr>
+<td><a href="#r4">R4. The markings rule contradicts itself</a></td>
+<td>Critical</td>
+<td><span class="chip resolved">Resolved in version 27</span></td>
+</tr>
+<tr>
+<td><a href="#r5">R5. Decoded data can spill, and BIL may reach the network unasked</a></td>
+<td>Critical</td>
+<td><span class="chip resolved">Resolved in version 28</span></td>
+</tr>
+<tr>
+<td><a href="#r6">R6. Sixty parsers of untrusted files run in the caller's process</a></td>
+<td>Critical</td>
+<td><span class="chip resolved">Resolved in version 29</span></td>
+</tr>
+<tr>
+<td><a href="#r7">R7. The scale has no phasing</a></td>
+<td>Critical</td>
+<td><span class="chip resolved">Resolved in version 30</span></td>
+</tr>
+<tr>
+<td><a href="#r8">R8. The zero-copy rule is missing conditions</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 46</span></td>
+</tr>
+<tr>
+<td><a href="#r9">R9. Grid alignment is not specified</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 46</span></td>
+</tr>
+<tr>
+<td><a href="#r10">R10. The sample types cannot hold the specification's own cases</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 32</span></td>
+</tr>
+<tr>
+<td><a href="#r11">R11. A Fragment has one sample type, and a slice function has one Image</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 42</span></td>
+</tr>
+<tr>
+<td><a href="#r12">R12. Slice selection is a string with no grammar</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 42</span></td>
+</tr>
+<tr>
+<td><a href="#r13">R13. There is no threading model and no error model</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 48</span></td>
+</tr>
+<tr>
+<td><a href="#r14">R14. Results depend on what is installed</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 48</span></td>
+</tr>
+<tr>
+<td><a href="#r15">R15. BIL's libraries will meet other copies in the same process</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 34</span></td>
+</tr>
+<tr>
+<td><a href="#r16">R16. Geocoding re-implements rigorous sensor models, with no validation target</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 41</span></td>
+</tr>
+<tr>
+<td><a href="#r17">R17. Metadata has six holes</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 48</span></td>
+</tr>
+<tr>
+<td><a href="#r18">R18. The license position needs legal review</a></td>
+<td>Serious</td>
+<td><span class="chip resolved">Resolved in version 35</span></td>
+</tr>
+<tr>
+<td><a href="#r19">R19. Some slice functions are image processing</a></td>
+<td>Lesser</td>
+<td><span class="chip resolved">Resolved in version 53</span></td>
+</tr>
+<tr>
+<td><a href="#r20">R20. Color is under-specified</a></td>
+<td>Lesser</td>
+<td><span class="chip resolved">Resolved in version 52</span></td>
+</tr>
+<tr>
+<td><a href="#r21">R21. NaN spreads through downstream code</a></td>
+<td>Lesser</td>
+<td><span class="chip resolved">Resolved in version 50</span></td>
+</tr>
+<tr>
+<td><a href="#r22">R22. A cut across frames costs one read per frame</a></td>
+<td>Lesser</td>
+<td><span class="chip resolved">Resolved in version 44</span></td>
+</tr>
+<tr>
+<td><a href="#r23">R23. The bilinear filter lets through aliasing</a></td>
+<td>Lesser</td>
+<td><span class="chip resolved">Resolved in version 49</span></td>
+</tr>
+<tr>
+<td><a href="#r24">R24. The naming rule is broken by its own calls</a></td>
+<td>Lesser</td>
+<td><span class="chip resolved">Resolved in version 39</span></td>
+</tr>
+<tr>
+<td><a href="#r25">R25. Some performance claims overreach</a></td>
+<td>Lesser</td>
+<td><span class="chip resolved">Resolved in version 49</span></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="critical-findings">Critical findings</h2>
+<p>These break one of the specification's own five rules, or leave a core mechanism with no place in the design.</p>
+<h3 id="r1"><span class="fid">R1</span> Stored pyramids have no home</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 24</span><span class="where">Sections 4, 5 and 8.4</span></p>
+<p><strong>Problem.</strong> A Level is defined as bilinear downsampling from full resolution. The Window <code>step</code> is defined as every nth stored pixel, with no filtering. Data that a file stores at reduced resolution is neither: overviews, whole-slide pyramid levels, NITF reduced-resolution sets and JPEG 2000 resolution levels are all filtered by the file's own method. Section 5 says <code>step</code> "can use overviews stored in the file", which contradicts the Fragment definition in section 4.</p>
+<p><strong>Why it matters.</strong> A Level 8 view of a 100,000 × 100,000 slide returns about 150,000 pixels, but BIL must decode all 10 gigapixels to make it. The cost follows the collection, which breaks the Proportional rule for exactly the data section 1.1 is written about.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Name stored reduced-resolution data as its own thing, a stored level. <code>list_stored_levels</code> reports each one with its scale and, where the file states it, the method that made it.</li>
+<li>Add a level source to <code>SliceOptions</code>. <code>Exact</code> computes from full resolution, as now. <code>Stored</code> starts from the nearest stored level and applies the level method from there.</li>
+<li><code>plan_slice</code> reports which was used. <code>step</code> stays strictly unfiltered.</li>
+</ul>
+<p><strong>Decision needed.</strong> May a Level read start from a stored level, accepting that its values then depend on how the file was made?</p>
+<p><strong>Ruling.</strong> Accepted, with two additions.</p>
+<ul>
+<li>A computed Level must always read the data under it. An averaged view of a whole image means processing the whole image, and that cost is accepted.</li>
+<li>For large reductions a decimation strategy is needed that strides across the data.</li>
+<li>Stored reduced-resolution data is to be named as such, and the stored solution implemented.</li>
+</ul>
+<p><strong>What changed in the specification.</strong> Version 24, section 5.</p>
+<ul>
+<li>The cost of each route to a reduced read is stated: computed with a filter, computed with <code>decimate</code>, and stored.</li>
+<li><code>decimate</code> is a built-in level method that reads only the pixels it keeps. <code>decimate_first</code> takes the first halvings by striding and leaves the rest to the level method.</li>
+<li>Stored levels are listed by <code>list_stored_levels</code> and named <code>stored1</code>, <code>stored2</code> and so on. They are read directly with <code>stored_level</code>, or used to make a Level with <code>level_source</code> set to <code>Stored</code>. They are never used unasked.</li>
+<li>Every Slice reports a level name, such as <code>level3</code>, <code>stored2</code> or <code>stored2.level1</code>.</li>
+<li><code>step</code> no longer claims to use stored overviews, which removes the contradiction with the Fragment definition.</li>
+</ul>
+<h3 id="r2"><span class="fid">R2</span> There is no cache of decoded tiles</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 25</span><span class="where">Sections 5 and 12, and the open decision on a frame cache</span></p>
+<p><strong>Problem.</strong> Compressed formats decode whole tiles or blocks. Adjacent Windows that share a tile each decode it again. BIL's own margins make this worse: a Window aligned to a tile boundary reads a margin of one or two pixels, and decodes every neighboring tile to get it.</p>
+<p><strong>Why it matters.</strong> An algorithm that steps through a tiled JPEG 2000 image one tile at a time, using a local slice function, decodes each tile up to nine times: once for itself and once for each of its eight neighbors.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>A decoded-block cache with a size the caller sets in bytes.</li>
+<li><code>plan_slice</code> reports how many blocks a read will decode.</li>
+<li>Merge this with the open decision on the decoded frame cache, since a video frame is one more kind of block.</li>
+</ul>
+<p><strong>Decision needed.</strong> The default cache size, and whether one cache serves every Source or each Source has its own.</p>
+<p><strong>Ruling.</strong> Accepted. The cache size is to be set as a number of Fragments kept, not in bytes.</p>
+<p><strong>What changed in the specification.</strong> Version 25, section 4.</p>
+<ul>
+<li>A Fragment cache keeps recently decoded blocks and video frames, each as a Fragment. <code>set_cache_size</code> sets how many are kept, and zero turns it off.</li>
+<li><code>describe_cache</code> reports the bytes held, because a count does not fix the memory used. <code>plan_slice</code> reports the blocks a read will decode.</li>
+<li>The open decision on a decoded frame cache is closed, since a video frame is one more kind of block.</li>
+<li>Two details were not ruled on and are my choice: each Source has its own cache, and the default is 16 Fragments.</li>
+</ul>
+<h3 id="r3"><span class="fid">R3</span> Video does not fit the model</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 25</span><span class="where">Sections 4, 8.3, 9.3 and 15</span></p>
+<p><strong>Problem.</strong> There are four separate faults.</p>
+<ol>
+<li><strong>The Fragment shape.</strong> A deferred Fragment holds compressed packets, but <code>data</code> and <code>strides</code> describe pixels. Decoder state kept between reads is changing state behind a call declared as read-only.</li>
+<li><strong>Frame count and frame times.</strong> A transport stream has no index, so both need a scan of the whole stream. That contradicts "opening extracts little".</li>
+<li><strong>A Window saves nothing.</strong> Decoding a small Window still decodes whole frames, from the preceding key frame.</li>
+<li><strong>Chroma.</strong> Section 8.3 makes the half-size chroma planes separate Images. Section 9.3 makes them Slices of one Image. Section 15 puts chroma upsampling outside the model, so the most common video in the world cannot give <code>color.rgb</code>.</li>
+</ol>
+<p><strong>Why it matters.</strong> Video is one of the five format groups BIL must read, and wide area motion imagery is the worked example that opens the specification.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Make deferred a distinct state in the Fragment type, either pixels or packets.</li>
+<li>Move decoder state out of the Image and into a reader object that each thread owns (see R13).</li>
+<li>Let the frame count be <code>Known</code>, <code>AtLeast</code> or <code>Unknown</code>. Build the frame index on first need, and allow it to be saved beside the file.</li>
+<li><code>plan_slice</code> reports how many frames a read will decode.</li>
+<li>Treat 4:2:0 video as one Image. Add <code>video.rgb</code> as a local slice function with a fixed, stated chroma upsampling. It uses a small fixed neighborhood tied to the Image grid, so it meets the window-independence rule.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether chroma upsampling comes into BIL as a local slice function.</p>
+<p><strong>Ruling.</strong> Accepted. Chroma upsampling is part of the local slice function, because a Slice is a representation of the input data at a set resolution, and every Slice maps its coordinates in the same way.</p>
+<p><strong>What changed in the specification.</strong> Version 25, sections 3.2, 4, 5, 8.3 and 9.3.</p>
+<ul>
+<li>A Fragment is in one of three states: <code>Pixels</code>, <code>Planes</code> or <code>Packets</code>. A deferred Fragment is in the <code>Packets</code> state.</li>
+<li>Decoder state is held in a Reader, one for each thread, and not in the Image.</li>
+<li><code>count_frames</code> returns a count that is <code>Known</code>, <code>AtLeast</code> or <code>Unknown</code>. The frame index is built on first need, never when a Source is opened, and can be saved.</li>
+<li><code>plan_slice</code> reports how many frames a read will decode. The specification now says plainly that a Window does not reduce video decoding.</li>
+<li>Video with reduced chroma is one Image. <code>video.Planes</code> and the new <code>video.rgb</code> upsample chroma to the luma grid, by a stated bilinear method.</li>
+<li>Section 5 gains the rule "one grid for every Slice".</li>
+</ul>
+<p><strong>Follow-up ruling.</strong> A Slice is the caller's chosen representation of the Fragment, and its Level is part of it. For 4:2:0 and similar uneven representations of the vector pixel, the resolution at the requested Level is to be the same across all Slices.</p>
+<p><strong>What changed in the specification.</strong> Version 26, sections 5, 9.3, 13 and 15.</p>
+<ul>
+<li>The rule is now "the Level sets the grid". At a given Level, every Slice of an Image has the same size, whichever slice function made it.</li>
+<li>The half-size Slices are gone. <code>cfa.sites</code>, <code>cfa.binned</code>, the <code>polcam</code> family and <code>video.fields</code> interpolate their samples onto the full grid, as <code>video.Planes</code> does for chroma.</li>
+<li>The stored samples stay available, unaltered, in the Fragment.</li>
+</ul>
+<p><strong>Revised in version 44.</strong> The symmetry review removed the <code>Planes</code> state. Luma and reduced chroma are now two related Images, and a Fragment always has one shape. Deferred decoding is a reported property, <code>is_deferred</code>.</p>
+<h3 id="r4"><span class="fid">R4</span> The markings rule contradicts itself</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 27</span><span class="where">Sections 11 and 14</span></p>
+<p><strong>Problem.</strong> Section 14 says markings are always written. The same table says <code>write_metadata</code> writes the fields the format can hold. A NumPy <code>.npy</code> file holds none, and ENVI and TIFF have no defined place for NITF security fields. A Slice handed to NumPy carries no marking at all.</p>
+<p>The rule also treats two different things as one. A security classification must never be dropped. A patient's identity usually should be removed, unless the caller asks to keep it.</p>
+<p><strong>Why it matters.</strong> As written, reading a classified NITF and writing <code>.npy</code> strips the classification silently, and copying a medical image carries the patient's name into every output by default.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Split the flag in two: <code>Marking</code>, which must be kept, and <code>Identity</code>, which is personal data and is not written unless the caller asks.</li>
+<li>When a writer cannot hold a <code>Marking</code> field, it either refuses or writes the markings to a file beside the output.</li>
+<li>A Slice and a Fragment keep a reference to the markings of the Source they came from.</li>
+</ul>
+<p><strong>Decision needed.</strong> Refuse, write a side file, or let the caller override. And the default for identity fields.</p>
+<p><strong>Ruling.</strong> Accepted. Write a side file where necessary, and let the caller override. The default for identity fields is to leave them empty. Medical imaging stays in scope.</p>
+<p><strong>What changed in the specification.</strong> Version 27, sections 11 and 14.</p>
+<ul>
+<li>A field's definition gives it a handling: <code>Ordinary</code>, <code>Marking</code> or <code>Identity</code>.</li>
+<li>Markings are always written. Where the output format has no place for them, they go to a side file named for the output, with <code>.markings</code> added. BIL reads that file back when it opens the output.</li>
+<li>Identity fields are written empty. The caller keeps them with <code>keep_identity</code>, and can turn markings off with <code>keep_markings</code>.</li>
+<li>Every Fragment and Slice keeps a reference to the markings of its Source, and <code>write_fragment</code> and <code>write_slice</code> write them without being asked.</li>
+<li>The limits are stated: BIL empties only flagged fields and is not a tool for removing identity, and a plain array that leaves BIL no longer carries its markings.</li>
+</ul>
+<p><strong>Revised in version 45.</strong> The markings side file became the companion file, named with <code>.metadata</code>. It carries markings and any other metadata an output format cannot hold.</p>
+<h3 id="r5"><span class="fid">R5</span> Decoded data can spill, and BIL may reach the network unasked</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 28</span><span class="where">Sections 10.2 and 13.6, and the open decision on default terrain</span></p>
+<p><strong>Problem.</strong> The mapped format holds decoded pixels uncompressed, for other processes to read. The specification says nothing about where it is put, who may read it, how long it lives or how it is removed. Decoding a classified or patient Source therefore leaves a clear copy on disk.</p>
+<p>The candidate default terrain is fetched from public cloud storage. Each tile request tells an outside server where the user is looking.</p>
+<p><strong>Why it matters.</strong> Either behavior would stop BIL being approved for a closed network, and the second discloses the area of interest.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>No network by default.</strong> BIL makes no network request unless the caller gave it a remote location. The default surface is a constant height, and remote terrain is chosen explicitly.</li>
+<li><strong>Mapped data is controlled.</strong> The caller names its location. It is created readable by its owner only, carries the Source's markings, and is removed when the decoder process ends unless the caller asks to keep it. Shared memory with no file is offered as an alternative.</li>
+</ul>
+<p><strong>Decision needed.</strong> Confirm "no network unless asked" as a rule of the specification.</p>
+<p><strong>Ruling.</strong> Accepted. Implement the recommendations.</p>
+<p><strong>What changed in the specification.</strong> Version 28, sections 1.2, 1.3, 10.2 and 13.6.</p>
+<ul>
+<li>A sixth design rule, Contained, with a new section 1.3 that sets out two rules: no network unless asked, and no copy unless asked.</li>
+<li>Backing libraries are held to the same rules. PROJ does not download grids, and XML parsing does not fetch external references.</li>
+<li>No terrain is fetched by default. With no surface given, a constant height is used and the result says so. The open decision on default terrain is closed.</li>
+<li>Mapped data has fixed handling: the caller chooses the place, only its owner can read it, it carries markings, and it is removed after use unless the caller keeps it. Shared memory with no file is an option.</li>
+<li>The specification states that BIL does not encrypt mapped data, and that it cannot hold plugins and scripted drivers to these rules.</li>
+</ul>
+<h3 id="r6"><span class="fid">R6</span> Sixty parsers of untrusted files run in the caller's process</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 29</span><span class="where">Section 10 and Appendix A</span></p>
+<p><strong>Problem.</strong> BIL brings about sixty C and C++ parsers into the caller's process, and imagery files arrive from outside. A file crafted to exploit any one of them takes over the caller. A Rust core gives no protection for code it only calls.</p>
+<p>There are no resource limits either. A header can claim any size, and a small compressed block can expand without bound. Plugins found at run time and scripted drivers loaded from a folder are both ways to load code.</p>
+<p><strong>Why it matters.</strong> The more formats BIL reads, the more ways in it offers. That is the direct cost of the library's main selling point.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Resource limits in the options to <code>open_source</code>: largest image size, most decoded bytes, largest metadata group.</li>
+<li>Present external decoding (section 10.2) as isolation as well as convenience. In an isolated mode, any C or C++ driver runs in the decoder process with reduced privileges.</li>
+<li>Plugins load only from locations the caller has configured, never from a search path.</li>
+<li>BIL's own Rust drivers and parsers are fuzz tested as a requirement.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether isolation is the default for Sources the caller has not marked as trusted.</p>
+<p><strong>The case against isolation by default.</strong> It was weighed before the ruling.</p>
+<ul>
+<li>An isolated read cannot borrow from the original file, and always makes one decoded copy.</li>
+<li>Every read becomes a round trip between processes, which hurts small Windows most.</li>
+<li>It needs a default place for mapped data, against the containment rules of R5.</li>
+<li>It makes the unfinished mapped format part of the first tier.</li>
+<li>Reduced privileges work differently on every platform, and some environments forbid them.</li>
+<li>If a trusted flag restores speed, most callers will set it on everything.</li>
+</ul>
+<p><strong>Ruling.</strong> The middle course. Adopt the limits, the configured plugin locations and the fuzz testing. Offer isolation as a setting, off by default.</p>
+<p><strong>What changed in the specification.</strong> Version 29, new section 10.3.</p>
+<ul>
+<li><code>OpenOptions</code> carries three limits the caller sets: <code>max_image_pixels</code>, <code>max_decoded_bytes</code> and <code>max_field_group_bytes</code>. None is set by default.</li>
+<li>Plugins load only from configured locations, with no searching. An installed optional package records its location, so it is still found.</li>
+<li><code>isolation</code> is <code>Off</code>, <code>Untrusted</code> or <code>Always</code>, and defaults to <code>Off</code>. A deployment can set it once as policy.</li>
+<li>When isolation is called for and cannot be provided, the open fails. BIL does not fall back to the caller's process.</li>
+<li>BIL's own Rust readers are fuzz tested as a condition of release. The C and C++ libraries are not covered by that.</li>
+</ul>
+<h3 id="r7"><span class="fid">R7</span> The scale has no phasing</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 30</span><span class="where">The whole specification</span></p>
+<p><strong>Problem.</strong> The specification holds about sixty slice functions, thirteen geocoding steps, sixty candidate libraries, an embedded interpreter, a new file format, writers and terrain access. Nothing says what is built first, or when a driver counts as finished.</p>
+<p><strong>Why it matters.</strong> Without an order, the core concepts are not proven until much of the breadth exists, and a flaw found late is expensive.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>Tiers.</strong> Tier 1 proves the core with the fewest dependencies: the native ENVI driver, TIFF and GeoTIFF, NITF with JPEG 2000, and one video path. It carries <code>raw</code>, <code>complex</code>, <code>color</code>, <code>spectral.bands</code> and <code>cfa.demosaic</code>, with <code>affine</code> and <code>rational_polynomial</code> geocoding.</li>
+<li><strong>A driver conformance suite.</strong> Every driver must pass the same tests: window independence, round trip, planned against actual cost, missing data, and metadata on demand.</li>
+</ul>
+<p><strong>Decision needed.</strong> Which formats are in Tier 1.</p>
+<p><strong>Ruling.</strong> Accepted. GeoTIFF and NITF are Tier 1.</p>
+<p><strong>What changed in the specification.</strong> Version 30, new sections 1.4 and 10.4.</p>
+<ul>
+<li>BIL is built in tiers, and each is finished before the next is started.</li>
+<li>Tier 1 is GeoTIFF and NITF, with the core concepts, four slice functions, <code>affine</code> and <code>rational_polynomial</code> geocoding, metadata with markings, a TIFF writer, and the Rust and Python interfaces.</li>
+<li>Tier 1 leaves out video, scripted drivers, external decoding and every other format. ENVI and the video path, which the proposal had in Tier 1, move to a proposed Tier 2.</li>
+<li>A driver conformance suite of eleven tests is the same for every driver, and a failed test blocks release.</li>
+<li>What Tier 2 holds is a new open decision.</li>
+</ul>
+<p><strong>Additions confirmed.</strong> The details added when this was written into the specification have been accepted.</p>
+<ul>
+<li>Compression in Tier 1: uncompressed in both formats, Deflate in GeoTIFF and JPEG 2000 in NITF.</li>
+<li>A TIFF and GeoTIFF writer in Tier 1, for the round-trip test.</li>
+<li>Rust and Python interfaces in Tier 1, with the C interface for external plugins in Tier 2.</li>
+<li><code>image_window</code>, <code>affine</code> and <code>rational_polynomial</code> geocoding in Tier 1, with a constant-height surface.</li>
+<li>The eleven conformance tests.</li>
+<li><code>cfa.demosaic</code> moved out of Tier 1 with the formats that need it.</li>
+</ul>
+<p><strong>Tier 2 decided.</strong> Version 31 of the specification settles Tier 2 as proposed: ENVI, video with KLV, and SICD and SIDD. The order of Tier 3 is not yet set.</p>
+<h2 id="serious-findings">Serious findings</h2>
+<p>These are gaps or contradictions that would surface as soon as the affected part is built.</p>
+<h3 id="r8"><span class="fid">R8</span> The zero-copy rule is missing conditions</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 46</span><span class="where">Sections 4, 6 and 12</span></p>
+<p><strong>Problem.</strong></p>
+<ol>
+<li><strong>Alignment.</strong> Pixel data starts wherever the file puts it. A float32 view at an odd offset is undefined behavior in Rust, and slow or refused elsewhere.</li>
+<li><strong>Files that change.</strong> If another process shortens a mapped file, the reader crashes. Nothing can catch it.</li>
+<li><strong>Storage that cannot be mapped.</strong> Object stores and streams never meet the fourth condition, so zero-copy does not exist for them.</li>
+<li><strong>Writing to borrowed data.</strong> Borrowed arrays must be read-only, and algorithms that work in place will fail on them.</li>
+<li><strong>Lifetime in Python.</strong> A borrowed NumPy array must keep its Source open.</li>
+</ol>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Add a fifth condition: samples are aligned for their type.</li>
+<li>Borrowed data is read-only, and is exposed to NumPy as a read-only array that holds a reference to its Source.</li>
+<li>Offer a private mapping for callers who modify in place, and an option to turn mapping off for network file systems.</li>
+<li>State that mapping a file while it is being changed is not supported.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept these as additions to the rule.</p>
+<p><strong>Ruling.</strong> Accepted.</p>
+<p><strong>What changed in the specification.</strong> Version 46, sections 4 and 12.</p>
+<ul>
+<li>The zero-copy rule gains a fifth condition: each sample starts at an address that is a multiple of its own size.</li>
+<li>Borrowed data is read-only, and in Python is a read-only NumPy array that holds a reference to its Source.</li>
+<li><code>mapping</code> in <code>OpenOptions</code> is <code>Shared</code> by default, <code>Private</code> for copy-on-write, or <code>Off</code> for network file systems. The two options in the proposal became one setting with three values, in keeping with the uniform rule.</li>
+<li>Mapping a file while another process changes it is stated as unsupported.</li>
+</ul>
+<h3 id="r9"><span class="fid">R9</span> Grid alignment is not specified</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 46</span><span class="where">Sections 5, 9.3 and 13.2</span></p>
+<p><strong>Problem.</strong></p>
+<ol>
+<li><strong>Levels.</strong> Level n values sit on Image pixels at multiples of 2ⁿ. Nothing says what a read returns, or how large it is, when the Window starts elsewhere.</li>
+<li><strong>Block functions.</strong> The same holds for half-size Slices. For a Window starting on an odd row, which site is <code>red</code>?</li>
+<li><strong>Step with level.</strong> Nothing says what happens when both are set.</li>
+<li><strong>Range.</strong> The range rule takes a 2×2 block to the right and below, while bilinear values are centered on a pixel. <code>range</code> and <code>intensity</code> at the same Level are therefore offset from each other.</li>
+<li><strong>Mirroring.</strong> At an Image edge, mirroring must keep the color filter pattern in step.</li>
+</ol>
+<p><strong>Why it matters.</strong> Window independence is the specification's central guarantee, and it cannot be tested until these are fixed.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Level n of a Window returns the grid points at multiples of 2ⁿ that fall inside it. <code>plan_slice</code> reports the size.</li>
+<li>Every Slice carries its origin and scale in Image pixels, as 64-bit values, and geocoding reads them per Slice.</li>
+<li><code>step</code> above 1 and <code>level</code> above 0 may not be combined.</li>
+<li>Block functions are anchored to the Image grid in the same way. Mirroring reflects by whole pattern periods.</li>
+<li>For range, either accept the stated offset and record it in the Slice, or take the minimum of a 3×3 neighborhood centered on the grid point, which keeps <code>range</code> aligned with <code>intensity</code>.</li>
+</ul>
+<p><strong>Decision needed.</strong> The range option, and whether to forbid <code>step</code> with <code>level</code>.</p>
+<p><strong>Note.</strong> Version 26 of the specification removed half-size Slices, so item 2 no longer applies. Item 4, the offset of <code>range</code>, is now the one remaining exception to "every Slice maps positions the same way". The rest of this finding is still open.</p>
+<p><strong>Ruling.</strong> Accepted. No range option was named, so the centered 3×3 minimum was chosen, because it keeps <code>range</code> on the same grid as every other Slice.</p>
+<p><strong>What changed in the specification.</strong> Version 46, sections 5 and 13.2.</p>
+<ul>
+<li>Level n of a Window holds the grid points at multiples of 2ⁿ that fall inside it, and <code>plan_slice</code> reports the size.</li>
+<li>Every Slice carries its <code>origin</code> and <code>scale</code> in Image pixels, as 64-bit values, and the <code>image_window</code> step of geocoding reads them.</li>
+<li>A <code>step</code> above 1 and a Level above 0 cannot be combined.</li>
+<li>At an Image edge, pixels are mirrored by whole periods of any pattern in the data.</li>
+<li>Range is reduced by the minimum of a 3×3 block centered on each grid point.</li>
+</ul>
+<h3 id="r10"><span class="fid">R10</span> The sample types cannot hold the specification's own cases</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 32</span><span class="where">Sections 4 and 8</span></p>
+<p><strong>Problem.</strong> Section 8.4 lists 1-bit masks, and CPHD stores complex samples with one byte per part. Neither has a sample type. Also missing are 16-bit float, signed 8-bit, 64-bit integers and complex with 64-bit parts, all of which ENVI, HDF5 or OpenEXR can hold.</p>
+<p>Justification is not covered. Ten-bit video is commonly stored in the high bits of 16, so "exactly the stored integers" returns values 64 times too large.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Add <code>I8</code>, <code>F16</code>, <code>U64</code>, <code>I64</code>, <code>ComplexI8</code> and <code>ComplexF64</code>.</li>
+<li>Deliver 1-bit data unpacked as <code>U8</code> with <code>significant_bits</code> set to 1.</li>
+<li>State that a Fragment delivers values right-justified.</li>
+</ul>
+<p><strong>Decision needed.</strong> Which types to add. The 64-bit integers lose precision in a Slice, as 32-bit ones already do.</p>
+<p><strong>Ruling.</strong> Add all six types to the Fragment. A Slice is always the same float representation, so that algorithms applied to the output use one representation. A Fragment delivers data in its usual stored form, and the Slice delivers it appropriately. This replaces the proposal that a Fragment should right-justify.</p>
+<p><strong>What changed in the specification.</strong> Version 32, sections 4, 5, 6, 8 and 12.</p>
+<ul>
+<li><code>I8</code>, <code>F16</code>, <code>U64</code>, <code>I64</code>, <code>ComplexI8</code> and <code>ComplexF64</code> are added, making fifteen sample types.</li>
+<li>A Fragment does not shift samples. <code>bit_shift</code> records unused low bits, as hardware video decoders and some NITF files produce.</li>
+<li>A Slice works from the sample value, so 10-bit video gives 0 to 1023 whichever decoder produced it.</li>
+<li>One-bit data is unpacked to <code>U8</code> with one significant bit.</li>
+<li>A table states which sample types are exact as float32 and which are rounded. Arithmetic is done at the source's precision and narrowed once.</li>
+<li>Only the six common sample types get their own compiled loop. The rest go through a general loop, which also answers the first item of R25.</li>
+</ul>
+<h3 id="r11"><span class="fid">R11</span> A Fragment has one sample type, and a slice function has one Image</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 42</span><span class="where">Sections 4, 9.2 and 9.5</span></p>
+<p><strong>Problem.</strong> A pixel is several samples of one type. Range in float32 beside intensity in 16-bit integers cannot be one pixel, yet <code>depth.sensor</code> yields both from one Fragment. Color with depth has the same problem. An interferogram's coherence is "its own Image", and no slice function can read two Images.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Keep the Fragment to one sample type, which keeps it a simple strided view.</li>
+<li>Hold mixed data as separate Images that declare they share one grid.</li>
+<li>Let a slice function declare more than one input Image on the same grid. <code>pixel_gain_offset</code> already reads a second Image, so the precedent exists. The function stays pointwise, so it stays window-independent.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept slice functions with more than one input Image.</p>
+<p><strong>Ruling.</strong> Accepted.</p>
+<p><strong>What changed in the specification.</strong> Version 42, sections 3, 4 and 5.</p>
+<ul>
+<li>A Fragment keeps one sample type, which keeps it a simple strided view.</li>
+<li>A driver can declare that Images share a grid, and mixed data is held that way.</li>
+<li>A slice function may declare several input Images on one grid. BIL reads the same Window from each, and the function stays pointwise or local.</li>
+<li><code>insar.interferogram</code> gains a <code>coherence</code> Slice, read from the second Image.</li>
+</ul>
+<h3 id="r12"><span class="fid">R12</span> Slice selection is a string with no grammar</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 42</span><span class="where">Sections 5 and 9</span></p>
+<p><strong>Problem.</strong></p>
+<ol>
+<li><strong>Ambiguity.</strong> <code>raw.intensity</code> is a function and a Slice name. <code>color.hsv</code> is a family and a function. They cannot be told apart without looking both up.</li>
+<li><strong>Parameters.</strong> <code>complex.polar(hv)</code> puts a parameter in the string. <code>spectral.response(curves)</code> takes arrays, which cannot travel that way.</li>
+<li><strong>Names from metadata.</strong> Band names in files contain spaces and punctuation, repeat, and are not UpperCamelCase.</li>
+<li><strong>Names from wavelength.</strong> <code>nm550</code> collides when two bands are less than a nanometer apart.</li>
+</ol>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Give every slice function a family, so a full name always has three parts. Short forms such as <code>raw</code> become registered aliases.</li>
+<li>Make selection structured: a function name, named parameter values and a Slice name. The single string remains as shorthand for functions without parameters.</li>
+<li>State the rule for names taken from metadata: convert to UpperCamelCase, add a number on collision, and keep the original as a label.</li>
+<li>Wavelength names carry enough digits to be unique.</li>
+</ul>
+<p><strong>Decision needed.</strong> The family name for the general functions of section 9.1.</p>
+<p><strong>Ruling.</strong> Accepted. No family name was given, so <code>pixel</code> was chosen.</p>
+<p><strong>What changed in the specification.</strong> Version 42, sections 5 and 9.</p>
+<ul>
+<li>Every slice function has a family, so a full name has three parts. The general functions are in the <code>pixel</code> family, as in <code>pixel.raw</code>.</li>
+<li>Two parts select a function that yields one Slice, and one part is a registered alias, such as <code>raw</code>.</li>
+<li>Parameters are passed in a <code>SliceSelector</code> as named values, never inside the name.</li>
+<li>Names taken from metadata are converted to snake_case, numbered when they repeat, and kept in their original form as a <code>label</code>.</li>
+<li>Wavelength names take as many decimal places as are needed to be unique.</li>
+</ul>
+<p><strong>Revised in version 44.</strong> The symmetry review removed the aliases and the two-part short form. A Slice is always named in three parts.</p>
+<h3 id="r13"><span class="fid">R13</span> There is no threading model and no error model</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 48</span><span class="where">Sections 2, 10 and 12</span></p>
+<p><strong>Problem.</strong> Nothing says which objects may be used from several threads. Decoder state and held metadata both change during calls declared as read-only.</p>
+<p>Section 12 requires parallel rows and tiles. A GDAL dataset handle cannot be shared between threads, and the HDF5 C library runs one call at a time when built for threads. The specification faults a wrapper crate for a lock that the library underneath it also has.</p>
+<p>Errors are not covered. Nothing says whether a corrupt tile is an error or missing data. The C example returns no status. A Rust panic must not cross the C interface. The plugin interface has no version check.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>A Source and an Image may be shared between threads. A reader object owned by each thread holds library handles and decoder state.</li>
+<li>A driver declares its concurrency: <code>Parallel</code>, <code>OneHandlePerThread</code> or <code>Serial</code>. <code>plan_slice</code> reports it.</li>
+<li>Every call returns a result. A corrupt block is an error by default, with an option to return it as missing data and report it.</li>
+<li>C calls return a status code. Panics are caught at the interface. <code>bil_register_driver</code> carries an interface version.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether a corrupt block is an error or missing data by default.</p>
+<p><strong>Note.</strong> Version 25 of the specification introduced the Reader for R3. The rest of this finding is still open.</p>
+<p><strong>Part settled in version 44.</strong> The error model is now in section 3.3 of the specification: a call delivers or returns an error, everything delivered carries one status, corrupt data is an error by default, a failure is caught at the interface, and C functions return a status code. Still open: which objects may be shared between threads, how a driver declares its concurrency, and a version check on the plugin interface. The details added in version 44 were confirmed, including corrupt data as an error by default.</p>
+<p><strong>Ruling.</strong> Accepted as proposed.</p>
+<p><strong>What changed in the specification.</strong> Version 48, sections 2, 4, 10 and 12.</p>
+<ul>
+<li>A Source, an Image, a Fragment and a Slice may be shared between threads. A Reader belongs to one thread at a time and may be handed to another.</li>
+<li>Each driver and codec declares <code>concurrency</code> as <code>Parallel</code>, <code>OneHandlePerThread</code> or <code>Serial</code>, and <code>plan_slice</code> reports it. Under <code>Serial</code> only the library call is locked, and conversion stays parallel.</li>
+<li>The test for wrappers no longer counts a lock the library itself requires, so hdf5-metno is not faulted for HDF5's own limit.</li>
+<li><code>bil_register_driver</code> carries the plugin interface version. A different major version is refused and shown by <code>list_drivers</code> as not loaded.</li>
+<li>The C example now returns a status from every call.</li>
+</ul>
+<h3 id="r14"><span class="fid">R14</span> Results depend on what is installed</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 48</span><span class="where">Section 10</span></p>
+<p><strong>Problem.</strong> BIL falls back to another codec when a file is outside the first one's profiles. Lossy decoders round differently, so the same file gives different pixel values on different machines. The failure may come part-way through an image, leaving a mix.</p>
+<p><code>probe</code> works from the file name and leading bytes. DNG, GeoTIFF, whole-slide and many raw camera files are all TIFF underneath. NetCDF-4 and several SAR products are HDF5. DICOS is DICOM. Ties are certain, and the specification does not break them.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Choose the codec when the Source is opened, and never switch during its life.</li>
+<li>Report the driver, codec and their versions for every Source, and record them in anything BIL writes.</li>
+<li>Require exact agreement between codecs for lossless data, as a conformance test. State a tolerance for lossy data.</li>
+<li>Probe in two stages: the container first, then its content. Break ties by a configured order.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<p><strong>Ruling.</strong> Accepted.</p>
+<p><strong>What changed in the specification.</strong> Version 48, sections 10 and 11.</p>
+<ul>
+<li>A codec accepts a Source only after checking the coding parameters the file declares. The driver and codec are chosen when the Source is opened and kept for its life. A block the codec cannot decode is corrupt data, never a switch to another codec.</li>
+<li><code>describe_decoding()</code> reports the driver and codec with their versions, and everything BIL writes records them as <code>bil.driver</code> and <code>bil.codec</code>.</li>
+<li>A conformance test, Codec agreement: identical values for lossless data, and at most one unit of the stored value from the reference decoder for lossy data.</li>
+<li>Probing runs in two stages, the container and then its content, and ties follow the installation's configured order, never load order.</li>
+</ul>
+<h3 id="r15"><span class="fid">R15</span> BIL's libraries will meet other copies in the same process</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 34</span><span class="where">Sections 2 and 10</span></p>
+<p><strong>Problem.</strong> A Python process that imports BIL will often already hold GDAL, HDF5 or FFmpeg, loaded by rasterio, h5py or a video package. Two versions of one C library in a process can crash or corrupt data. HDF5 is the best-known case.</p>
+<p><strong>Proposed resolution.</strong> Three options, which can be combined.</p>
+<ol>
+<li>Build the libraries into BIL with their symbols hidden.</li>
+<li>Make the default build mostly Rust (async-tiff, hidefix, nitf-rs, emuella-j2k), with the C libraries as optional plugins.</li>
+<li>Run C library drivers in the decoder process, as in R6.</li>
+</ol>
+<p><strong>Decision needed.</strong> Whether the default build should avoid C libraries where a Rust reader exists.</p>
+<p><strong>Ruling.</strong> Keep the libraries. BIL is to work for its formats without the user having to set things up, and clashes with outside use are to be minimized. This is option 1, with option 3 as the fallback. Option 2, a mostly Rust default build, is not taken.</p>
+<p><strong>What changed in the specification.</strong> Version 33, new section 10.5.</p>
+<ul>
+<li>The standard package carries its backing libraries already built, so installing BIL is enough.</li>
+<li>Each library is a private copy with hidden symbols, its own data files and no use of environment variables.</li>
+<li>BIL makes no changes to process-wide settings, and its libraries load no plugins of their own.</li>
+<li>Each release is tested in one process beside the common packages that carry the same libraries.</li>
+<li>A library that cannot be kept private runs in the decoder process.</li>
+<li>The costs are stated: a large package, and a build of every library for every supported platform.</li>
+</ul>
+<p><strong>Further ruling.</strong> Where a Rust build of a library is easily available, BIL is not to duplicate it. Where a library can come from outside through standard package management with no loss, BIL uses that.</p>
+<p><strong>What changed in the specification.</strong> Version 34, section 10.5 rewritten.</p>
+<ul>
+<li>Each library is taken from the first source that works without loss: an existing Rust crate, then the installing package manager's shared copy, then a build of BIL's own as the last resort.</li>
+<li>"Without loss" is defined: the user installs in one step, the library cannot clash, and the four wrapper tests pass.</li>
+<li>Clashes are avoided in one of two ways: one shared copy, or a private copy with hidden symbols.</li>
+<li>The rules on environment variables, process-wide settings and plugin loading hold whichever source is used.</li>
+<li>BIL no longer takes on a build of every library. This also removes the conflict with the earlier decision that BIL does not build FFmpeg.</li>
+</ul>
+<h3 id="r16"><span class="fid">R16</span> Geocoding re-implements rigorous sensor models, with no validation target</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 41</span><span class="where">Section 13</span></p>
+<p><strong>Problem.</strong> <code>camera</code> with a <code>pose</code> per row, and <code>range_doppler</code>, mean BIL computes what SIX, Community Sensor Model plugins and OSSIM already compute and have validated. Orbit and attitude interpolation and each supplier's conventions are easy to get slightly wrong. Nothing says how BIL's answers are checked.</p>
+<p>Inverting by iteration can fail. A line of sight can meet steep terrain more than once. Coordinate grids that fold, or cross the antimeridian or a pole, have no single inverse.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Name a reference implementation and a tolerance for each step, as conformance tests: GDAL for <code>rational_polynomial</code>, SIX for <code>range_doppler</code>.</li>
+<li>Prefer <code>external</code> steps for rigorous models at first, and keep BIL's own steps to the simple forms.</li>
+<li><code>intersect</code> returns the first intersection from the sensor.</li>
+<li>An inverse that does not converge, or is ambiguous, says so instead of returning a position.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether rigorous models go through <code>external</code> steps in the first tier.</p>
+<p><strong>Ruling so far.</strong> Prefer testing the rigorous models over handing them to <code>external</code> steps.</p>
+<p><strong>What changed in the specification.</strong> Version 40, new section 13.8.</p>
+<ul>
+<li>BIL implements rigorous sensor models itself. An <code>external</code> step stays available but is not the default route.</li>
+<li>Each step has a named reference to test against: GDAL for <code>rational_polynomial</code>, SIX for <code>range_doppler</code>, and others.</li>
+<li>Four tests apply to every step: agreement with the reference, round trip, the same position through any Window or Level, and known ground points.</li>
+<li>The driver conformance suite gains a geocoding test.</li>
+</ul>
+<p><strong>Still to decide.</strong> This finding stays open for three points.</p>
+<ol>
+<li>Whether <code>intersect</code> returns the first intersection from the sensor when a line of sight meets the terrain more than once.</li>
+<li>What an inverse returns when it does not converge or has more than one answer.</li>
+<li>What BIL does with coordinate grids that fold, or that cross the antimeridian or a pole.</li>
+</ol>
+<p><strong>Final ruling.</strong> All three accepted as suggested.</p>
+<p><strong>What changed in the specification.</strong> Version 41, section 13.3.</p>
+<ul>
+<li>A line of sight stops at the first surface it meets, counting from the sensor.</li>
+<li>Every position carries a status: <code>Resolved</code>, <code>Unresolved</code>, <code>NotConverged</code> or <code>Ambiguous</code>. An inverse with no single answer returns a status and no position.</li>
+<li>Longitude differences are taken the short way round, and a coordinate grid is interpolated as positions on the sphere, so chains work across the antimeridian and over a pole. A fold in a grid reports <code>Ambiguous</code>.</li>
+<li>The validation tests gain one for honest failure.</li>
+</ul>
+<p><strong>Revised in version 44.</strong> The statuses are now the single set of section 3.3, so <code>Resolved</code> became <code>Complete</code> and <code>Unresolved</code> became <code>Missing</code>.</p>
+<h3 id="r17"><span class="fid">R17</span> Metadata has six holes</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 48</span><span class="where">Section 14</span></p>
+<p><strong>Problem.</strong></p>
+<ol>
+<li><strong>Names.</strong> Native names contain dots, as HDF5 paths and XML do. They also repeat: several instances of one NITF extension, the items of a DICOM sequence, FITS <code>HISTORY</code> lines.</li>
+<li><strong>Searching.</strong> <code>find_fields</code> across all groups forces the full extraction that on-demand reading exists to avoid.</li>
+<li><strong>Holding.</strong> Per-frame fields held for a live stream grow without bound, against the bounded memory rule.</li>
+<li><strong>KLV timing.</strong> KLV packets are not aligned to frames, and often arrive less often.</li>
+<li><strong>Text and dates.</strong> Formats declare their own character sets, and many dates carry no time zone.</li>
+<li><strong>My own example.</strong> <code>common.collection_time</code> maps Exif time beside NITF time. Exif time has no time zone, so the mapping fails the "obviously the same" test.</li>
+</ol>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>A name is a list of parts, not a dotted string. The dotted form escapes dots, and repeats carry a number.</li>
+<li><code>find_fields</code> searches defined names and groups already extracted, unless the caller asks it to extract.</li>
+<li>Fields attached to an index are held up to a limit the caller sets.</li>
+<li><code>read_field_at</code> for a frame returns the nearest packet at or before the frame's time, with the packet's own time.</li>
+<li>Text is decoded to Unicode by the format's declared character set, with the raw bytes still available. A date and time states whether its zone is known.</li>
+<li>Remove Exif from the <code>common.collection_time</code> row.</li>
+</ul>
+<p><strong>Note.</strong> Version 45 of the specification lists Exif time as a way to derive <code>common.collection_time</code>, with its time-zone offset, and not as a value the format provides. The rest of this finding is still open.</p>
+<p><strong>Decision needed.</strong> Accept, or rule on each part.</p>
+<p><strong>Ruling.</strong> Accepted, except the last part: Exif stays in the <code>common.collection_time</code> row. Its time is taken as local time, and where there is a sensor location or a footprint, the time zone is computed from it.</p>
+<p><strong>What changed in the specification.</strong> Version 48, sections 14.1 to 14.4.</p>
+<ul>
+<li>A field name is a list of parts. In the dotted form a dot inside a part is written <code>\.</code>. Repeats carry a number from 1 in square brackets, as in <code>nitf.RPC00B[2]</code>.</li>
+<li><code>find_fields(pattern, extract)</code> searches the defined names and the groups already extracted, and extracts everything first only when asked.</li>
+<li>Fields attached to an index are held for at most <code>max_held_positions</code> positions, 1,000 by default, oldest released first.</li>
+<li><code>read_field_at</code> returns, for a field with its own times such as KLV, the latest value at or before the frame's time, with that value's time.</li>
+<li>Text is decoded to Unicode from the declared character set, with the stored bytes still available. A date and time states whether its zone is known, and a time with no zone is never taken as UTC.</li>
+<li>Exif <code>DateTimeOriginal</code> takes its zone from <code>OffsetTimeOriginal</code>, then the sensor location, then the footprint center. The zone comes from a time-zone boundary map, and the offset for the date from the IANA time zone database. With none of these, the time stays local and marked as having no known zone.</li>
+</ul>
+<p><strong>Follow-up in version 49.</strong> tzf-rs is not a requirement. Where a time-zone lookup plugin over it is installed, BIL uses it to find the zone from the sensor location or footprint. Where none is installed, the time is taken as local time. The lookup is an optional plugin outside BIL's packages, because its boundary map is under the Open Database License.</p>
+<h3 id="r18"><span class="fid">R18</span> The license position needs legal review</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 35</span><span class="where">Sections 1.2 and 10</span></p>
+<p><strong>Problem.</strong> I am not a lawyer, and these are questions to put to one.</p>
+<ol>
+<li><strong>Static linking.</strong> Rust links statically by default. LGPL 2.1 requires that a recipient can relink the application against a changed copy of the library.</li>
+<li><strong>Apache-2.0 dependencies.</strong> emuella-j2k and object_store are Apache-2.0 only. The Free Software Foundation holds that license to be incompatible with GPL version 2, and whether such code can be built into a library that is LGPL "2.1 only" is unsettled. "2.1 or later" would avoid the question.</li>
+<li><strong>FFmpeg.</strong> It is LGPL or GPL depending on how it was built. A wrapper that links the system's FFmpeg may link a GPL build.</li>
+<li><strong>Bio-Formats.</strong> It is GPL. Running it as a separate process is the usual way to stay clear, but that should be confirmed.</li>
+</ol>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Decide between "2.1 only" and "2.1 or later".</li>
+<li>Ship BIL as a shared library with the C interface, and a thin Rust crate over it, so relinking is always possible.</li>
+<li><code>list_drivers</code> reports the license each linked library was actually built under.</li>
+</ul>
+<p><strong>Decision needed.</strong> "2.1 only" or "2.1 or later".</p>
+<p><strong>Ruling.</strong> LGPL 2.1 or later. Any clash with another license that a user installs is the user's, not BIL's. The principle is to leave users free to make their own decisions and installations, while BIL itself is shared. BIL is a Rust library with a C-callable interface over it, delivered as a shared library. BIL's own packages hold only LGPL-compatible builds, and any move away from that is to be flagged. <code>list_drivers</code> reports the license each library was built under.</p>
+<p><strong>What changed in the specification.</strong> Version 35, new section 10.6.</p>
+<ul>
+<li>The license is LGPL 2.1 or later.</li>
+<li>BIL is delivered as one shared library: the Rust library with a C-callable interface over all of it. The C-callable interface is now part of Tier 1.</li>
+<li>A table states who answers for what: the BIL project for its own packages, and the user for what they install and pass on.</li>
+<li>BIL's packages contain no GPL or AGPL code, use the permissive build of each library, carry notices, and are checked at every release.</li>
+<li><code>list_drivers</code> reports each library's name, version, source and license as built, or <code>Unknown</code>.</li>
+<li>A legal review before the first release is a new open decision. It covers whether "or later" allows Apache-2.0 and LGPL 3 components inside a package.</li>
+</ul>
+<p><strong>What stays open from this finding.</strong> Patents on video codecs are untouched by any of this and remain the user's concern.</p>
+<h2 id="lesser-findings">Lesser findings</h2>
+<p>These are worth fixing, but none blocks the design.</p>
+<h3 id="r19"><span class="fid">R19</span> Some slice functions are image processing</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 53</span><span class="where">Sections 1.2 and 9</span></p>
+<p><strong>Problem.</strong> Section 1.2 puts image processing out of scope. <code>color.lab</code>, <code>spectral.indices</code>, <code>spectral.angle</code> and <code>pol.pauli</code> are image processing. <code>nuclear.uptake</code> computes a clinical quantity that has several definitions, from fields that are often wrong in practice.</p>
+<p><strong>Proposed resolution.</strong> Split the catalog into a core set and an extras package. Name the definition <code>nuclear.uptake</code> uses, or remove it. State that BIL is not for diagnostic use.</p>
+<p><strong>Decision needed.</strong> Where the line between core and extras falls.</p>
+<p><strong>Ruling.</strong> BIL may do the processing that prepares Slices, so that every sensor's data can be treated uniformly. Sensors store data in a way that suits the sensor, and BIL prepares it in a way that supports analysis. Decompositions are included, because color, polarimetry and spectral peaks are almost never analyzed in their sensed form. <code>insar.interferogram</code> is kept. Functions that go out go to an extras package.</p>
+<p><strong>What changed in the specification.</strong> Version 53, sections 1.2, 8.5, 9 and 10.</p>
+<ul>
+<li>The rule: a slice function belongs in BIL when it undoes the storage, calibrates, or re-expresses the measurement. Re-expressing must use the data's own values, have a standard definition, be general to the data type, and be local.</li>
+<li><code>color.hsv</code>, <code>color.lab</code>, <code>color.ycbcr</code>, <code>polcam.linear</code>, <code>pol.pauli</code>, <code>pixel.peak</code> and <code>class.members</code> stay in the core.</li>
+<li><code>insar.interferogram</code> stays, as a stated allowance, where its two Images are declared related in one Source.</li>
+<li><code>spectral.indices</code>, <code>spectral.angle</code> and <code>nuclear.uptake</code> move to <code>bil-extras</code>, with the same names and the same mechanism.</li>
+<li><code>nuclear.activity</code>, in becquerels per milliliter, joins the core as the calibration step. <code>nuclear.uptake</code> states its definition: SUV normalized by body weight.</li>
+<li>Section 1.2 states that BIL is not for diagnostic use.</li>
+</ul>
+<h3 id="r20"><span class="fid">R20</span> Color is under-specified</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 52</span><span class="where">Section 9.3</span></p>
+<p><strong>Problem.</strong> <code>color.ycbcr</code> does not say which matrix or range. <code>color.lab</code> needs a white point and linear values. <code>color.hsv</code> does not say whether it works on encoded or linear values. Color profiles are not mentioned.</p>
+<p><strong>Proposed resolution.</strong> Each color function states its transfer function, matrix, range and white point, taken from metadata with a stated default. A color profile is exposed as a field.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<p><strong>Part settled in version 51.</strong> Color is described by the four properties of ITU-T H.273: primaries, transfer curve, matrix and range. Each comes from metadata or a stated default, and is computed by formula in BIL's own loops, with no per-pixel lookups. Color profiles are exposed as fields and not applied, because color management is a layer above BIL. Little CMS moves from Adopt to Reference. Still open: whether <code>color.hsv</code> works on encoded or linear values.</p>
+<p><strong>Ruling.</strong> Accepted in part, as set out above. Color profiles are not applied: color management is the layer above BIL, or not dealt with at all, because the imaging systems BIL serves rarely describe their color to that fidelity. No per-pixel lookups. <code>color.hsv</code> works on the encoded values as stored.</p>
+<p><strong>What changed in the specification.</strong> Versions 51 and 52, sections 9.3, 14.2 and Appendix A.</p>
+<ul>
+<li>Every color function uses the four H.273 properties, from metadata or a stated default, and <code>describe_field</code> reports which.</li>
+<li>Matrices and transfer curves are computed by formula in BIL's own loops.</li>
+<li>An embedded ICC profile is a field, unaltered and not applied.</li>
+<li><code>color.hsv</code> is computed from the encoded values as stored.</li>
+</ul>
+<h3 id="r21"><span class="fid">R21</span> NaN spreads through downstream code</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 50</span><span class="where">Section 5</span></p>
+<p><strong>Problem.</strong> One NaN in the input makes the whole output of a Fourier transform NaN, and spreads through every convolution. The specification says float32 is what such code expects, but that code does not expect NaN.</p>
+<p><strong>Proposed resolution.</strong> Keep NaN as the default. Add a <code>missing_value</code> to <code>SliceOptions</code> that fills missing positions with a number the caller chooses.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<p><strong>Ruling.</strong> Accepted.</p>
+<p><strong>What changed in the specification.</strong> Version 50, section 5.</p>
+<ul>
+<li>NaN stays the default for missing positions.</li>
+<li><code>missing_value</code> in <code>SliceOptions</code> fills them with a number the caller chooses.</li>
+<li>The fill is applied to the finished Slice, after the slice function and the Level, so averaging still leaves missing values out.</li>
+<li>The status stays <code>Partial</code>, and <code>pixel.mask.valid</code> in the same request says which positions were filled.</li>
+</ul>
+<h3 id="r22"><span class="fid">R22</span> A cut across frames costs one read per frame</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 44</span><span class="where">Sections 3.2 and 8.4</span></p>
+<p><strong>Problem.</strong> A Window lies in one frame. A cut through a medical volume along another axis, or one pixel's history through a video, needs a separate read for every frame.</p>
+<p><strong>Proposed resolution.</strong> Either add a read that takes a run of frames and returns a stack, or state that such cuts are outside BIL.</p>
+<p><strong>Decision needed.</strong> Add the read, or rule it out.</p>
+<p><strong>Ruling.</strong> Ruled out, as part of the symmetry review. Everything beyond 2D is selected, never ranged, so a read across frames is outside BIL and a caller reads frame by frame.</p>
+<p><strong>What changed in the specification.</strong> Version 44, section 1.6. The Fragment cache and the per-thread Reader keep frame-by-frame reading cheap.</p>
+<h3 id="r23"><span class="fid">R23</span> The bilinear filter lets through aliasing</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 49</span><span class="where">Section 5</span></p>
+<p><strong>Problem.</strong> The 1 2 1 weights still pass half the amplitude at the highest frequency the reduced grid can hold, and content above that folds back into the result. Wider filters do better.</p>
+<p><strong>Proposed resolution.</strong> Keep <code>bilinear</code> as the default, as decided, since it gives every level in one pass. Record the limitation, and make a five-tap binomial the first extension method.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<p><strong>Ruling.</strong> Accepted.</p>
+<p><strong>What changed in the specification.</strong> Version 49, sections 5 and 10.</p>
+<ul>
+<li>The limit of <code>bilinear</code> is recorded: it passes half the amplitude at the highest frequency the halved grid holds, so finer detail aliases. It stays the default.</li>
+<li><code>binomial5</code>, with weights 1 4 6 4 1 divided by 16 and a radius of 2 pixels, is built in as the first added method. It passes a quarter of the amplitude at that frequency and still gives every level in one pass.</li>
+</ul>
+<h3 id="r24"><span class="fid">R24</span> The naming rule is broken by its own calls</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 39</span><span class="where">Section 2</span></p>
+<p><strong>Problem.</strong> Section 2 says functions start with a verb. <code>Image(0)</code>, <code>LevelCount</code>, <code>DefaultSlice</code>, <code>ForWindow</code>, <code>HeightAt</code>, <code>Coverage</code> and <code>ImageToWorld</code> do not. The interface also mixes spellings: <code>Color</code> beside <code>ReadNormalisation</code>.</p>
+<p><strong>Proposed resolution.</strong> Either rename the calls (<code>OpenImage</code>, <code>CountLevels</code>) or relax the rule. Choose one spelling for identifiers.</p>
+<p><strong>Decision needed.</strong> Rename or relax, and British or American spelling in identifiers.</p>
+<p><strong>Note.</strong> Version 25 of the specification made fields, parameters and options strictly UpperCamelCase. The verb rule and the spelling are still open.</p>
+<p><strong>Ruling.</strong> Change everything to snake_case, for the sake of acceptance by Rust developers, and use American spelling throughout.</p>
+<p><strong>What changed in the specification.</strong> Version 38, section 2 rewritten.</p>
+<ul>
+<li>Names follow each language's own convention. Functions, fields and parameters are snake_case, and types and enum values stay UpperCamelCase, which is what Rust and Python both expect.</li>
+<li>C uses a <code>bil_</code> prefix on functions and a <code>Bil</code> prefix on types.</li>
+<li>Names that are data keep their form in every language: slice functions, Slice names, level names and metadata field names.</li>
+<li>The rule that functions start with a verb is gone. Its purpose was to keep functions apart from types when both were UpperCamelCase, and the casing now does that. A call that returns a property is named for what it returns.</li>
+<li>Spelling is American in every identifier and throughout the specification, so <code>color</code> and <code>read_normalization</code> now agree.</li>
+<li>The names in the problem statement above are left as they were when the finding was written.</li>
+</ul>
+<p><strong>Further ruling.</strong> A mixture of snake_case and UpperCamelCase in different areas is not acceptable. Make it all consistent.</p>
+<p><strong>What changed in the specification.</strong> Version 39.</p>
+<ul>
+<li>There is now one rule: types and enum values are UpperCamelCase, and every other name is snake_case.</li>
+<li>The names passed as text, which version 38 had left in UpperCamelCase, are now snake_case: slice functions and Slice names such as <code>color.hsv.hue</code>, level names such as <code>stored2</code>, level methods such as <code>bilinear</code>, geocoding steps such as <code>affine</code>, and normalization functions such as <code>gain_offset</code>.</li>
+<li>Types and enum values stay capitalized because Rust and Python require it, and the Rust compiler warns otherwise.</li>
+<li>The native part of a metadata field name is still kept as its format spells it.</li>
+</ul>
+<h3 id="r25"><span class="fid">R25</span> Some performance claims overreach</h3>
+<p class="meta"><span class="chip resolved">Resolved in version 49</span><span class="where">Sections 6 and 12</span></p>
+<p><strong>Problem.</strong></p>
+<ol>
+<li><strong>One loop per pair.</strong> Sample types, slice functions, instruction sets, byte orders and normalizations multiply into thousands of loops.</li>
+<li><strong>One copy.</strong> A decoder always holds its own output buffer, so "one full-size copy" for compressed data leaves that out.</li>
+<li><strong>Benchmarks that fail the build.</strong> Timing on shared build machines varies, so this gate will fail at random.</li>
+</ol>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Specialized loops for the common pairs. The rest convert to a float32 row buffer and then map, and the specification says so.</li>
+<li>State the claim as one copy beyond the decoder's own buffer.</li>
+<li>Track benchmarks on dedicated hardware, with thresholds, outside the build.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<p><strong>Note.</strong> Version 32 of the specification limits specialized loops to the six common sample types, which answers item 1. Items 2 and 3 are still open.</p>
+<p><strong>Ruling.</strong> Accepted.</p>
+<p><strong>What changed in the specification.</strong> Version 49, sections 6 and 12.</p>
+<ul>
+<li>Copy counts are stated as copies BIL makes beyond the decoder's own buffer. A decoded block kept in the Fragment cache is that buffer, not a further copy.</li>
+<li>Benchmarks run on dedicated machines, outside the build. Each has a threshold, and a regression past it must be fixed or explained before a release.</li>
+</ul>
+<h2 id="what-held-up">What held up</h2>
+<p>These parts were attacked and stood. Version 43 of the specification states them as its foundations, in section 1.5.</p>
+<ul>
+<li><strong>Index and coordinate.</strong> Addressing by index and describing by coordinate is consistent everywhere it is used.</li>
+<li><strong>Window independence for pointwise functions.</strong> The rule is sound. The gaps in R9 concern levels and block functions only.</li>
+<li><strong>Containers and codecs.</strong> Splitting them is right, and it is what lets one JPEG 2000 codec serve every container.</li>
+<li><strong>Geocoding as a chain.</strong> Every format's model examined fits the form. The risk in R16 is in the content of the steps, not the chain.</li>
+<li><strong>Scripted drivers that describe pixels.</strong> Keeping the interpreter off the pixel path holds together.</li>
+</ul>
+      </main>
+      <footer>Red team findings for the Blazing Imaging Library (BIL) specification, review version 29, against specification version 23, as of 12 October 2026.</footer>
+    </div>
+  </div>
+</div>

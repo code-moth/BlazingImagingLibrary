@@ -1,0 +1,779 @@
+<title>BIL Red Team: Pass 2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: a sticky contents rail beside one reading column; tables and code may run wider than prose and scroll in their own boxes. */
+:root {
+  --bg: #f6f8f9;
+  --surface: #ffffff;
+  --fg: #17222b;
+  --muted: #586773;
+  --rule: #d8e0e5;
+  --rule-strong: #9fadb8;
+  --code-bg: #ebf0f3;
+  --accent: #0a6a8a;
+  --accent-soft: #d9ecf2;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151a;
+    --surface: #151d24;
+    --fg: #e2e9ee;
+    --muted: #93a2ae;
+    --rule: #26323b;
+    --rule-strong: #4c5b67;
+    --code-bg: #1a252d;
+    --accent: #62c1dc;
+    --accent-soft: #143642;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151a;
+  --surface: #151d24;
+  --fg: #e2e9ee;
+  --muted: #93a2ae;
+  --rule: #26323b;
+  --rule-strong: #4c5b67;
+  --code-bg: #1a252d;
+  --accent: #62c1dc;
+  --accent-soft: #143642;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.shell { max-width: 1200px; margin-inline: auto; padding-inline: 20px; padding-block: 32px 80px; }
+
+/* ---- header ---- */
+.masthead { display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: flex-end; justify-content: space-between; padding-bottom: 28px; border-bottom: 2px solid var(--fg); }
+.masthead-text { min-width: 0; flex: 1 1 420px; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.lede { margin: 14px 0 0; max-width: 62ch; color: var(--muted); font-size: 1.05rem; }
+.motif { width: 168px; max-width: 100%; height: auto; flex: 0 0 auto; }
+.motif .px { fill: var(--rule); }
+.motif .px.in { fill: var(--accent); }
+
+.control { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; margin: 0; border-bottom: 1px solid var(--rule); }
+.control div { padding: 14px 16px 14px 0; min-width: 0; }
+.control dt { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.control dd { margin: 2px 0 0; font-weight: 500; }
+
+/* ---- layout ---- */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 32px; }
+.rail { display: none; }
+.toc-inline { border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); padding: 12px 16px; margin-bottom: 28px; }
+.toc-inline summary { cursor: pointer; font-weight: 600; }
+@media (min-width: 1040px) {
+  .layout { grid-template-columns: 250px minmax(0, 1fr); gap: 56px; }
+  .rail { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: 8px; }
+  .toc-inline { display: none; }
+}
+.toc-title { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.toc ol ol { margin: 2px 0 6px 12px; padding-left: 10px; border-left: 1px solid var(--rule); }
+.toc a { display: block; padding: 3px 0; color: var(--fg); text-decoration: none; font-size: 0.9rem; line-height: 1.35; }
+.toc ol ol a { color: var(--muted); font-size: 0.82rem; }
+.toc a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+.column { min-width: 0; }
+
+/* ---- content ---- */
+main { min-width: 0; max-width: 900px; }
+main > h2:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 20px); }
+h2 { font-size: 1.75rem; line-height: 1.15; margin: 56px 0 14px; padding-top: 28px; border-top: 1px solid var(--rule-strong); }
+h3 { font-size: 1.25rem; line-height: 1.2; margin: 34px 0 10px; }
+main p, main ul, main ol { max-width: 72ch; }
+main p { margin: 0 0 14px; }
+main ul, main ol { margin: 0 0 16px; padding-left: 1.4em; }
+main li { margin-bottom: 6px; }
+main li > p { margin-bottom: 6px; }
+strong { font-weight: 600; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 0.1em 0.34em; border-radius: 3px; }
+pre { background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; margin: 0 0 16px; overflow-x: auto; line-height: 1.5; }
+pre code { background: none; padding: 0; font-size: 0.82rem; }
+
+.table-wrap { overflow-x: auto; margin: 4px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 0.9rem; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 9px 14px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); background: var(--bg); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; }
+td code { white-space: nowrap; }
+
+ul.tasks { list-style: none; padding-left: 0; display: flex; flex-direction: column; gap: 10px; max-width: 78ch; }
+ul.tasks li { position: relative; margin: 0; padding-left: 32px; }
+ul.tasks li::before { content: ""; position: absolute; left: 0; top: 0.2em; width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--rule-strong); background: var(--surface); }
+ul.tasks li.done::before { background: var(--accent); border-color: var(--accent); }
+ul.tasks li.done::after { content: ""; position: absolute; left: 6px; top: calc(0.2em + 3px); width: 5px; height: 9px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+ul.tasks li.done { color: var(--muted); }
+
+.diagram { margin: 8px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.diagram-scroll { overflow-x: auto; padding: 8px; }
+.diagram svg { display: block; width: 100%; min-width: 640px; height: auto; font-family: var(--font-body); }
+.diagram figcaption { padding: 8px 14px 10px; border-top: 1px solid var(--rule); font-size: 0.82rem; color: var(--muted); }
+.d-title { font-size: 15px; font-weight: 600; fill: var(--fg); }
+.d-name { font-size: 13px; font-weight: 600; fill: var(--fg); }
+.d-line { font-size: 11.5px; }
+.d-ink { fill: var(--fg); }
+.d-quiet { fill: var(--muted); }
+.d-box { fill: none; stroke: var(--rule-strong); stroke-width: 1.25; }
+.d-box.d-main { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.d-edges path { fill: none; stroke: var(--rule-strong); stroke-width: 1.25; }
+.d-head { fill: var(--rule-strong); }
+
+.fid { font-family: var(--font-mono); font-weight: 500; font-size: 0.8em; color: var(--accent); margin-right: 0.35em; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 14px; color: var(--muted); font-size: 0.9rem; }
+.chip { display: inline-block; font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--rule-strong); color: var(--muted); white-space: nowrap; }
+.chip.open { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.chip.resolved, .chip.accepted { border-color: var(--fg); color: var(--fg); }
+td a { color: var(--fg); text-decoration: none; }
+td a:hover { color: var(--accent); text-decoration: underline; }
+main h3 { margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--rule); }
+main h2 + p + h3 { border-top: 0; padding-top: 0; margin-top: 28px; }
+main li > ul, main li > ol { margin-top: 6px; }
+footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.85rem; max-width: 72ch; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="masthead-text">
+      <p class="eyebrow">Red team review, pass 2 · Version 1</p>
+      <h1>BIL Red Team: Pass 2</h1>
+      <p class="lede">A second review of version 56 of the Blazing Imaging Library specification: 16 symmetry and consistency findings and 16 red team findings, each with a proposed resolution and the decision it needs.</p>
+    </div>
+    <svg class="motif" viewBox="0 0 166 71" role="img" aria-label="32 of 32 findings open"><rect class="px in" x="0" y="0" width="14" height="14" rx="2"/><rect class="px in" x="19" y="0" width="14" height="14" rx="2"/><rect class="px in" x="38" y="0" width="14" height="14" rx="2"/><rect class="px in" x="57" y="0" width="14" height="14" rx="2"/><rect class="px in" x="76" y="0" width="14" height="14" rx="2"/><rect class="px in" x="95" y="0" width="14" height="14" rx="2"/><rect class="px in" x="114" y="0" width="14" height="14" rx="2"/><rect class="px in" x="133" y="0" width="14" height="14" rx="2"/><rect class="px in" x="152" y="0" width="14" height="14" rx="2"/><rect class="px in" x="0" y="19" width="14" height="14" rx="2"/><rect class="px in" x="19" y="19" width="14" height="14" rx="2"/><rect class="px in" x="38" y="19" width="14" height="14" rx="2"/><rect class="px in" x="57" y="19" width="14" height="14" rx="2"/><rect class="px in" x="76" y="19" width="14" height="14" rx="2"/><rect class="px in" x="95" y="19" width="14" height="14" rx="2"/><rect class="px in" x="114" y="19" width="14" height="14" rx="2"/><rect class="px in" x="133" y="19" width="14" height="14" rx="2"/><rect class="px in" x="152" y="19" width="14" height="14" rx="2"/><rect class="px in" x="0" y="38" width="14" height="14" rx="2"/><rect class="px in" x="19" y="38" width="14" height="14" rx="2"/><rect class="px in" x="38" y="38" width="14" height="14" rx="2"/><rect class="px in" x="57" y="38" width="14" height="14" rx="2"/><rect class="px in" x="76" y="38" width="14" height="14" rx="2"/><rect class="px in" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/><rect class="px in" x="152" y="38" width="14" height="14" rx="2"/><rect class="px in" x="0" y="57" width="14" height="14" rx="2"/><rect class="px in" x="19" y="57" width="14" height="14" rx="2"/><rect class="px in" x="38" y="57" width="14" height="14" rx="2"/><rect class="px in" x="57" y="57" width="14" height="14" rx="2"/><rect class="px in" x="76" y="57" width="14" height="14" rx="2"/></svg>
+  </header>
+  <dl class="control">
+    <div><dt>Review version</dt><dd>1</dd></div>
+    <div><dt>As of</dt><dd>12 October 2026</dd></div>
+    <div><dt>Specification reviewed</dt><dd>Version 56</dd></div>
+    <div><dt>Findings</dt><dd>16 consistency; 3 critical, 7 serious, 6 lesser</dd></div>
+    <div><dt>Status</dt><dd>32 open, 0 resolved</dd></div>
+    <div><dt>Method</dt><dd>Paper review; nothing was run</dd></div>
+  </dl>
+
+  <div class="layout">
+    <nav class="rail toc" aria-label="Contents">
+      <p class="toc-title">Contents</p>
+      <ol><li><a href="#summary">Summary</a></li><li><a href="#symmetry-and-consistency">Symmetry and consistency</a><ol><li><a href="#u1">U1 Repeated names are numbered three different ways</a></li><li><a href="#u2">U2 One quantity has two names, and one name has several meanings</a></li><li><a href="#u3">U3 Decibels are reached three ways</a></li><li><a href="#u4">U4 Color conversion has two routes, and one uses lookups</a></li><li><a href="#u5">U5 "What a function needs" has two mechanisms</a></li><li><a href="#u6">U6 Wavelength is held twice</a></li><li><a href="#u7">U7 "Borrowed" and "Streamed" each mean two things</a></li><li><a href="#u8">U8 Resolution is chosen three ways, and geocoding takes a fourth</a></li><li><a href="#u9">U9 "No value" is said two ways</a></li><li><a href="#u10">U10 Some definitions still describe an earlier design</a></li><li><a href="#u11">U11 Plugins register in more than one way, under different rules</a></li><li><a href="#u12">U12 Memory is bounded by several unrelated limits</a></li><li><a href="#u13">U13 Where a field can attach is listed three ways</a></li><li><a href="#u14">U14 The catalog rule and the catalog disagree</a></li><li><a href="#u15">U15 The packaging rules contradict the FFmpeg decision</a></li><li><a href="#u16">U16 Some statements were left behind by later decisions</a></li></ol></li><li><a href="#critical-findings">Critical findings</a><ol><li><a href="#r26">R26 Isolation decodes the whole Source</a></li><li><a href="#r27">R27 Window independence is not defined to the bit</a></li><li><a href="#r28">R28 Markings can be separated from the data</a></li></ol></li><li><a href="#serious-findings">Serious findings</a><ol><li><a href="#r29">R29 Stored levels are not on the Level grid</a></li><li><a href="#r30">R30 Writing loses geocoding, and ENVI cannot hold every sample type</a></li><li><a href="#r31">R31 A deferred Fragment has no decoder of its own</a></li><li><a href="#r32">R32 Untrusted files get no limits by default, and the cache is limited only by count</a></li><li><a href="#r33">R33 Remote Sources are not designed for</a></li><li><a href="#r34">R34 Live streams cannot be stopped, timed out or read twice</a></li><li><a href="#r35">R35 The LGPL may keep Rust developers away</a></li></ol></li><li><a href="#lesser-findings">Lesser findings</a><ol><li><a href="#r36">R36 The precision rule is wrong for integer data</a></li><li><a href="#r37">R37 A validity mask at reduced Levels is undefined</a></li><li><a href="#r38">R38 Saved frame indexes and companion files are trusted blindly</a></li><li><a href="#r39">R39 BIL has no stability policy for its own interfaces</a></li><li><a href="#r40">R40 The conformance suite misses some of the design</a></li><li><a href="#r41">R41 Exif already has a time in UTC</a></li></ol></li><li><a href="#what-held-up">What held up</a></li></ol>
+    </nav>
+    <div class="column">
+      <details class="toc-inline toc">
+        <summary>Contents</summary>
+        <ol><li><a href="#summary">Summary</a></li><li><a href="#symmetry-and-consistency">Symmetry and consistency</a><ol><li><a href="#u1">U1 Repeated names are numbered three different ways</a></li><li><a href="#u2">U2 One quantity has two names, and one name has several meanings</a></li><li><a href="#u3">U3 Decibels are reached three ways</a></li><li><a href="#u4">U4 Color conversion has two routes, and one uses lookups</a></li><li><a href="#u5">U5 "What a function needs" has two mechanisms</a></li><li><a href="#u6">U6 Wavelength is held twice</a></li><li><a href="#u7">U7 "Borrowed" and "Streamed" each mean two things</a></li><li><a href="#u8">U8 Resolution is chosen three ways, and geocoding takes a fourth</a></li><li><a href="#u9">U9 "No value" is said two ways</a></li><li><a href="#u10">U10 Some definitions still describe an earlier design</a></li><li><a href="#u11">U11 Plugins register in more than one way, under different rules</a></li><li><a href="#u12">U12 Memory is bounded by several unrelated limits</a></li><li><a href="#u13">U13 Where a field can attach is listed three ways</a></li><li><a href="#u14">U14 The catalog rule and the catalog disagree</a></li><li><a href="#u15">U15 The packaging rules contradict the FFmpeg decision</a></li><li><a href="#u16">U16 Some statements were left behind by later decisions</a></li></ol></li><li><a href="#critical-findings">Critical findings</a><ol><li><a href="#r26">R26 Isolation decodes the whole Source</a></li><li><a href="#r27">R27 Window independence is not defined to the bit</a></li><li><a href="#r28">R28 Markings can be separated from the data</a></li></ol></li><li><a href="#serious-findings">Serious findings</a><ol><li><a href="#r29">R29 Stored levels are not on the Level grid</a></li><li><a href="#r30">R30 Writing loses geocoding, and ENVI cannot hold every sample type</a></li><li><a href="#r31">R31 A deferred Fragment has no decoder of its own</a></li><li><a href="#r32">R32 Untrusted files get no limits by default, and the cache is limited only by count</a></li><li><a href="#r33">R33 Remote Sources are not designed for</a></li><li><a href="#r34">R34 Live streams cannot be stopped, timed out or read twice</a></li><li><a href="#r35">R35 The LGPL may keep Rust developers away</a></li></ol></li><li><a href="#lesser-findings">Lesser findings</a><ol><li><a href="#r36">R36 The precision rule is wrong for integer data</a></li><li><a href="#r37">R37 A validity mask at reduced Levels is undefined</a></li><li><a href="#r38">R38 Saved frame indexes and companion files are trusted blindly</a></li><li><a href="#r39">R39 BIL has no stability policy for its own interfaces</a></li><li><a href="#r40">R40 The conformance suite misses some of the design</a></li><li><a href="#r41">R41 Exif already has a time in UTC</a></li></ol></li><li><a href="#what-held-up">What held up</a></li></ol>
+      </details>
+      <main>
+<p>This is the second review of the Blazing Imaging Library specification, made against version 56. It has two parts.</p>
+<ul>
+<li><strong>Symmetry and consistency (U1 to U16).</strong> Places where the design does one thing in two ways, names one thing twice, or says something an earlier decision has since overtaken. These test rule 7, Uniform, and the two tests of section 1.6.</li>
+<li><strong>Red team (R26 to R41).</strong> Weaknesses that would cause wrong results, unsafe behavior or failed adoption. Numbering continues from the first review, which ended at R25.</li>
+</ul>
+<p>Each finding gives the problem, a proposed resolution and the decision it needs. The review was made on paper: nothing was run. Claims about outside formats and libraries are from knowledge of them, and say so where it matters.</p>
+<h2 id="summary">Summary</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Severity</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#u1">U1. Repeated names are numbered three different ways</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u2">U2. One quantity has two names, and one name has several meanings</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u3">U3. Decibels are reached three ways</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u4">U4. Color conversion has two routes, and one uses lookups</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u5">U5. "What a function needs" has two mechanisms</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u6">U6. Wavelength is held twice</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u7">U7. "Borrowed" and "Streamed" each mean two things</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u8">U8. Resolution is chosen three ways, and geocoding takes a fourth</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u9">U9. "No value" is said two ways</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u10">U10. Some definitions still describe an earlier design</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u11">U11. Plugins register in more than one way, under different rules</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u12">U12. Memory is bounded by several unrelated limits</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u13">U13. Where a field can attach is listed three ways</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u14">U14. The catalog rule and the catalog disagree</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u15">U15. The packaging rules contradict the FFmpeg decision</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#u16">U16. Some statements were left behind by later decisions</a></td>
+<td>Consistency</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r26">R26. Isolation decodes the whole Source</a></td>
+<td>Critical</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r27">R27. Window independence is not defined to the bit</a></td>
+<td>Critical</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r28">R28. Markings can be separated from the data</a></td>
+<td>Critical</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r29">R29. Stored levels are not on the Level grid</a></td>
+<td>Serious</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r30">R30. Writing loses geocoding, and ENVI cannot hold every sample type</a></td>
+<td>Serious</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r31">R31. A deferred Fragment has no decoder of its own</a></td>
+<td>Serious</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r32">R32. Untrusted files get no limits by default, and the cache is limited only by count</a></td>
+<td>Serious</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r33">R33. Remote Sources are not designed for</a></td>
+<td>Serious</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r34">R34. Live streams cannot be stopped, timed out or read twice</a></td>
+<td>Serious</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r35">R35. The LGPL may keep Rust developers away</a></td>
+<td>Serious</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r36">R36. The precision rule is wrong for integer data</a></td>
+<td>Lesser</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r37">R37. A validity mask at reduced Levels is undefined</a></td>
+<td>Lesser</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r38">R38. Saved frame indexes and companion files are trusted blindly</a></td>
+<td>Lesser</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r39">R39. BIL has no stability policy for its own interfaces</a></td>
+<td>Lesser</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r40">R40. The conformance suite misses some of the design</a></td>
+<td>Lesser</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+<tr>
+<td><a href="#r41">R41. Exif already has a time in UTC</a></td>
+<td>Lesser</td>
+<td><span class="chip open">Open</span></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="symmetry-and-consistency">Symmetry and consistency</h2>
+<h3 id="u1"><span class="fid">U1</span> Repeated names are numbered three different ways</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 5 and 14.1</span></p>
+<p><strong>Problem.</strong> Three rules number things that repeat, and no two agree.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>Rule</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Slice names from metadata (section 5)</td>
+<td>The first is unnumbered, later ones gain <code>_2</code>, <code>_3</code></td>
+<td><code>red</code>, <code>red_2</code></td>
+</tr>
+<tr>
+<td>Field names (section 14.1)</td>
+<td>Every instance is numbered, from 1, in brackets</td>
+<td><code>nitf.RPC00B[1]</code>, <code>nitf.RPC00B[2]</code></td>
+</tr>
+<tr>
+<td>Slice positions (section 5)</td>
+<td>Counted from 0</td>
+<td>Position 0 is <code>red</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>A caller who learns one rule guesses wrong for the others. A Slice name also changes meaning when a second band of the same name appears: <code>red</code> stops being the only red band but keeps its name, while a field in the same situation becomes <code>[1]</code>.</p>
+<p><strong>Proposed resolution.</strong> One rule for repeats, everywhere: when a name repeats, every instance carries its number, counted from 1. Slice names take the form <code>red_1</code>, <code>red_2</code>, and field names keep their brackets, because a suffix could clash with a native name. Positions stay counted from 0, as indexes are everywhere else in BIL, and the specification says that positions are indexes and repeat numbers are not.</p>
+<p><strong>Decision needed.</strong> Whether the first instance of a repeated Slice name is numbered.</p>
+<h3 id="u2"><span class="fid">U2</span> One quantity has two names, and one name has several meanings</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 9.3, 9.4 and 9.5</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Chroma is named twice.</strong> <code>color.ycbcr</code> yields <code>chroma_blue</code> and <code>chroma_red</code>. <code>video.planes</code> yields <code>chroma_u</code> and <code>chroma_v</code>. They are the same quantities.</li>
+<li><strong><code>luminance</code> means four things.</strong> In <code>color.luminance</code> it is linear luminance from the declared primaries. In <code>cfa.demosaic</code> and <code>cfa.binned</code> it comes from camera color with no primaries known. In <code>palette.lookup</code> the specification does not say. A caller who mixes them compares unlike values under one name.</li>
+<li><strong>Units appear in one name only.</strong> <code>thermal.calibrated</code> yields <code>temperature_k</code>. Every other Slice leaves the unit out: <code>height</code> in meters, <code>range</code> in meters, <code>activity</code> in becquerels per milliliter, and <code>spectral.brightness_temperature</code> in kelvin.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Use <code>chroma_blue</code> and <code>chroma_red</code> in both functions.</li>
+<li>Give <code>luminance</code> one definition: linear luminance from the declared primaries, using the defaults of section 9.3 where none is declared. Every function that yields <code>luminance</code> follows it.</li>
+<li>Rename <code>temperature_k</code> to <code>temperature</code>, and state every Slice's unit in its definition, never in its name.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u3"><span class="fid">U3</span> Decibels are reached three ways</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 7 and 9.2</span></p>
+<p><strong>Problem.</strong> <code>complex.power</code> yields <code>db</code> as a Slice beside <code>power</code>. <code>sar.calibrated_db</code> is a separate function, and it has no <code>rcs</code> although <code>sar.calibrated</code> does. The <code>log10</code> normalization, with a <code>gain_offset</code> after it, makes decibels from anything. A caller cannot predict which form a quantity in decibels takes.</p>
+<p><strong>Proposed resolution.</strong> One form: a decibel Slice sits beside its linear Slice in the same function, named with <code>_db</code>. <code>complex.power</code> yields <code>power</code> and <code>power_db</code>. <code>sar.calibrated</code> yields <code>sigma0</code>, <code>sigma0_db</code> and the rest, including <code>rcs_db</code>, and <code>sar.calibrated_db</code> is removed. <code>log10</code> stays as a normalization for formats that store values on a log scale.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u4"><span class="fid">U4</span> Color conversion has two routes, and one uses lookups</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 7 and 9.3</span></p>
+<p><strong>Problem.</strong> Section 9.3 now says color is computed by formula from the four H.273 properties, with no per-pixel lookup tables. Section 7 still lists the <code>matrix</code> normalization for "color space conversion, luminance", with "RGB to luminance" taking its matrix from "color space in metadata", and <code>lookup_table</code> for tone curves. That is a second route to the same result, with its own source of parameters, and one of them is a per-pixel lookup.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Color conversion is done only by the color functions of section 9.3. Remove "color space conversion" and "luminance" from the uses of <code>matrix</code>, and the "RGB to luminance" motivating case. <code>matrix</code> remains for band synthesis.</li>
+<li><code>lookup_table</code> stays only where the format stores values through a table: palettes and amplitude tables. Those are the stored values, not a color conversion, and section 9.3 says so.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether <code>lookup_table</code> stays for tone curves.</p>
+<h3 id="u5"><span class="fid">U5</span> "What a function needs" has two mechanisms</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 7, 10 and 14.2</span></p>
+<p><strong>Problem.</strong> A function's inputs reach it two ways.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Inputs</th>
+<th>How they arrive</th>
+<th>Precedence</th>
+<th>Companion file</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normalization parameters</td>
+<td><code>read_normalization</code>, a driver duty</td>
+<td>Caller, then metadata</td>
+<td>Cannot supply them</td>
+</tr>
+<tr>
+<td>Dictionary items</td>
+<td><code>list_required_fields</code></td>
+<td>Caller, provided, derived, companion</td>
+<td>Can supply them</td>
+</tr>
+</tbody>
+</table></div>
+<p>A SAR calibration polynomial missing from a file therefore cannot be supplied in a companion file, while a sun elevation can. Two lists say why a function is held back, and they are reported by different calls.</p>
+<p><strong>Proposed resolution.</strong> Normalization parameters become fields like any other input. A driver maps them from native fields, as it maps dictionary items, and they follow the same order: caller, provided, derived, companion. <code>read_normalization</code> remains as the driver's way of supplying them. <code>list_required_fields</code> lists every input a function needs, of either kind.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u6"><span class="fid">U6</span> Wavelength is held twice</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 3.1, 9.1 and 14.2</span></p>
+<p><strong>Problem.</strong> A band's wavelength is a coordinate attached to the component index (section 3.1), which <code>pixel.nearest</code> and <code>pixel.integrate</code> read. It is also the dictionary item <code>common.band_center</code> (section 14.2). Nothing says they are the same, so a driver could fill one and not the other.</p>
+<p><strong>Proposed resolution.</strong> State the general rule: a coordinate is the view along its index of a field, and where a dictionary item describes the same thing, the coordinate's field is that item. <code>common.band_center</code> is the wavelength coordinate of the component index. The same holds for frame time and <code>common.collection_time</code> at frame 0.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u7"><span class="fid">U7</span> "Borrowed" and "Streamed" each mean two things</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 4, 5, 6 and 8.3</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Borrowed.</strong> Section 4 defines a borrowed Fragment as "the stored bytes themselves". Section 8.3 says video Fragments are "borrowed from the decoder", while section 4 says they are deferred.</li>
+<li><strong>Read-only.</strong> Borrowed pixels "cannot be changed", yet <code>Private</code> mapping exists "so a caller can change the array without touching the file".</li>
+<li><strong>Streamed.</strong> <code>Streamed</code> is an access class in section 6 and a <code>Delivery</code> in section 5. The access class depends on what the caller chose to do, not on the data.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Keep <code>Borrowed</code> for stored bytes only. Change the column in section 8 to say "Deferred; the decoder's buffer is used without a copy".</li>
+<li>Under <code>Private</code> mapping, borrowed arrays are writable, and writes stay in the caller's memory. Under <code>Shared</code>, they are read-only. The read-only rule names <code>Shared</code>.</li>
+<li>Make the access classes describe the source only: <code>Borrowed</code>, <code>Converted</code> and <code>Decoded</code>. Delivery stays a separate choice, and <code>plan</code> reports both.</li>
+</ul>
+<p><strong>Decision needed.</strong> The names of the access classes.</p>
+<h3 id="u8"><span class="fid">U8</span> Resolution is chosen three ways, and geocoding takes a fourth</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 5 and 13.4</span></p>
+<p><strong>Problem.</strong> A request chooses its resolution through <code>levels</code>, a list of whole numbers, through the <code>stored_level</code> option, and through <code>level_source</code>. The level names a Slice reports, such as <code>stored2.level1</code>, cannot be asked for by name. Geocoding then takes a Window and a Level number in <code>for_window(window, level)</code>, which cannot express a stored level or a <code>step</code>, although every Slice now carries the <code>origin</code> and <code>scale</code> that say exactly where it sits.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><code>levels</code> in a <code>SliceRequest</code> takes level names: <code>level3</code>, <code>stored2</code>, <code>stored2.level1</code>. A whole number is accepted as a short form of <code>levelN</code>. <code>stored_level</code> is removed, and <code>level_source</code> stays only to let BIL choose a stored level itself.</li>
+<li>Replace <code>for_window(window, level)</code> with <code>for_slice(slice)</code>, which builds the <code>image_window</code> step from the Slice's <code>origin</code> and <code>scale</code>. <code>for_window</code> remains as a short form for computed Levels.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u9"><span class="fid">U9</span> "No value" is said two ways</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 3.3 and 14</span></p>
+<p><strong>Problem.</strong> Section 3.3 says a call either delivers or returns an error. It also gives fields a <code>Missing</code> status, "the field has no value at that index", and a derived item with a missing input is <code>Missing</code>. Nothing says what <code>read_field</code> does with a name the file does not hold: an error, or a delivered value with status <code>Missing</code>.</p>
+<p><strong>Proposed resolution.</strong> One rule. A name that is not defined for this Source is an error. A defined field, or a dictionary item, that has no value here is delivered with status <code>Missing</code> and no value. The same applies along an index with <code>read_field_at</code>.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u10"><span class="fid">U10</span> Some definitions still describe an earlier design</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 3, 5 and 7</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Slice function.</strong> Defined as a mapping "from a Fragment", and section 5 says "from a single Fragment". Several functions now read Fragments from more than one Image.</li>
+<li><strong>Normalization.</strong> "Uses only the pixel's values and its absolute row and column." It also uses frame coordinates and calibration Images.</li>
+<li><strong>Representation.</strong> A slice function is "defined for one sensor representation", and <code>list_slice_functions</code> offers what is valid for an Image's representation. Nothing defines a representation or says how a driver declares one: color, Bayer pattern, complex, spectral or polarimetric.</li>
+<li><strong>Level.</strong> Section 3 says each Level "halves the rows and columns". Since version 46 a Level is the grid points at multiples of 2ⁿ.</li>
+</ul>
+<p><strong>Proposed resolution.</strong> Rewrite the four definitions to match the design. For representation, add it to what <code>list_images</code> describes: a named representation for each Image, with its parameters, such as the mosaic pattern, the polarizer angles or the band coordinates. A slice function declares the representations it accepts.</p>
+<p><strong>Decision needed.</strong> Accept, including how a representation is declared.</p>
+<h3 id="u11"><span class="fid">U11</span> Plugins register in more than one way, under different rules</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 9.6 and 10</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Families.</strong> <code>register_slice_function</code> adds functions "under the driver's own family". <code>bil-extras</code> uses the same call to add <code>spectral.indices</code>, <code>spectral.angle</code> and <code>nuclear.uptake</code> to the core families.</li>
+<li><strong>A bypass.</strong> "A driver does not implement slice functions", yet <code>read_slice_direct</code> lets a decoder emit float32 rows itself. Nothing requires those rows to equal the core's, or to stay window-independent.</li>
+<li><strong>Several registrations.</strong> Section 10 says all plugin kinds "register through the same mechanism". There are at least four calls: <code>bil_register_driver</code>, <code>register_slice_function</code>, <code>register_level_method</code> and the scripted <code>register_driver</code>.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>A family belongs to whoever defines it. The core families are open to packages from the BIL project, and other plugins use their own families.</li>
+<li><code>read_slice_direct</code> is allowed only for a slice function whose result it reproduces exactly, and the Codec agreement test checks it against the core's own path.</li>
+<li>One registration call that takes a description of the plugin and its kind. The specific calls become short forms of it.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether <code>read_slice_direct</code> is kept.</p>
+<h3 id="u12"><span class="fid">U12</span> Memory is bounded by several unrelated limits</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 4, 10.3, 12, 13.6 and 14.3</span></p>
+<p><strong>Problem.</strong> "Bounded memory" is a rule of section 12, but the limits that enforce it are counted in different units, and some are missing.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>What is held</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Decoded Fragments</td>
+<td>A count, 16 by default, with no limit on bytes</td>
+</tr>
+<tr>
+<td>Metadata attached to an index</td>
+<td>A count of positions, 1,000 by default</td>
+</tr>
+<tr>
+<td>Extracted metadata groups</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Terrain tiles</td>
+<td>"Recently used tiles are kept", with no limit</td>
+</tr>
+<tr>
+<td>Frame index</td>
+<td>None</td>
+</tr>
+</tbody>
+</table></div>
+<p>The options that set them are scattered: <code>OpenOptions</code> gathers limits, mapping, isolation, the companion file and held positions, but is never listed in one place.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Each kind of held data has a stated limit and a report of what it holds, in the manner of <code>describe_cache</code>.</li>
+<li>Terrain tiles are read through BIL's own drivers, so they use the Fragment cache of their Sources rather than a cache of their own.</li>
+<li><code>OpenOptions</code> and <code>WriteOptions</code> are each listed in full, in one place, with every default.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u13"><span class="fid">U13</span> Where a field can attach is listed three ways</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 3.1, 14.1 and 14.2</span></p>
+<p><strong>Problem.</strong> Section 14.1 says a field attaches to "a Source, an Image, or an index of an Image, such as frame". Section 14.2 adds "a component" for dictionary items. Section 3.1 attaches coordinates to row, column, component and frame. The three lists do not agree.</p>
+<p><strong>Proposed resolution.</strong> One list in section 14.1: a field attaches to a Source, an Image, or one index of an Image, whether row, column, component, frame or a declared additional index. The other sections refer to it.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u14"><span class="fid">U14</span> The catalog rule and the catalog disagree</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 9 and 15</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Caller-supplied values.</strong> The first check bans anything from outside the collection, including an "analyst's threshold". <code>pixel.weighted(weights)</code> and <code>spectral.response(curves)</code> take values from the caller, and stay in the core.</li>
+<li><strong>A generic index.</strong> <code>pixel.pair</code> yields <code>normalized_difference</code>, which is NDVI for any two bands, while <code>spectral.indices</code> moved to the extras package as analysis.</li>
+<li><strong>Display stretch.</strong> Section 15 allows a display stretch as a slice function when its statistics are passed in. It neither undoes storage, calibrates nor re-expresses.</li>
+<li><strong>The interferogram.</strong> The allowance says <code>insar.interferogram</code> "combines two collections". Section 8.2 describes the interferogram as already formed, one complex Image with its coherence, and section 15 puts the forming of interferograms outside BIL. The function only re-expresses a product already made.</li>
+<li><strong>Points from range.</strong> <code>depth.points</code> computes positions "from its range and the camera geometry", outside the geocoding chain that section 13 says locates every pixel.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li>Add to the first check: parameters the caller names explicitly, such as weights or response curves, are allowed. They are part of the request, not information brought in by BIL.</li>
+<li>Keep <code>pixel.pair</code> as a general tool of the <code>pixel</code> family, and say that the named indices stay in the extras package.</li>
+<li>Remove the display-stretch row from section 15, or name it as a fourth kind, "present", with its own check.</li>
+<li>Replace the interferogram allowance with the plain statement that the function re-expresses a formed interferogram.</li>
+<li><code>depth.points</code> takes its geometry from the Image's own <code>camera</code> step.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether a display stretch belongs in BIL.</p>
+<h3 id="u15"><span class="fid">U15</span> The packaging rules contradict the FFmpeg decision</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 10, 10.5 and 16</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>The Packaging test.</strong> A wrapper fails Packaging when "it cannot build the library into BIL as a private copy". Section 10 then says rsmpeg and ffmpeg-next fail it because they link an installed FFmpeg. Yet section 10.5 now requires FFmpeg to be the installed copy, and never a private one.</li>
+<li><strong>Bindings.</strong> "Where none passes, BIL writes its own bindings in <code>bil-sys</code>." For FFmpeg it uses the rusty_ffmpeg bindings instead.</li>
+<li><strong>The decision text.</strong> "Wrapper crates" in section 16 lists three tests, and section 10 has four.</li>
+</ul>
+<p><strong>Proposed resolution.</strong> Rewrite the Packaging test as "it cannot supply the library from the source that section 10.5 sets for it". Make the fallback "BIL depends on an existing bindings crate where one passes, and writes its own bindings only where none does". Bring the decision text into line.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="u16"><span class="fid">U16</span> Some statements were left behind by later decisions</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 1.6, 1.7 and 10.4</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Section 1.6</strong> says missing pixels are "NaN in a Slice". Since version 50, <code>missing_value</code> can fill them.</li>
+<li><strong>Section 1.7</strong> says image processing "sits above BIL in every case". Since version 53, BIL does the processing that prepares data.</li>
+<li><strong>Section 10.4.</strong> The Missing data test requires NaN "in every Slice", and the One grid test checks only size, not <code>origin</code> and <code>scale</code>.</li>
+</ul>
+<p><strong>Proposed resolution.</strong> Update each statement. Section 1.6: "NaN in a Slice, or the caller's <code>missing_value</code>". Section 1.7: "Analysis sits above BIL". Section 10.4: the Missing data test holds under the default, and One grid requires the same size, origin and scale.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h2 id="critical-findings">Critical findings</h2>
+<h3 id="r26"><span class="fid">R26</span> Isolation decodes the whole Source</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 10.2 and 10.3</span></p>
+<p><strong>Problem.</strong> Isolation runs a driver in the decoder process of section 10.2, which "opens the original Source and decodes it" into the mapped format, "frame by frame for video". That is a decoding of the whole Source. A caller reading one small Window from a 100,000 × 100,000 NITF pays to decode 10 billion pixels first, and holds a 20 GB decoded copy.</p>
+<ul>
+<li><strong>It breaks rule 1, Proportional.</strong> Cost follows the Source, not the request.</li>
+<li><strong>It breaks bounded memory and storage.</strong> A live stream decoded this way grows without end.</li>
+<li><strong>It undermines a recent decision.</strong> Version 56 bounds OpenJPEG's risk by recommending <code>isolation</code> set to <code>Untrusted</code> for hostile files. Under the current design, that makes large NITF files impractical to read.</li>
+</ul>
+<p><strong>Proposed resolution.</strong> The decoder process decodes on request. The caller's process sends each read, a Window and its blocks, and the decoder process decodes only those blocks into shared memory, which is reused as a bounded cache. The mapped format then serves two uses: decoded copies made deliberately, as now, and the exchange area for isolated reads, which is never a whole copy. For a live stream it is a ring of recent frames.</p>
+<p><strong>Decision needed.</strong> Accept, and whether the whole-copy form of external decoding stays as a separate choice.</p>
+<h3 id="r27"><span class="fid">R27</span> Window independence is not defined to the bit</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 5, 10.4 and 12</span></p>
+<p><strong>Problem.</strong> The Window independence test requires a Slice of a Window to "equal" the same region cut from the whole. Section 5 says computed Levels give the same values "on every machine". Neither holds automatically.</p>
+<ul>
+<li><strong>Within one machine.</strong> Vector loops handle the last few pixels of a row in a scalar tail. If the vector body uses fused multiply-add and the tail does not, a pixel computed in the body for one Window and in the tail for another differs in its last bit. Where a Window starts decides which path a pixel takes.</li>
+<li><strong>Across machines.</strong> Loops are chosen at run time among AVX2, AVX-512 and NEON. Their fused operations, order of sums, and approximations of the arctangent, logarithm and power differ.</li>
+<li><strong>The test cannot pass reliably</strong> until "equal" is defined.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>Bitwise on one machine.</strong> The Window independence test requires identical bits. Every loop computes a pixel by the same sequence of operations whether it falls in the vector body or the tail, using masked vector tails or a scalar path that mirrors the vector one exactly.</li>
+<li><strong>Stated tolerance across machines.</strong> Results from different instruction sets agree within a stated bound: exact for integer-to-float conversion, within one unit in the last place for arithmetic, and a bound stated for each transcendental function. The claim "on every machine" is restated this way.</li>
+<li><strong>Tested on each instruction set.</strong> The conformance suite runs on each instruction set BIL ships.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept, and whether bitwise agreement across machines is wanted at a cost in speed.</p>
+<h3 id="r28"><span class="fid">R28</span> Markings can be separated from the data</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 11 and 14.2</span></p>
+<p><strong>Problem.</strong> None of BIL's writable formats has a native field for a security marking, so for every file BIL writes, markings go to the companion file <code>&lt;file&gt;.metadata</code>. Copying the file without its companion loses the marking silently. Reading such a copy later gives data with no markings and no sign that any are missing. On closed networks this is a spill risk, and it falls on exactly the data the marking rule exists to protect.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>Inside the file wherever there is room.</strong> BIL writes markings inside the file wherever the format has a place for text, as well as in the companion file. An ENVI header can hold additional keys, and a TIFF can hold text metadata, for example in the GDAL metadata tag. <code>.npy</code> has none.</li>
+<li><strong>A missing companion is detected.</strong> A file that BIL wrote records that a companion file belongs to it. Reading it without the companion gives status <code>Partial</code> and a reported warning.</li>
+<li><strong>A refusal on request.</strong> A <code>WriteOptions</code> setting refuses to write a marked Source to a format with no internal place for markings.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept, and whether writing <code>.npy</code> from a marked Source is refused by default.</p>
+<h2 id="serious-findings">Serious findings</h2>
+<h3 id="r29"><span class="fid">R29</span> Stored levels are not on the Level grid</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 5</span></p>
+<p><strong>Problem.</strong> A computed Level n sits on Image pixels at multiples of 2ⁿ. A stored overview usually does not. In a typical TIFF overview, pixel i of the first overview averages full-resolution pixels 2i and 2i+1, so its center lies at 2i + 0.5. With <code>level_source</code> set to <code>Stored</code>, a Level made from that overview sits half a pixel away from the same Level computed from full resolution. That breaks "every Slice of an Image at a given Level shares one grid" and makes results depend on which source was used. Version 46 fixed alignment for computed Levels only.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>Reported.</strong> A stored level reports its exact <code>origin</code> and <code>scale</code>, which is already required.</li>
+<li><strong>Used to make a Level only when it aligns.</strong> <code>level_source</code> = <code>Stored</code> uses a stored level only when its grid falls on the Level's grid. Otherwise the Level is computed from full resolution, and <code>plan</code> says so.</li>
+<li><strong>Read as it stands, freely.</strong> Reading a stored level directly is always allowed, and its Slices carry their true origin.</li>
+<li><strong>Tested.</strong> The One grid test checks origin and scale as well as size.</li>
+</ul>
+<p><strong>Decision needed.</strong> Whether a misaligned stored level is refused, or resampled onto the grid by a local function.</p>
+<h3 id="r30"><span class="fid">R30</span> Writing loses geocoding, and ENVI cannot hold every sample type</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 11</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Geocoding.</strong> Section 11 writes pixels, markings and fields, but never the geo model. A GeoTIFF written by BIL from an RPC-located NITF chip has no georeferencing unless the caller builds it.</li>
+<li><strong>Sample types.</strong> The specification says ENVI "holds every sample type, including complex". By my knowledge of the ENVI header, it has no type for signed 8-bit, 16-bit float, 8-bit complex or 16-bit complex integers. A SICD in <code>ComplexI16</code> cannot be written to ENVI in its native type, so the round trip fails or is silently widened.</li>
+<li><strong>Slices at reduced Levels.</strong> Writing a Slice from a Level or a stored level is not described: which Window it fills, and what geo model it carries.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>Writers write the geo model.</strong> Each writer writes the geo model as far as the format holds it: GeoTIFF the affine, tie-point or RPC tags; ENVI its map information. The chain includes the <code>image_window</code> step of the Slice written. What the format cannot hold goes to the companion file.</li>
+<li><strong>Each writer lists its sample types.</strong> Writing a type a format cannot hold is an error, never a silent conversion.</li>
+<li><strong>A Slice is written at its own grid.</strong> The output Image has the Slice's size, and its geo model starts from the Slice's <code>origin</code> and <code>scale</code>.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r31"><span class="fid">R31</span> A deferred Fragment has no decoder of its own</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 4</span></p>
+<p><strong>Problem.</strong> A video Fragment is deferred: it holds compressed packets, and its pixels are decoded "on demand". Decoder state lives in a Reader, and a Reader belongs to one thread. Fragments, however, may be passed between threads. Nothing says which decoder decodes a deferred Fragment that another thread asks for, or one asked for after its Reader has moved on to other frames. The cache, meanwhile, holds decoded frames "each as a Fragment", so the same frame can exist in deferred and decoded form at once.</p>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>Self-contained.</strong> A deferred Fragment holds everything needed to decode it: its packets from the preceding key frame.</li>
+<li><strong>Its own Reader if it can.</strong> It is decoded by the Reader that made it, when that Reader is free and in place. Otherwise BIL decodes it with a decoder made for the purpose, at the cost <code>plan</code> reported.</li>
+<li><strong>Decoded once.</strong> Once decoded, the Fragment and the cache entry are the same object, so a frame is never decoded twice for one Source.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r32"><span class="fid">R32</span> Untrusted files get no limits by default, and the cache is limited only by count</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 4 and 10.3</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>No limits.</strong> No resource limit is set by default, and opening a Source as untrusted changes only isolation. A compressed block that expands without bound is stopped only if the caller thought to set <code>max_decoded_bytes</code>.</li>
+<li><strong>A count is not a memory bound.</strong> One ARGUS-IS frame is 1.8 gigapixels, about 3.6 GB as 16-bit samples. The default cache of 16 Fragments could hold about 58 GB. A count bounds the memory only if block sizes are known.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>Untrusted sets limits.</strong> Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image, and bytes per metadata group, each scaled to the file's size where that makes sense. The caller can raise them.</li>
+<li><strong>A byte ceiling as well as a count.</strong> The cache keeps its count, as decided, and adds a byte ceiling as a second limit. The default is a stated fraction of physical memory, and whichever limit is reached first applies.</li>
+</ul>
+<p><strong>Decision needed.</strong> The default byte ceiling.</p>
+<h3 id="r33"><span class="fid">R33</span> Remote Sources are not designed for</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 1.1, 10 and 12</span></p>
+<p><strong>Problem.</strong> Remote reading is named as a source of data, through object_store and the OxiGeo storage backend, but the design treats it like a local file.</p>
+<ul>
+<li><strong>Async inside a sync library.</strong> object_store's interface is asynchronous. BIL's interface is not. Running an async runtime inside a shared library that is called from Python, from C, and from Rust programs that have their own runtime causes conflicts, and nothing says how BIL avoids them.</li>
+<li><strong>Latency is not in the cost model.</strong> Rule 1 counts bytes. Over a network, the number of requests dominates: a Window that touches 400 small tiles costs 400 round trips unless they are merged.</li>
+<li><strong>No timeouts or retries.</strong> A stalled request blocks a read without end.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>A private runtime.</strong> BIL runs remote reads on a small runtime of its own, hidden from the caller, and offers a blocking interface as now. An async interface can follow later.</li>
+<li><strong>Requests are counted and merged.</strong> <code>plan</code> reports the number of requests and the bytes for a read. Adjacent byte ranges are merged into one request, up to a stated gap.</li>
+<li><strong>Timeouts and retries.</strong> <code>OpenOptions</code> sets them for remote Sources, and a read that exceeds its timeout is an error.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r34"><span class="fid">R34</span> Live streams cannot be stopped, timed out or read twice</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 3.2 and 4</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>No way to stop.</strong> A read on a live stream waits for the next frame. There is no timeout and no way to cancel it, so a stalled stream holds the caller's thread forever.</li>
+<li><strong>No single position.</strong> A live stream moves forward only, but each Reader "keeps its place". Two Readers on one live stream would each need their own copy of the stream, and nothing says what happens.</li>
+<li><strong>Past frames.</strong> Nothing says what a request for a frame older than those still held returns.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>One position.</strong> A live Source has one shared position. All Readers see the same frames.</li>
+<li><strong>Past frames are <code>Missing</code>.</strong> A frame older than those held is delivered with status <code>Missing</code>, never by waiting or seeking.</li>
+<li><strong>Timeouts and cancellation.</strong> Every read on a stream takes a timeout, and <code>SliceRequest</code> and <code>stream_slice</code> take a cancellation handle the caller can trigger from another thread.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r35"><span class="fid">R35</span> The LGPL may keep Rust developers away</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 10.6</span></p>
+<p><strong>Problem.</strong> The naming rule was changed so that Rust developers would accept BIL. The license may undo that. Rust programs normally link their dependencies statically, and the LGPL then requires that users can relink the program with a modified BIL. Rust has no stable binary interface, so in practice that means shipping object files built with the same compiler version, or the program's source. Section 10.6 notes the duty, but many Rust projects will not take on an LGPL dependency for this reason.</p>
+<p><strong>Proposed resolution.</strong> Add a static-linking exception to the license, as some LGPL libraries do: the OCaml runtime's linking exception is one example. A program may then link BIL statically without the relinking duty, while changes to BIL itself stay under the LGPL. This goes to the legal review already open in section 16.</p>
+<p><strong>Decision needed.</strong> Whether to add a static-linking exception.</p>
+<h2 id="lesser-findings">Lesser findings</h2>
+<h3 id="r36"><span class="fid">R36</span> The precision rule is wrong for integer data</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 5</span></p>
+<p><strong>Problem.</strong> "A slice function computes at the precision of the Fragment." For integer data that would mean integer arithmetic: the power of a <code>ComplexI16</code> sample in 32-bit integers can overflow, since twice 32,768 squared exceeds the largest signed 32-bit value.</p>
+<p><strong>Proposed resolution.</strong> Restate it: arithmetic is done in float32 for sample types that float32 holds exactly, and in float64 for <code>U32</code>, <code>I32</code>, <code>U64</code>, <code>I64</code>, <code>F64</code> and <code>ComplexF64</code>. It is never done in integers. The result is narrowed to float32 once, at the end.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r37"><span class="fid">R37</span> A validity mask at reduced Levels is undefined</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 5</span></p>
+<p><strong>Problem.</strong> <code>pixel.mask.valid</code> is 1.0 or 0.0. Reduced by <code>bilinear</code>, it becomes a fraction. Under the NaN rule a reduced value is valid when any contributing pixel is, so a mask reduced as a linear quantity disagrees with the data it describes.</p>
+<p><strong>Proposed resolution.</strong> Masks are their own kind of Slice. At a reduced Level, <code>valid</code> is 1.0 where the reduced data value exists, which is wherever any contributor was valid. A further Slice, <code>valid_fraction</code>, gives the share of contributors that were valid.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r38"><span class="fid">R38</span> Saved frame indexes and companion files are trusted blindly</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 3.2, 10.3 and 14.2</span></p>
+<p><strong>Problem.</strong></p>
+<ul>
+<li><strong>Stale indexes.</strong> A saved frame index records where each frame is. Nothing checks that it still matches the stream, so after the file changes it silently points at the wrong frames.</li>
+<li><strong>Trusted companions.</strong> A companion file beside the data is read automatically and can supply calibration values and markings. For a file from outside, the companion comes from outside too. Section 10.3 refuses plugins found beside the data, but companion files are taken from there.</li>
+</ul>
+<p><strong>Proposed resolution.</strong></p>
+<ul>
+<li><strong>An index checks its stream.</strong> A saved index records the size and a checksum of the start of the stream, and is refused when they do not match.</li>
+<li><strong>Untrusted Sources skip companions.</strong> For a Source opened as untrusted, a companion file is read only if the caller allows it. Markings in it are always reported, whether or not its values are used.</li>
+</ul>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r39"><span class="fid">R39</span> BIL has no stability policy for its own interfaces</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Sections 2 and 10</span></p>
+<p><strong>Problem.</strong> The plugin interface has a version. BIL's own C interface, Rust crate and Python package do not. Callers of a shared library need to know when an update can break them.</p>
+<p><strong>Proposed resolution.</strong> Semantic versioning for the crate and the shared library, with the C interface changed incompatibly only at a major version. The Python package is built against Python's stable interface, so one build serves several Python versions.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r40"><span class="fid">R40</span> The conformance suite misses some of the design</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 10.4</span></p>
+<p><strong>Problem.</strong> Several things the specification now requires have no test.</p>
+<ul>
+<li><strong>Declared concurrency.</strong> A driver that declares <code>Parallel</code> wrongly corrupts data.</li>
+<li><strong>Deferred decoding.</strong> Native pixels read from a deferred Fragment, and those read from a decoded one, must match.</li>
+<li><strong>Status.</strong> Results must report <code>Partial</code> and <code>Missing</code> correctly.</li>
+<li><strong>Field names.</strong> Escaped dots and numbered repeats must parse.</li>
+<li><strong>One grid.</strong> The test checks size only.</li>
+</ul>
+<p><strong>Proposed resolution.</strong> Add a test for each: parallel reads compared with serial ones, deferred against decoded Fragments, files built with known gaps for status, names with dots and repeats, and origin and scale in One grid.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h3 id="r41"><span class="fid">R41</span> Exif already has a time in UTC</h3>
+<p class="meta"><span class="chip open">Open</span><span class="where">Section 14.2</span></p>
+<p><strong>Problem.</strong> Section 14.2 takes Exif <code>DateTimeOriginal</code> as local time and works out its zone. Exif files with a GPS position usually also carry <code>GPSDateStamp</code> and <code>GPSTimeStamp</code>, which are in UTC. Those give <code>common.collection_time</code> directly, with no zone to find.</p>
+<p><strong>Proposed resolution.</strong> Add the Exif GPS date and time as a provided source of <code>common.collection_time</code>, in UTC, ahead of the local-time rule. <code>DateTimeOriginal</code> is used only where the GPS time is absent.</p>
+<p><strong>Decision needed.</strong> Accept.</p>
+<h2 id="what-held-up">What held up</h2>
+<p>These parts were attacked again and stood.</p>
+<ul>
+<li><strong>The five foundations of section 1.5.</strong> No finding touches index and coordinate, containers apart from codecs, geocoding as a chain or pixels by description. R27 tightens the meaning of window independence without changing it.</li>
+<li><strong>One read request.</strong> Every read path examined is a form of <code>SliceRequest</code>. U8 only changes how its resolution is named.</li>
+<li><strong>Results and status.</strong> The single status model covered every case examined. U9 settles one edge.</li>
+<li><strong>Choosing the codec once.</strong> No path was found by which a file is decoded partly by one codec and partly by another.</li>
+<li><strong>Containment.</strong> No path was found by which BIL reaches the network or writes a file unasked. R38 concerns what it reads, not what it writes.</li>
+</ul>
+      </main>
+      <footer>Red team findings, pass 2, for the Blazing Imaging Library (BIL) specification, review version 1, against specification version 56, as of 12 October 2026. Pass 1 ended at R25.</footer>
+    </div>
+  </div>
+</div>

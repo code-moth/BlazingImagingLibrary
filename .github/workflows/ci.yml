@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux and Windows on x86, Linux and macOS on ARM.
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy --release --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --release
+      - name: Experiment 1, correctness
+        # Bitwise Window independence and agreement across instruction sets, and accuracy.
+        run: cargo run --release --bin exp1 -- --check
