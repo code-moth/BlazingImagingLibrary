@@ -5,7 +5,7 @@ Read this first in every session. It records the state of the work, how it is do
 ## The arrangement
 
 - **Claude writes BIL.** The specification's author leads, rules on every design decision, reviews each change, and supplies test data and other systems.
-- **The specification is the source of truth.** `docs/specification/specification.md`, version 63. A design change is made there first, by the author's ruling, and the version number goes up.
+- **The specification is the source of truth.** `docs/specification/specification.md`, version 64. A design change is made there first, by the author's ruling, and the version number goes up.
 - **Ask, don't assume, on design.** Where the specification leaves something open, propose and flag it. Do not decide it silently.
 
 ## Conventions
@@ -29,11 +29,11 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## State
 
-- **Specification:** version 63. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
-- **Documents in step with version 63:** the specification and the pass 2 review (review version 5). BIL by Example (version 4) does not yet show the accuracy calls of section 13.9. The implementability assessment still lists U8 and U9 as blocking; both are now settled.
+- **Specification:** version 64. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
+- **Documents in step with version 64:** the specification and the pass 2 review (review version 5). BIL by Example (version 4) does not yet show the accuracy calls of section 13.9. The implementability assessment still lists U8 and U9 as blocking; both are now settled.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
 - **CI:** green on all four systems, and on the latest stable Rust.
-- **Open decisions in the specification:** 3 (section 16): mapped format details, drivers for the added sensor cases, dictionary contents. Version 61 settled test data, registry names and Tier 1's libraries. Version 62 settled interpreter packaging (CPython from the machine, none shipped). Version 63 closed the license review, put CPython for Rust, C and C++ callers in a helper process whose round trip is benchmarked and watched, and added full geocoding accuracy (section 13.9: covariance by source and kind, carried through the chain, never dropped).
+- **Open decisions in the specification:** 2 (section 16): drivers for the added sensor cases, and dictionary contents. Version 61 settled test data, registry names and Tier 1's libraries. Version 62 settled interpreter packaging (CPython from the machine, none shipped). Version 63 closed the license review, put CPython for Rust, C and C++ callers in a helper process whose round trip is benchmarked and watched, and added full geocoding accuracy (section 13.9: covariance by source and kind, carried through the chain, never dropped). Version 64 settled the mapped format (section 10.2).
 - **SIX is LGPL 3,** so under the shipped-build rule it is assessed when Tier 2 starts (section 10.6). Options raised with the author: an optional plugin, a named exception, or SICD and SIDD read without it.
 - **Tier 1 readers:** GeoTIFF through the Rust `tiff` crate with BIL's own GeoTIFF keys; NITF through a native Rust reader using field definitions. GDAL and NITRO (LGPL 3.0) are test references only.
 - **Packages:** `crates/bil` 0.0.1 holds the vector layer and kernels (experiment 1 now uses them from there); `crates/bil-sys` 0.0.1 holds the name; `python/` is `bil` 0.0.1 for PyPI. The author publishes with `.github/workflows/publish.yml`, which needs a `CARGO_REGISTRY_TOKEN` secret and PyPI trusted publishing for environment `pypi`.
