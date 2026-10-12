@@ -5,14 +5,14 @@ Read this first in every session. It records the state of the work, how it is do
 ## The arrangement
 
 - **Claude writes BIL.** The specification's author leads, rules on every design decision, reviews each change, and supplies test data and other systems.
-- **The specification is the source of truth.** `docs/specification/specification.md`, version 62. A design change is made there first, by the author's ruling, and the version number goes up.
+- **The specification is the source of truth.** `docs/specification/specification.md`, version 63. A design change is made there first, by the author's ruling, and the version number goes up.
 - **Ask, don't assume, on design.** Where the specification leaves something open, propose and flag it. Do not decide it silently.
 
 ## Conventions
 
 - **Naming.** Types and enum values are UpperCamelCase. Every other name is snake_case, including names passed as text: `color.hsv.hue`, `level3`, `stored2`, `bilinear`, `rational_polynomial`. C uses the prefixes `bil_`, `Bil` and `BIL_`.
 - **American spelling** in identifiers, comments and documents.
-- **License.** LGPL 2.1 or later, with a static-linking exception (`LINKING-EXCEPTION.md`, a draft pending legal review). BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that. Everything in a shipped build must be compatible with LGPL 2.1 itself, so no package becomes LGPL 3 by accident; LGPL 3 code such as NITRO is allowed only in test-only code. `deny.toml` checks what ships, `deny-tests.toml` everything else. Apache-2.0 alone is allowed in what ships, by the author's ruling, accepting the risk that the Free Software Foundation holds it incompatible with LGPL 2.1.
+- **License.** LGPL 2.1 or later, with a static-linking exception (`LINKING-EXCEPTION.md`). The author closed the license review; none is planned. BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that. Everything in a shipped build must be compatible with LGPL 2.1 itself, so no package becomes LGPL 3 by accident; LGPL 3 code such as NITRO is allowed only in test-only code. `deny.toml` checks what ships, `deny-tests.toml` everything else. Apache-2.0 alone is allowed in what ships, by the author's ruling, accepting the risk that the Free Software Foundation holds it incompatible with LGPL 2.1.
 - **Uniform design.** One mechanism for each thing, with no special cases (specification section 1.6).
 - **Not in BIL.** Registration, orthorectification and analysis are layers above BIL.
 - **No reference to any earlier system by name.** The design is influenced by knowledge of previous requirements, and says no more than that.
@@ -29,12 +29,12 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## State
 
-- **Specification:** version 62. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
-- **Documents in step with version 62:** the specification, the pass 2 review (review version 5) and BIL by Example (version 4, unaffected by versions 60 to 62). The implementability assessment still lists U8 and U9 as blocking; both are now settled.
+- **Specification:** version 63. Pass 2 red team review: all 32 findings resolved (R29 in version 60). Version 58 closed the interface gaps; version 59 applied the red team rulings.
+- **Documents in step with version 63:** the specification and the pass 2 review (review version 5). BIL by Example (version 4) does not yet show the accuracy calls of section 13.9. The implementability assessment still lists U8 and U9 as blocking; both are now settled.
 - **Experiment 1:** done. Correctness passed bitwise on scalar, AVX2 and AVX-512 here, and its check passes in CI on Linux x86, Linux ARM, Windows and macOS on ARM. The arithmetic runs at memory speed; the whole pass does not, because the prototype makes whole planes in fresh memory.
 - **CI:** green on all four systems, and on the latest stable Rust.
-- **Open decisions in the specification:** 6 (section 16). Version 61 settled test data, registry names and Tier 1's libraries. Version 62 settled interpreter packaging (CPython from the machine, none shipped) and opened the interpreter process question.
-- **Unresolved conflict:** section 10.6 still says packages may contain LGPL 3 components such as SIX (Tier 2, SICD and SIDD), which the later ruling that shipped builds stay compatible with LGPL 2.1 forbids. Raised with the author; section 10.6 to be rewritten after the ruling.
+- **Open decisions in the specification:** 3 (section 16): mapped format details, drivers for the added sensor cases, dictionary contents. Version 61 settled test data, registry names and Tier 1's libraries. Version 62 settled interpreter packaging (CPython from the machine, none shipped). Version 63 closed the license review, put CPython for Rust, C and C++ callers in a helper process whose round trip is benchmarked and watched, and added full geocoding accuracy (section 13.9: covariance by source and kind, carried through the chain, never dropped).
+- **SIX is LGPL 3,** so under the shipped-build rule it is assessed when Tier 2 starts (section 10.6). Options raised with the author: an optional plugin, a named exception, or SICD and SIDD read without it.
 - **Tier 1 readers:** GeoTIFF through the Rust `tiff` crate with BIL's own GeoTIFF keys; NITF through a native Rust reader using field definitions. GDAL and NITRO (LGPL 3.0) are test references only.
 - **Packages:** `crates/bil` 0.0.1 holds the vector layer and kernels (experiment 1 now uses them from there); `crates/bil-sys` 0.0.1 holds the name; `python/` is `bil` 0.0.1 for PyPI. The author publishes with `.github/workflows/publish.yml`, which needs a `CARGO_REGISTRY_TOKEN` secret and PyPI trusted publishing for environment `pypi`.
 - **Test data:** 22 real NITF files pinned from GDAL's download cache, among them 8 NITF 2.1 files and `jpeg2000/p0_01a.ntf`, the one JPEG 2000 NITF the cache holds. Four wanted NITF 2.0 files are not in the cache (listed at the end of the manifest). `testdata/manifest.toml` lists real files and their checksums; `testdata/fetch.py` downloads them. The CI job `test data` fetches them, since this workspace cannot, and reports unpinned checksums as annotations to copy into the manifest.

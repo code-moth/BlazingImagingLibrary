@@ -1,6 +1,6 @@
 # Static-linking exception
 
-**Draft, pending legal review.** The author of BIL has decided that BIL's license adds a static-linking exception to the GNU Lesser General Public License. The wording below states that intent. It is to be confirmed by legal review before the first release (specification, sections 10.6 and 16).
+The author of BIL has decided that BIL's license adds a static-linking exception to the GNU Lesser General Public License, in the wording below (specification, sections 10.6 and 16).
 
 ---
 

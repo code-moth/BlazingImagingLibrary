@@ -1518,6 +1518,8 @@ bil.register_driver(VendorDriver)
 - **Taken from the machine, not shipped.** BIL uses the Python installed on the machine, as it uses any library a package manager supplies (section 10.5). BIL's packages contain no interpreter. Where no Python is installed, a scripted driver fails with an error that says so, and everything else works.
 - **Started on first use.** The interpreter starts only when a scripted driver is first needed. Callers that never use one pay nothing.
 - **One interpreter.** When BIL is itself running inside Python, it uses that interpreter and does not start a second.
+- **A helper process for other callers.** For Rust, C and C++ callers, CPython runs in a separate BIL helper process, started on first use. A failing script, or a clash between the caller's libraries and Python's, stays out of the caller's process, and whichever Python 3 is installed can be used.
+- **The round trip is watched.** Each call into a scripted driver from a helper process is a round trip between processes. It is made when a Source is opened and when additional data is read, never for pixels. Its cost is benchmarked (section 12), and the choice is reviewed if it becomes prohibitive.
 - **Kept off the pixel path.** The interpreter runs when a Source is opened and when additional data is read. Pixel reads from a `PixelLayout` never enter it, so they run in parallel as for any other driver.
 
 **Python libraries.** A scripted driver may call existing Python libraries, such as SARkit, to interpret metadata.
@@ -1695,7 +1697,7 @@ BIL is licensed under the LGPL, version 2.1 or later, with a static-linking exce
 - **Any language can call it.** Whatever can call C can use the whole of BIL.
 - **It can be replaced.** A user can put a modified build of the shared library in place without rebuilding their own program, which is what the LGPL asks for.
 - **Rust callers have a choice.** A Rust program may use the shared library, or compile the `bil` crate into itself.
-- **A static-linking exception.** BIL's license adds an exception to the LGPL: a program may link BIL statically, as Rust programs normally do, without the LGPL's duty to let its users relink it with a modified BIL. Changes to BIL itself remain under the LGPL. The exception's exact wording is part of the legal review (section 16).
+- **A static-linking exception.** BIL's license adds an exception to the LGPL: a program may link BIL statically, as Rust programs normally do, without the LGPL's duty to let its users relink it with a modified BIL. Changes to BIL itself remain under the LGPL. Its wording is in `LINKING-EXCEPTION.md`.
 - **Python is built on the same Rust library.**
 
 **Who answers for what**
@@ -1713,7 +1715,9 @@ BIL is licensed under the LGPL, version 2.1 or later, with a static-linking exce
 - **Notices.** Each package carries the license notices of everything in it.
 - **Checked at every release.** The contents of each package are checked against these rules before it is published.
 
-**Why "or later" matters.** Some components are under Apache-2.0 or LGPL 3, such as emuella-j2k and SIX. "Or later" lets a package that contains them go out under version 3 of the LGPL, with which both are compatible. This reading is to be confirmed by legal review before the first release.
+**Compatible with version 2.1 itself.** Everything in a BIL package is under a license compatible with LGPL 2.1, so that no package becomes LGPL 3 by accident. Apache-2.0 components, such as emuella-j2k, are accepted by the author's ruling, which accepts the risk that the Free Software Foundation holds Apache-2.0 incompatible with version 2.1. LGPL 3 code, such as NITRO, is used only in tests and never shipped. SIX is LGPL 3, so it is assessed under this rule when Tier 2 starts (section 16).
+
+**Checked automatically.** In the build, cargo-deny checks the license of every dependency of what ships against one list, and of test-only code against a wider one. Every source file carries an SPDX license line.
 
 **What `list_drivers` reports.** It gives the user what they need to decide for themselves.
 
@@ -1813,7 +1817,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 7. **Parallel rows and tiles.** Large Windows are split across threads. Gains flatten after a few cores, because memory bandwidth becomes the limit. How far decoding itself runs in parallel follows the driver's declared `concurrency` (section 10).
 8. **Cheap variants offered.** Where a Slice needs costly arithmetic, a cheaper relative is provided: `power` avoids the square root in `magnitude`, and both avoid the arctangent in `phase` and the logarithm in `power_db`.
 9. **No-copy hand-off to Python.** Slices and Fragments are exposed as NumPy arrays over the same memory, including strided and borrowed ones. Borrowed arrays are read-only. The interpreter lock is released during every read.
-10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release.
+10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release. The round trip to the interpreter's helper process is benchmarked in the same way (section 10.1).
 
 ## 13. Geocoding
 
@@ -2071,6 +2075,81 @@ BIL implements rigorous sensor models itself, and proves each one by test agains
 
 **Where no reference exists.** A step with no established implementation to compare against is tested by round trip and by known points only, and its documentation says so.
 
+### 13.9 Accuracy
+
+Every position BIL computes can come with a full record of how accurate it is, carried forward through every step of the chain and never reduced to a single number until the caller asks for one.
+
+**Where error estimates come from.** Formats state error in many forms. These are from knowledge of the formats, and each is to be confirmed when its driver is built.
+
+| Source | What it states | Becomes |
+| --- | --- | --- |
+| RPC coefficients in NITF | A bias error and a random error, in meters | A bias and a random contribution of the `rational_polynomial` step |
+| Replacement sensor model in NITF | A covariance of adjustable parameters, and a direct error covariance with correlation over the image | A parameter covariance and an output covariance of the step |
+| SICD and SIDD | Error statistics: a composite covariance at the scene point, and component errors for the platform's position and velocity, the radar and the atmosphere | Parameter covariances of `pose` and `range_doppler`, or one output covariance |
+| Community Sensor Model plugins | A covariance of sensor parameters, and partial derivatives | Passed through the `external` step |
+| Video with KLV | Standard deviations and correlations of platform and sensor position and angles, where the stream carries them | A parameter covariance of `pose` for each frame |
+| Terrain | A vertical accuracy, such as the absolute vertical accuracy in a DTED header or a stated accuracy for a model | A contribution of the `surface` step |
+| The caller | A covariance for any step it makes or adds, such as a correction from a registration layer, and for the measured pixel positions | Contributions of those steps and of the pixels |
+
+- **Converted once, kept as stated.** BIL converts each estimate to a covariance at one standard deviation, in meters or pixels. The value as the format stated it, such as a CE90, remains readable as a field.
+- **An assumption is recorded as one.** Where BIL must assume something to convert, such as a circular error that is equal in every direction, the record says so.
+
+**Kinds of error, kept apart**
+
+| Kind | Meaning | Why it is kept apart |
+| --- | --- | --- |
+| Bias | The same error for every point of the Image or frame, such as an error in the platform's position | It cancels between two points of one Image, so it decides relative accuracy |
+| Random | An error independent from point to point | It does not cancel |
+| Correlated | An error that varies smoothly across the image or over time, with a stated correlation | Two nearby points share most of it |
+
+**Carried through the chain**
+
+- **Each step supplies its partial derivatives,** with respect to its input and to its parameters. BIL combines them, step by step, to carry every contribution to the final space. This is exact for linear steps, such as `affine` and `image_window`.
+- **`image_window` adds no error.** A Window, Level or stored level changes the pixel units, and the covariance is scaled with them.
+- **The surface contributes its own error.** An error in height moves the ground point along the line of sight, so terrain error is carried through the geometry of the intersection, not added as a vertical term alone.
+- **A step with no estimate is marked unknown.** It is never treated as perfect.
+- **First order by default, checked by sampling.** `accuracy_method` is `first_order` or `sampled`. The sampled method propagates a set of points through the chain itself, as an unscented transform, and confirms the first-order result where the geometry is strongly curved, such as a line of sight near grazing.
+
+**The record**
+
+An `Accuracy` is returned for each position when the caller asks for it.
+
+| Part | Content |
+| --- | --- |
+| `covariance` | The full covariance of the position: 3 × 3 in a local east, north and up space at the point, in meters, for the Earth. For any other world, in that world's own space. For `world_to_image`, 2 × 2 in pixels. |
+| `contributions` | One entry for each source of error, named by step and kind, such as `rational_polynomial.bias`, `pose.position` or `surface.height`, each with its own covariance |
+| `provenance` | For each contribution: stated by the format, derived by BIL, given by the caller, or assumed, with the field it came from |
+| `status` | `Complete` when every step has an estimate, `Partial` when some steps have none, and `Missing` when none has |
+
+- **Never smaller than the truth by omission.** A total with unknown contributions is `Partial`, and the unknown steps are named.
+- **Computed only when asked.** Positions without accuracy cost no more than before.
+
+**Calls**
+
+| Call | Result |
+| --- | --- |
+| `image_to_world(positions, surface, accuracy=True)` | Each position with its `Accuracy` |
+| `world_to_image(positions, accuracy=True)` | Each pixel position with its `Accuracy` in pixels |
+| `relative_accuracy(positions_a, positions_b)` | The covariance of the difference between paired positions, in which shared bias cancels and correlated error partly cancels |
+| `list_error_sources()` | Each contribution the chain carries, with its kind and provenance |
+| `circular_error(accuracy, probability)` | The horizontal radius holding the position with the given probability, such as CE90 |
+| `linear_error(accuracy, probability)` | The vertical distance holding the position with the given probability, such as LE90 |
+| `error_ellipse(accuracy, probability)` | The horizontal ellipse holding the position with the given probability: semi-axes and orientation |
+
+- **Exact summary measures.** `circular_error` integrates the two-dimensional normal distribution of the covariance as it is, without assuming the error is circular and without a fixed conversion factor.
+- **Steps the caller makes carry error too.** `make_step` takes an optional `covariance`, so a correction from a registration layer above BIL carries its own accuracy forward.
+
+**Carried forward when written.** `write_geo_model` writes the error estimates into the output wherever the format has a place for them, such as the error fields of RPC coefficients or the error statistics of a SICD. Otherwise they go to the companion file, so the record is never lost by writing (sections 11 and 14.2).
+
+**Tested**
+
+| Test | Passes when |
+| --- | --- |
+| Agreement | Propagated covariances match a reference implementation where one exists, such as the SICD error propagation of SIX and SARkit |
+| Coverage | Over many simulated collections with known errors, the true position falls inside the CE90 circle in 90 percent of cases, to within sampling error |
+| Methods agree | `first_order` and `sampled` agree where the geometry is nearly linear, and their difference is reported where it is not |
+| Window and Level | The accuracy of a scene point is the same, in meters, whichever Window, Level or stored level it is read through |
+
 ## 14. Metadata
 
 Metadata is held as named fields with values. A field's name comes from the file itself or from the specification of its format.
@@ -2277,7 +2356,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Six points are not yet settled, and sixty-four have been decided. Each lists the current proposal.
+Three points are not yet settled, and sixty-seven have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2321,7 +2400,7 @@ Six points are not yet settled, and sixty-four have been decided. Each lists the
 - [x] **Results and status.** Decided: a call delivers or returns an error, and everything delivered carries one status. Corrupt data is an error by default (section 3.3).
 - [x] **Reads across frames.** Decided: outside BIL. Everything beyond 2D is selected, never ranged, so a caller reads frame by frame (section 1.6).
 - [x] **GIPS geocoding model.** Decided: BIL adopts the model, as the `sphere_rotation` step, and adds `log10` and `value_polynomial` to the normalization library. A reader for GIPS files is not planned (sections 7 and 13.7).
-- [ ] **Geocoding accuracy.** How the error estimates that formats supply are represented and carried through a chain.
+- [x] **Geocoding accuracy.** Decided: every error estimate a format, terrain or caller supplies is kept as a full covariance, split by source and by kind (bias, random, correlated), with its provenance, and carried through every step of the chain by partial derivatives, checked by sampling. Unknown contributions are named, never taken as zero. Summary measures such as CE90 are computed exactly from the covariance, relative accuracy is available, and the estimates are written with the geo model (section 13.9).
 - [x] **Default terrain.** Decided: none is fetched. With no surface given, a constant height is used, and remote terrain is read only when the caller opens it (section 13.6).
 - [x] **Containment.** Decided: BIL reaches the network only for a location the caller gave it, and writes data only where the caller named a place. Mapped data is private to its owner and removed after use (sections 1.3 and 10.2).
 - [x] **Untrusted files.** Decided: caller-set resource limits, plugins loaded only from configured locations, and fuzz testing of BIL's own readers. Isolation of C and C++ drivers in a separate process is offered as a setting and is off by default (section 10.3).
@@ -2335,7 +2414,7 @@ Six points are not yet settled, and sixty-four have been decided. Each lists the
 - [x] **Python-authored drivers.** Decided: allowed, as the scripted drivers of section 10.1.
 - [x] **Scripted drivers outside Python.** Decided: BIL includes an embedded interpreter, so Rust, C and C++ callers can use scripted drivers.
 - [x] **Interpreter packaging.** Decided: the interpreter is CPython, taken from the Python installed on the machine, and BIL's packages contain none. Inside Python, BIL uses that interpreter. Without an installed Python, only scripted drivers are unavailable (section 10.1).
-- [ ] **Interpreter process.** Whether CPython runs inside the caller's process or in a helper process, for Rust, C and C++ callers. The proposal is a helper process. It keeps a failing script, and any conflict between the caller's libraries and Python's, out of the caller's process, and it works with whichever Python 3 version is installed. It costs a round trip between processes when a Source is opened and when additional data is read, never for pixels.
+- [x] **Interpreter process.** Decided: for Rust, C and C++ callers, CPython runs in a helper process, and inside Python BIL uses that interpreter. The cost of the round trip is benchmarked and watched, and the choice is reviewed if it becomes prohibitive (section 10.1).
 - [x] **NaN for missing data.** Decided: a Slice value with no data behind it is NaN by default. `missing_value` in `SliceOptions` fills such positions with a number the caller chooses (section 5).
 - [x] **Registry names.** Decided: hold the names with genuine first releases rather than empty placeholders. `bil` 0.0.1 on crates.io holds the vector layer and kernels from experiment 1, `bil-sys` 0.0.1 holds the name for native bindings, and `bil` 0.0.1 on PyPI holds the Python name. The project's owner publishes them through the repository's Publish workflow. If `bil` is taken on PyPI, the package is `blazing-imaging` and still imports as `bil`.
 - [x] **Default demosaicing method.** Decided: `bilinear`, the same method used for the resolution levels, so both come from a single pass. `malvar_he_cutler` remains available.
@@ -2344,7 +2423,7 @@ Six points are not yet settled, and sixty-four have been decided. Each lists the
 - [x] **JPEG 2000 codecs.** Decided: OpenJPEG is the fallback, and decodes every file until a Rust codec is proven. j2k-native is on trial as the Rust fallback. emuella-j2k is preferred for its declared profiles once it passes BIL's tests. hayro-jpeg2000 is a test reference. Grok stays an optional plugin (section 10).
 - [x] **LGPL version.** Decided: BIL is licensed under LGPL 2.1 or later.
 - [x] **License and responsibility.** Decided: BIL is a Rust library with a C-callable interface over it, delivered as one shared library. BIL answers for what its own packages contain, which is only LGPL-compatible builds. Users answer for what they install and pass on. `list_drivers` reports each library's license as built (section 10.6).
-- [ ] **License review.** A legal review of the contents of BIL's packages before the first release: whether Apache-2.0 and LGPL 3 components are covered by "or later", the wording of the static-linking exception and what it does not cover, codec patents, the ODbL time-zone plugin, and the licenses of test data. Meanwhile, every dependency's license is checked in CI by cargo-deny against an allow-list, and every source file carries an SPDX license line.
+- [x] **License review.** Closed by the author, with no legal review planned. The static-linking exception stands as worded in `LINKING-EXCEPTION.md`. What ships stays compatible with LGPL 2.1, with Apache-2.0 accepted, and LGPL 3 code is used only in tests. Licenses are checked in the build by cargo-deny (section 10.6).
 - [x] **Writable formats.** Decided: ENVI, TIFF and GeoTIFF (uncompressed or Deflate), and NumPy `.npy`, each through BIL's own writer (section 11).
 - [x] **Wrapper crates.** Decided: an existing wrapper is considered first for every C or C++ library, and used when it passes the four tests of maintenance, performance, capability and packaging. Otherwise an existing bindings crate is used where one passes, and BIL's own bindings only where none does (section 10).
 - [x] **Reaching FFmpeg.** Decided: through the existing rusty\_ffmpeg bindings, with a thin safe layer of BIL's own. BIL does not generate bindings or build FFmpeg (section 10).

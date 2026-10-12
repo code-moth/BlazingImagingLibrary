@@ -30,4 +30,4 @@ The results are in `experiments/exp1-fused-loop/RESULTS.md`.
 
 ## License
 
-GNU Lesser General Public License, version 2.1 or, at your option, any later version, with a static-linking exception. See `LICENSE` and `LINKING-EXCEPTION.md`. The exception's wording is a draft pending legal review.
+GNU Lesser General Public License, version 2.1 or, at your option, any later version, with a static-linking exception. See `LICENSE` and `LINKING-EXCEPTION.md`.
