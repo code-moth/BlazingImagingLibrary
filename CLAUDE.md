@@ -12,7 +12,7 @@ Read this first in every session. It records the state of the work, how it is do
 
 - **Naming.** Types and enum values are UpperCamelCase. Every other name is snake_case, including names passed as text: `color.hsv.hue`, `level3`, `stored2`, `bilinear`, `rational_polynomial`. C uses the prefixes `bil_`, `Bil` and `BIL_`.
 - **American spelling** in identifiers, comments and documents.
-- **License.** LGPL 2.1 or later, with a static-linking exception (`LINKING-EXCEPTION.md`, a draft pending legal review). BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that.
+- **License.** LGPL 2.1 or later, with a static-linking exception (`LINKING-EXCEPTION.md`, a draft pending legal review). BIL's own packages contain only LGPL-compatible builds. Warn the author if anything strays from that. Everything in a shipped build must be compatible with LGPL 2.1 itself, so no package becomes LGPL 3 by accident; LGPL 3 code such as NITRO is allowed only in test-only code. `deny.toml` checks what ships, `deny-tests.toml` everything else.
 - **Uniform design.** One mechanism for each thing, with no special cases (specification section 1.6).
 - **Not in BIL.** Registration, orthorectification and analysis are layers above BIL.
 - **No reference to any earlier system by name.** The design is influenced by knowledge of previous requirements, and says no more than that.
@@ -48,7 +48,7 @@ The specification requires agreement between Windows, instruction sets and machi
 
 ## CI
 
-- `.github/workflows/ci.yml` runs format, lint (warnings are errors), build and experiment 1's `--check` on `ubuntu-latest`, `ubuntu-24.04-arm`, `windows-latest` and `macos-latest`. Further jobs check licenses and sources with cargo-deny (`deny.toml`), build the crates and the Python package, and fetch the test data.
+- `.github/workflows/ci.yml` runs format, lint (warnings are errors), build and experiment 1's `--check` on `ubuntu-latest`, `ubuntu-24.04-arm`, `windows-latest` and `macos-latest`. Further jobs check licenses and sources with cargo-deny (`deny.toml` for what ships, `deny-tests.toml` for everything), build the crates and the Python package, and fetch the test data.
 - Every source file starts with an SPDX license line.
 - A separate job lints on the latest stable Rust and may fail without failing the build. It reports lints a newer compiler adds, so the pin can be raised deliberately.
 - Job logs need authentication this workspace does not have. Lint messages are raised as annotations, which can be read without it:

@@ -1,15 +1,21 @@
-# License and source checks for every dependency, run by cargo-deny in CI.
-# BIL is LGPL 2.1 or later, and its packages contain only LGPL-compatible builds
-# (specification, section 10.6). A dependency under any license not listed here fails the build.
+# License and source checks for what BIL ships, run by cargo-deny in CI.
+# BIL is LGPL 2.1 or later. Everything in a shipped build must be compatible with
+# LGPL 2.1 itself, so that no package becomes LGPL 3 by accident (the author's ruling).
+# Test-only code is checked separately, against deny-tests.toml.
+#
+# Apache-2.0 alone is not listed: the Free Software Foundation holds it incompatible
+# with the 2.1 licenses. Crates offered as "MIT OR Apache-2.0" still pass through MIT.
 
 [graph]
 all-features = true
+# Dev-dependencies and unpublished workspace members (experiments, test harnesses)
+# never reach a package.
+exclude-dev = true
+exclude-unpublished = true
 
 [licenses]
 allow = [
   "MIT",
-  "Apache-2.0",
-  "Apache-2.0 WITH LLVM-exception",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
@@ -21,8 +27,6 @@ allow = [
   "MPL-2.0",
   "LGPL-2.1-or-later",
   "LGPL-2.1-only",
-  "LGPL-3.0-or-later",
-  "LGPL-3.0-only",
 ]
 confidence-threshold = 0.9
 

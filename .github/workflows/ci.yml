@@ -59,9 +59,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - name: what ships (deny.toml)
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check licenses bans sources
+          command: check --config deny.toml licenses bans sources
+      - name: everything, test-only code included (deny-tests.toml)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check --config deny-tests.toml licenses sources
 
   packages:
     # The packages that would be published must build.
