@@ -1,0 +1,193 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: LGPL-2.1-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blazing Imaging Library flyer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<style>
+body{margin:0}
+a{color:#0a6a8a}a:hover{color:#074d65}
+
+@page { size: 794px 1123px; margin: 0; }
+html { background: #d8e0e5; }
+.page { width: 794px; height: 1123px; margin: 24px auto; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.page:not(:last-child) { break-after: page; }
+@media print { html { background: none; } .page { margin: 0; box-shadow: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+<div style="width: 794px; height: 1123px; box-sizing: border-box; overflow: hidden; background: #f6f8f9; color: #17222b; font-family: 'IBM Plex Sans', 'Segoe UI', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column">
+
+<div style="padding: 44px 56px 0 56px; display: flex; flex-direction: column; gap: 22px">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Blazing Imaging Library</div>
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 13px; letter-spacing: 0.12em; color: #4b5a66">BIL</div>
+</div>
+
+<h1 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 96px; line-height: 0.95; letter-spacing: -0.015em; text-wrap: balance">Read the part you need.</h1>
+
+<div style="display: flex; gap: 36px; align-items: flex-start">
+<p style="margin: 0; flex: 1 1 0; min-width: 0; font-size: 17px; line-height: 1.5; text-wrap: pretty">BIL is one interface to imaging sensor data in any format. It extracts the subset an algorithm needs, as native pixels or as 2D float32 arrays, and leaves the rest unread.</p>
+<div style="flex: 0 0 252px; display: flex; flex-direction: column; gap: 12px">
+<svg aria-hidden="true" viewBox="0 0 252 124" width="252" height="124" style="display: block">
+<defs>
+<pattern id="bil-flyer-cell" width="16" height="16" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="12" height="12" rx="2" fill="#c9d5dc"></rect></pattern>
+<pattern id="bil-flyer-hot" width="16" height="16" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="12" height="12" rx="2" fill="#c2410c"></rect></pattern>
+</defs>
+<rect x="0" y="0" width="252" height="124" fill="url(#bil-flyer-cell)"></rect>
+<rect x="80" y="32" width="96" height="64" fill="#f6f8f9"></rect>
+<rect x="80" y="32" width="96" height="64" fill="url(#bil-flyer-hot)"></rect>
+</svg>
+<div style="display: flex; gap: 18px; font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; color: #4b5a66">
+<div style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 2px; background: #c9d5dc; display: inline-block"></span><span>The collection</span></div>
+<div style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 2px; background: #c2410c; display: inline-block"></span><span>What you asked for</span></div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="margin-top: 26px; background: #0a6a8a; color: #ffffff; padding: 22px 56px; display: flex; gap: 32px; align-items: center">
+<div style="flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px">
+<div style="font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 54px; line-height: 1; letter-spacing: -0.01em">1.8</div>
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase">gigapixels</div>
+</div>
+<p style="margin: 0; flex: 1 1 0; min-width: 0; font-size: 16px; line-height: 1.5; text-wrap: pretty">One frame from the ARGUS-IS sensor is 7.2 GB once held as float32. Nobody processes it whole. BIL is designed so that nobody has to load it whole.</p>
+</div>
+
+<div style="padding: 26px 56px 0 56px; display: flex; flex-direction: column; gap: 22px">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 36px; row-gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Proportional</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">Cost follows the request</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">A small window of an enormous file costs about what it costs from a small one.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Unifying</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">One interface, many formats</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">NITF, GeoTIFF, JPEG 2000, SICD, ENVI, HDF5, raw camera files and video.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Ready to process</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">Arrays your algorithms take</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">Named float32 Slices at any resolution level, zero-copy where the storage allows.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Contained</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">Safe on closed networks</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">No network access unless you ask. Security markings travel with everything written.</p>
+</div>
+</div>
+
+<div style="background: #e6edf1; border: 1px solid #c5d0d8; border-radius: 4px; padding: 14px 18px; font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 13px; line-height: 1.7; color: #17222b; white-space: pre">image = bil.open_source("scene.ntf").image(0)
+slice = image.read_slice("complex.polar.magnitude", window)</div>
+</div>
+
+<div style="margin-top: auto; padding: 0 56px 40px 56px">
+<div style="border-top: 2px solid #17222b; padding-top: 16px; display: flex; gap: 32px; justify-content: space-between; align-items: flex-start">
+<div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 16px; line-height: 1.4; font-weight: 600">In development. The first release reads GeoTIFF and NITF.</div>
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; color: #4b5a66">Rust core · Python, C and C++ interfaces · LGPL 2.1 or later</div>
+</div>
+<div style="flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; text-align: right">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Read the specification</div>
+<div style="font-size: 17px; font-weight: 600; line-height: 1.3">github.com/code-moth/BlazingImagingLibrary</div>
+<div style="font-size: 16px; line-height: 1.3; color: #2c3a45">Issues and discussion on GitHub</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+<div class="page">
+<div style="width: 794px; height: 1123px; box-sizing: border-box; overflow: hidden; background: #f6f8f9; color: #17222b; font-family: 'IBM Plex Sans', 'Segoe UI', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column">
+
+<div style="padding: 44px 56px 0 56px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Blazing Imaging Library</div>
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b5a66">How it works</div>
+</div>
+
+<h1 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 60px; line-height: 1; letter-spacing: -0.012em">From file to array.</h1>
+
+<div style="display: flex; align-items: stretch; gap: 8px">
+<div style="flex: 1 1 0; min-width: 0; box-sizing: border-box; background: #ffffff; border: 1px solid #c5d0d8; border-radius: 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; color: #c2410c; font-weight: 500">1 OPEN</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 24px; line-height: 1.15">Source</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.4; color: #2c3a45">One file, a set of files or a stream.</p>
+</div>
+<svg aria-hidden="true" viewBox="0 0 16 24" width="16" height="24" style="flex: 0 0 16px; align-self: center"><path d="M4 4l8 8-8 8" fill="none" stroke="#4b5a66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<div style="flex: 1 1 0; min-width: 0; box-sizing: border-box; background: #ffffff; border: 1px solid #c5d0d8; border-radius: 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; color: #c2410c; font-weight: 500">2 READ</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 24px; line-height: 1.15">Fragment</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.4; color: #2c3a45">The native pixels of a window, zero-copy where storage allows.</p>
+</div>
+<svg aria-hidden="true" viewBox="0 0 16 24" width="16" height="24" style="flex: 0 0 16px; align-self: center"><path d="M4 4l8 8-8 8" fill="none" stroke="#4b5a66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<div style="flex: 1 1 0; min-width: 0; box-sizing: border-box; background: #d9ecf2; border: 2px solid #0a6a8a; border-radius: 4px; padding: 13px 15px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; color: #9a3412; font-weight: 500">3 PROCESS</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 24px; line-height: 1.15">Slice</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.4; color: #17222b">A named 2D float32 array, such as magnitude or hue.</p>
+</div>
+</div>
+</div>
+
+<div style="padding: 26px 56px 0 56px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Five ways to cut the data down</div>
+<div style="display: flex; flex-direction: column; border-top: 2px solid #17222b">
+<div style="display: grid; grid-template-columns: 220px 120px minmax(0, 1fr); column-gap: 16px; padding: 6px 0; border-bottom: 1px solid #c5d0d8; font-size: 16px; line-height: 1.35"><div style="color: #2c3a45">Too much spatial extent</div><div style="font-weight: 600">Window</div><div>Take a rectangle</div></div>
+<div style="display: grid; grid-template-columns: 220px 120px minmax(0, 1fr); column-gap: 16px; padding: 6px 0; border-bottom: 1px solid #c5d0d8; font-size: 16px; line-height: 1.35"><div style="color: #2c3a45">Too much resolution</div><div style="font-weight: 600">Level</div><div>Take a coarser version</div></div>
+<div style="display: grid; grid-template-columns: 220px 120px minmax(0, 1fr); column-gap: 16px; padding: 6px 0; border-bottom: 1px solid #c5d0d8; font-size: 16px; line-height: 1.35"><div style="color: #2c3a45">Too many bands</div><div style="font-weight: 600">Slice</div><div>Take one 2D view</div></div>
+<div style="display: grid; grid-template-columns: 220px 120px minmax(0, 1fr); column-gap: 16px; padding: 6px 0; border-bottom: 1px solid #c5d0d8; font-size: 16px; line-height: 1.35"><div style="color: #2c3a45">Too much time</div><div style="font-weight: 600">Frame</div><div>Take one frame</div></div>
+<div style="display: grid; grid-template-columns: 220px 120px minmax(0, 1fr); column-gap: 16px; padding: 6px 0; border-bottom: 1px solid #c5d0d8; font-size: 16px; line-height: 1.35"><div style="color: #2c3a45">Too many sample types</div><div style="font-weight: 600">float32</div><div>One type for every sensor</div></div>
+</div>
+</div>
+
+<div style="padding: 26px 56px 0 56px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 36px; row-gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Levels</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">Any resolution, built in</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">Filtered levels, fast decimation for overviews, and the file's own stored levels by name.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Geocoding</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">Locates every pixel</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">One chain of steps covers map grids, RPC, camera and SAR models, in both directions.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Metadata</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">Fields on demand</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">Named fields under their native names, extracted only when you ask for them.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Plugins</div>
+<h2 style="margin: 0; font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2">Extends to new formats</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #2c3a45">Add drivers in Rust, C or C++, or script them in Python while the core reads the pixels.</p>
+</div>
+</div>
+
+<div style="margin-top: 26px; background: #0a6a8a; color: #ffffff; padding: 18px 56px; display: flex; flex-direction: column; gap: 6px">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500">Designed to read</div>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; text-wrap: pretty">Optical and infrared stills, SAR, multispectral and hyperspectral cubes, raw camera files, video and wide area motion imagery, LIDAR and medical volumes.</p>
+</div>
+
+<div style="margin-top: auto; padding: 0 56px 40px 56px">
+<div style="border-top: 2px solid #17222b; padding-top: 16px; display: flex; gap: 32px; justify-content: space-between; align-items: flex-start">
+<div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 16px; line-height: 1.4; font-weight: 600">First release: GeoTIFF and NITF.</div>
+<div style="font-size: 16px; line-height: 1.4; color: #2c3a45">Next: ENVI, video with KLV, SICD and SIDD.</div>
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; color: #4b5a66">Rust core · Python, C and C++ interfaces · LGPL 2.1 or later</div>
+</div>
+<div style="flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; text-align: right">
+<div style="font-family: 'IBM Plex Mono', Menlo, Consolas, monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #0a6a8a; font-weight: 500">Read the specification</div>
+<div style="font-size: 17px; font-weight: 600; line-height: 1.3">github.com/code-moth/BlazingImagingLibrary</div>
+<div style="font-size: 16px; line-height: 1.3; color: #2c3a45">Issues and discussion on GitHub</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</body>
+</html>
