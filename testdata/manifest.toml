@@ -11,7 +11,7 @@ bases = [
   "https://download-cache.osgeo.org/gdal/data/nitf/",
   "https://download.osgeo.org/gdal/data/nitf/",
 ]
-listing_pages = ["nitf2.0/scen_2_0.html", "nitf2.1/", "nitf2.1/scen_2_1.html", "jpeg2000/"]
+listing_pages = ["nitf2.0/scen_2_0.html", "nitf2.0/", "nitf2.1/", "jpeg2000/", "nitf2.1/jpeg2000/"]
 
 # Each file: where it is, which tier needs it, and what it exercises.
 
@@ -19,85 +19,61 @@ listing_pages = ["nitf2.0/scen_2_0.html", "nitf2.1/", "nitf2.1/scen_2_1.html", "
 path = "nitf2.0/U_1001a.ntf"
 tier = 1
 exercises = "Uncompressed 1024 x 1024 8-bit mono, with geographic data"
-sha256 = ""
+sha256 = "17da5a7697b6189fcea12d1519e139ee9cba7ee39503aeca457876a1f91d0d01"
 
 [[file]]
 path = "nitf2.0/U_1034a.ntf"
 tier = 1
 exercises = "1-bit mono with no table, image not at 0,0"
-sha256 = ""
-
-[[file]]
-path = "nitf2.0/U_2001a.ntf"
-tier = 1
-exercises = "Lookup table with 128 entries"
-sha256 = ""
+sha256 = "8e0e5b3d9c358a8401b59f82e7062fed4e516f60776a4850c2867b56195be847"
 
 [[file]]
 path = "nitf2.0/U_3001a.ntf"
 tier = 1
 exercises = "Uncompressed 1024 x 1024 24-bit color, blocked, IMODE S"
-sha256 = ""
+sha256 = "aac9d09b726e21ccffa5f17e9a3ff4db703cf874f0de82316072d5edd6955730"
 
 [[file]]
 path = "nitf2.0/U_3002a.ntf"
 tier = 1
 exercises = "Uncompressed 256 x 256 24-bit color, blocked, IMODE B"
-sha256 = ""
+sha256 = "8e21f92f15777f6a89175f92917fc9ba1ac5d84bbb3c3e19c5701f1f1db1f133"
 
 [[file]]
 path = "nitf2.0/U_3010a.ntf"
 tier = 1
 exercises = "Uncompressed 1024 x 1052 8-bit color with lookup table, 128 blocks"
-sha256 = ""
+sha256 = "f552461518291ef7ccfd22e94e0ffc1b2655c4adce4e99305a44c75f95ca2b81"
 
 [[file]]
 path = "nitf2.0/U_4002a.ntf"
 tier = 1
 exercises = "Single block 255 x 257, 13 significant bits in 16"
-sha256 = ""
+sha256 = "66c5179a5c1f49e6d28e0f8688c84450886a3d5ac5facf9737f5334d26b20110"
 
 [[file]]
 path = "nitf2.0/U_4005a.ntf"
 tier = 1
 exercises = "Four blocks of 1024 x 1024, 11 significant bits in 16"
-sha256 = ""
+sha256 = "03412100188a7cfe1a02ce90d5eeafc950a33736ec5b30c79d638a394b4f8090"
 
 [[file]]
 path = "nitf2.0/U_4007a.ntf"
 tier = 1
 exercises = "Six blocks, 255 x 257, 13 significant bits in 16"
-sha256 = ""
-
-[[file]]
-path = "nitf2.0/U_1114a.ntf"
-tier = 1
-exercises = "A text segment of one byte"
-sha256 = ""
+sha256 = "742bfe6789c316d9499c0ef925cb59090e2bc2590cd25c50916aff53e48bff86"
 
 [[file]]
 path = "nitf2.0/U_1122a.ntf"
 tier = 1
 exercises = "Several image segments, labels, a BMP and text in one file"
-sha256 = ""
-
-[[file]]
-path = "nitf2.0/U_1130f.ntf"
-tier = 1
-exercises = "Overflow of user-defined and extended header data"
-sha256 = ""
-
-[[file]]
-path = "nitf2.0/U_1125d.ntf"
-tier = 1
-exercises = "Segment and label lengths that do not match: a malformed-file case"
-sha256 = ""
+sha256 = "448532472668afa177885ee100286af38105ff13d89c87def1cabbdf3465ac70"
 
 [[file]]
 path = "nitf2.0/U_4001b.ntf"
 tier = 2
 exercises = "JPEG, single block 2048 x 2048 mono"
-sha256 = ""
+sha256 = "f4ef48bf477868d3d536cffcab69938012fca7636e49a98e546d3a7ad58281ec"
 
 [[file]]
 path = "nitf2.0/U_4017a.ntf"
@@ -116,3 +92,10 @@ path = "nitf2.0/U_3058b.ntf"
 tier = 3
 exercises = "VQ compressed 1536 x 1536"
 sha256 = ""
+
+# Wanted, but not in GDAL's download cache (404 on 12 October 2026). To be supplied by the author
+# or found elsewhere:
+#   nitf2.0/U_2001a.ntf: Lookup table with 128 entries
+#   nitf2.0/U_1114a.ntf: A text segment of one byte
+#   nitf2.0/U_1130f.ntf: Overflow of user-defined and extended header data
+#   nitf2.0/U_1125d.ntf: Segment and label lengths that do not match: a malformed-file case

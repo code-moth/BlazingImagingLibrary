@@ -23,8 +23,23 @@ CACHE = os.path.join(HERE, "cache")
 IN_CI = os.environ.get("GITHUB_ACTIONS") == "true"
 
 
+REPORT = {"error": [], "warning": [], "notice": []}
+
+
 def note(kind, message):
-    print(f"::{kind}::{message}" if IN_CI else f"{kind}: {message}")
+    """Collect a message. In CI, all messages of one kind become one annotation at the end,
+    because GitHub shows only ten annotations of each kind for a step."""
+    print(f"{kind}: {message}")
+    REPORT[kind].append(message)
+
+
+def flush():
+    if not IN_CI:
+        return
+    for kind, messages in REPORT.items():
+        if messages:
+            text = "%0A".join(m.replace("%", "%25").replace("\n", " ") for m in messages)
+            print(f"::{kind}::{text}")
 
 
 def get(url):
@@ -92,6 +107,7 @@ def main():
             folder = page.rsplit("/", 1)[0]
             note("notice", f"{folder}: {len(names)} files: " + " ".join(n.decode() for n in names))
 
+    flush()
     sys.exit(1 if failed else 0)
 
 
