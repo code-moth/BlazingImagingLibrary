@@ -1,0 +1,6 @@
+# The toolchain BIL is built and linted with, the same in CI and in Claude's workspace.
+# Raise it deliberately, after fixing any new lints.
+[toolchain]
+channel = "1.97.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

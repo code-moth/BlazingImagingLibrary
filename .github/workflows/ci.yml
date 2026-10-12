@@ -14,10 +14,10 @@ jobs:
         # Linux and Windows on x86, Linux and macOS on ARM.
         os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+      - uses: actions/checkout@v5
+      # rustup installs the toolchain pinned in rust-toolchain.toml.
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
       - name: Format
         run: cargo fmt --all --check
       - name: Lint
@@ -27,3 +27,15 @@ jobs:
       - name: Experiment 1, correctness
         # Bitwise Window independence and agreement across instruction sets, and accuracy.
         run: cargo run --release --bin exp1 -- --check
+
+  latest-stable:
+    # Reports lints that a newer compiler adds, without failing the build.
+    name: lints on latest stable
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: Latest stable
+        run: rustup toolchain install stable --profile minimal -c clippy && rustup override set stable
+      - name: Lint
+        run: cargo +stable clippy --release --all-targets -- -D warnings
