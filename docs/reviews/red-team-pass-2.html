@@ -155,14 +155,14 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Red team review, pass 2 · Version 2</p>
+      <p class="eyebrow">Red team review, pass 2 · Version 3</p>
       <h1>BIL Red Team: Pass 2</h1>
       <p class="lede">A second review of version 56 of the Blazing Imaging Library specification: 16 symmetry and consistency findings and 16 red team findings, each with a proposed resolution and the decision it needs.</p>
     </div>
     <svg class="motif" viewBox="0 0 166 71" role="img" aria-label="16 of 32 findings open"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="152" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px in" x="133" y="19" width="14" height="14" rx="2"/><rect class="px in" x="152" y="19" width="14" height="14" rx="2"/><rect class="px in" x="0" y="38" width="14" height="14" rx="2"/><rect class="px in" x="19" y="38" width="14" height="14" rx="2"/><rect class="px in" x="38" y="38" width="14" height="14" rx="2"/><rect class="px in" x="57" y="38" width="14" height="14" rx="2"/><rect class="px in" x="76" y="38" width="14" height="14" rx="2"/><rect class="px in" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/><rect class="px in" x="152" y="38" width="14" height="14" rx="2"/><rect class="px in" x="0" y="57" width="14" height="14" rx="2"/><rect class="px in" x="19" y="57" width="14" height="14" rx="2"/><rect class="px in" x="38" y="57" width="14" height="14" rx="2"/><rect class="px in" x="57" y="57" width="14" height="14" rx="2"/><rect class="px in" x="76" y="57" width="14" height="14" rx="2"/></svg>
   </header>
   <dl class="control">
-    <div><dt>Review version</dt><dd>2</dd></div>
+    <div><dt>Review version</dt><dd>3</dd></div>
     <div><dt>As of</dt><dd>12 October 2026</dd></div>
     <div><dt>Specification reviewed</dt><dd>Version 56</dd></div>
     <div><dt>Findings</dt><dd>16 consistency; 3 critical, 7 serious, 6 lesser</dd></div>
@@ -691,6 +691,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>A Slice is written at its own grid.</strong> The output Image has the Slice's size, and its geo model starts from the Slice's <code>origin</code> and <code>scale</code>.</li>
 </ul>
 <p><strong>Decision needed.</strong> Accept.</p>
+<p><strong>Note.</strong> Version 58 adds <code>write_slice(window, slice, component)</code> and <code>write_geo_model(model)</code>, so a caller can write into named components and write a geo model. Still open: whether writers write the geo model without being asked, the sample types each writer refuses, and how a Slice from a reduced Level is written.</p>
 <h3 id="r31"><span class="fid">R31</span> A deferred Fragment has no decoder of its own</h3>
 <p class="meta"><span class="chip open">Open</span><span class="where">Section 4</span></p>
 <p><strong>Problem.</strong> A video Fragment is deferred: it holds compressed packets, and its pixels are decoded "on demand". Decoder state lives in a Reader, and a Reader belongs to one thread. Fragments, however, may be passed between threads. Nothing says which decoder decodes a deferred Fragment that another thread asks for, or one asked for after its Reader has moved on to other frames. The cache, meanwhile, holds decoded frames "each as a Fragment", so the same frame can exist in deferred and decoded form at once.</p>
@@ -744,6 +745,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Timeouts and cancellation.</strong> Every read on a stream takes a timeout, and <code>SliceRequest</code> and <code>stream_slice</code> take a cancellation handle the caller can trigger from another thread.</li>
 </ul>
 <p><strong>Decision needed.</strong> Accept.</p>
+<p><strong>Note.</strong> Version 58 adds <code>latest_frame()</code>, and <code>timeout</code> and <code>cancel</code> in <code>SliceOptions</code>. Still open: one shared position for a live stream, and <code>Missing</code> for a frame no longer held.</p>
 <h3 id="r35"><span class="fid">R35</span> The LGPL may keep Rust developers away</h3>
 <p class="meta"><span class="chip open">Open</span><span class="where">Section 10.6</span></p>
 <p><strong>Problem.</strong> The naming rule was changed so that Rust developers would accept BIL. The license may undo that. Rust programs normally link their dependencies statically, and the LGPL then requires that users can relink the program with a modified BIL. Rust has no stable binary interface, so in practice that means shipping object files built with the same compiler version, or the program's source. Section 10.6 notes the duty, but many Rust projects will not take on an LGPL dependency for this reason.</p>
@@ -805,7 +807,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Containment.</strong> No path was found by which BIL reaches the network or writes a file unasked. R38 concerns what it reads, not what it writes.</li>
 </ul>
       </main>
-      <footer>Red team findings, pass 2, for the Blazing Imaging Library (BIL) specification, review version 2, against specification version 56, as of 12 October 2026. Pass 1 ended at R25.</footer>
+      <footer>Red team findings, pass 2, for the Blazing Imaging Library (BIL) specification, review version 3, against specification version 56, as of 12 October 2026. Pass 1 ended at R25.</footer>
     </div>
   </div>
 </div>

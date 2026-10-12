@@ -243,6 +243,19 @@ BIL has one naming rule, the same in every language: types are UpperCamelCase, a
 
 **In C.** C has no namespaces, so every name carries a prefix: `bil_` on functions, `Bil` on types, and `BIL_` on enum values, which are in upper case. Examples are `bil_read_slice`, `BilSource` and `BIL_COMPLEX_F32`.
 
+**The C interface follows five conventions,** so that every call has the same shape.
+
+| Convention | Rule | Examples |
+| --- | --- | --- |
+| Handles | Every object is an opaque handle. Its fields are read through accessors. | `BilSource *`, `BilImage *`, `BilSlice *`, `BilFragment *` |
+| Status | Every function returns a `BilStatus`. Results come back through the last arguments. | `BIL_OK`, `BIL_ERROR`, `BIL_PARTIAL` |
+| Ownership | What a call creates, the caller frees with the matching `bil_free_` call. A handle obtained from another is valid while its parent is. | `bil_free_slice`, `bil_free_fragment`, `bil_close_source` |
+| Data | Array data is reached through an accessor that gives a pointer, the size and the strides. The pointer is valid until the object is freed. | `bil_slice_data(slice, &values, &rows, &cols, &row_stride)` |
+| Errors | The message for the last failed call on this thread is read with `bil_last_error`. | `bil_last_error(buffer, buffer_size)` |
+
+- **Text and options.** Strings are UTF-8 and end with a zero byte. Options are passed as a struct whose first field is its size, so that new options can be added without breaking callers.
+- **Callbacks.** A callback receives a context pointer the caller supplied. It must not let an exception or a `longjmp` cross into BIL, and BIL catches its own failures before they reach the caller.
+
 **Spelling.** Every identifier, and this document, uses American spelling: `color`, `normalization`, `center`.
 
 **No rule beyond the language's own.** A function is not required to start with a verb. A call that returns a property is named for what it returns, as in `level_count`, which is the Rust convention.
@@ -302,6 +315,26 @@ A driver opens the file and produces Fragments. The core applies a slice functio
 | Same grid | The Images line up pixel for pixel | Float32 range beside 16-bit intensity; an interferogram beside its coherence |
 | Scaled grid | One Image covers the same scene at a whole-number reduction, with the position of its samples stated | Video chroma at half size beside luma |
 
+**Calls on a Source and an Image**
+
+| Call | Result |
+| --- | --- |
+| `image_count()` | How many Images the Source holds |
+| `list_images()` | An `ImageInfo` for each Image, in order |
+| `image(index)` | One Image, by its index, counted from 0 |
+| `info()` | On an Image: its `ImageInfo` |
+
+**`ImageInfo`** describes one Image, the same whether it comes from a driver or is read by a caller.
+
+| Field | Meaning |
+| --- | --- |
+| `row_count`, `col_count` | The size of the Image, in pixels |
+| `frame_count` | The number of frames, with whether it is `Known`, `AtLeast` or `Unknown` (section 3.2) |
+| `pixel_type` | The sample type, component count, significant bits and bit shift (section 4) |
+| `representation` | What the samples are, with its parameters (section 3, above) |
+| `component_names` | The name of each component |
+| `relations` | Each related Image: its index, the relation, and for a scaled grid the reduction and the position of its samples |
+
 ### 3.1 Indexes and coordinates
 
 BIL addresses data by index and describes it by coordinate.
@@ -356,10 +389,11 @@ For a framing sensor, a frame is one physical collection cycle: one exposure and
 | `count_frames()` | The number of frames, and whether it is `Known`, `AtLeast` or `Unknown` |
 | `build_frame_index()` | Reads through the stream once and records where each frame is and its time |
 | `write_frame_index(location)` | Saves the index, so a later `open_source` that names it does not scan again |
+| `latest_frame()` | The index of the newest frame received. For a file it is the last frame. |
 
 - **Opening never scans.** A count may be `AtLeast` or `Unknown` when the Source is opened.
 - **The index is built on first need.** That is the first call that needs a `Known` count, a time coordinate or a jump to a distant frame.
-- **A live stream has no end.** Its count is `AtLeast`, and its frames are numbered from the first one received.
+- **A live stream has no end.** Its count is `AtLeast`, and its frames are numbered from the first one received. A read can be given a `timeout` and a `cancel` handle (section 3.4), so it never waits without end.
 
 **Additional index dimensions.** Where collection cycles nest, an Image may declare further named indexes. A sensor that sweeps 50 range gates once a second can declare `sweep` and `gate`. These are natural numbers too, and they always resolve to a frame number through `resolve_frame`. `Window` is unchanged: it still carries one `frame`.
 
@@ -412,6 +446,8 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `level_source` | `Computed` | `Stored` lets BIL start from a stored level it chooses |
 | `decimate_first` | 0 | Halvings taken by striding before the level method |
 | `missing_value` | None | A number to fill missing positions with, instead of NaN |
+| `timeout` | None | The longest a read may wait, as for the next frame of a live stream. A read that exceeds it is an error. |
+| `cancel` | None | A handle the caller can trigger from another thread to stop the read, which then returns an error |
 
 **`WriteOptions`**, given to `create_source`
 
@@ -505,6 +541,7 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 - **One Reader for each thread.** A thread that reads an Image gets its own Reader, made on first use. The Image itself holds nothing that changes during a read.
 - **Sequential reads are cheap.** A Reader keeps its place in the stream, so forming a Slice for the next frame decodes one frame, not the whole run from the key frame.
 - **More on request.** `open_reader` gives a caller a further Reader, for example to hold two places in one stream.
+- **A Reader reads like its Image.** A Reader offers every read call its Image offers, with the same arguments. A call on the Image uses the Reader of the calling thread; a call on a Reader uses that Reader.
 
 **Sharing between threads**
 
@@ -533,6 +570,8 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 | `set_cache_size(fragment_count)` | Sets how many decoded Fragments this Source keeps |
 | `describe_cache()` | The Fragments held, the bytes held, and how many reads the cache has served |
 | `clear_cache()` | Frees every cached Fragment |
+
+**Reading a Fragment.** `read_fragment(window, level)` returns the native pixels of a Window. `level` is `level0` by default, or the name of a stored level such as `stored2`, read as it stands. A computed Level is not a Fragment, because it holds new values, so naming one is an error. The Window is given in full-resolution rows and columns, as for a Slice.
 
 **Missing pixels.** Where part of the array was never recorded, a Fragment is still a full array, and its validity mask marks the missing positions. This is the same for every sample type. Where a format marks missing data with a fill value, the driver turns it into mask entries. Slices made from the Fragment are NaN at those positions.
 
@@ -643,6 +682,7 @@ Names are snake\_case, unique within their function and held in a stable order. 
 - **The general functions are a family like any other.** The functions of section 9.1 are in the `pixel` family.
 - **Parameters never go inside the name.** A function that takes parameters is selected with a `SliceSelector`: the Slice name, and the parameters as named values. Any value can be passed this way, including arrays such as response curves.
 - **A string is a selector with no parameters.** It is accepted wherever a `SliceSelector` is, and means the same.
+- **A selector can name a function.** With two parts, as in `SliceSelector("pol.pair", a="hh", b="vv")`, it names a function and its parameters, for calls such as `read_slices` that take a function.
 
 ```python
 hue   = image.read_slice("color.hsv.hue", window)
@@ -660,7 +700,7 @@ hv    = bil.SliceSelector("complex.polar.magnitude", component="hv")
 | `default_slice()` | The Slice used when the caller does not choose |
 | `plan_slice(slice_name, window)` | Output size, access class, any stored level used, and the blocks or frames to be decoded, before any pixel is read |
 | `read_slice(slice_name, window)` | One `Slice`, borrowed where possible |
-| `read_slices(function_name, slice_names, window)` | A `SliceSet`: several Slices from one Fragment |
+| `read_slices(function, slice_names, window)` | A `SliceSet`: several Slices from one Fragment. `function` is a function name, or a `SliceSelector` that names a function and its parameters. |
 | `read_slice_into(slice_name, window, buffer)` | Fills a float32 buffer the caller owns |
 | `stream_slice(slice_name, window, callback)` | Hands the caller float32 row blocks in turn |
 | `level_count()` | How many resolution levels this Image offers |
@@ -681,6 +721,8 @@ hv    = bil.SliceSelector("complex.polar.magnitude", component="hv")
 - **Any combination.** Several Slices, at several Levels, streamed, is one request like any other.
 - **Still one pass.** The Fragment is decoded once, whatever the request asks for.
 - **Planned the same way.** `plan(request)` reports what a request would deliver and cost. `plan_slice` is its short form for one Slice.
+- **Where the result goes.** `read(request, target)` takes a target that matches the delivery. `Returned` needs none. `IntoBuffers` takes a mapping from each Slice name and level name to a float32 buffer of the size `plan(request)` reports. `Streamed` takes a callback.
+- **Streamed blocks.** The callback is called once for each block of rows. Each block carries its Slice name, its level name, the grid rows it covers and its values. Blocks of one Slice and Level arrive in row order, and blocks of different Slices and Levels may interleave.
 - **The short forms.** `read_slice` asks for one Slice at one Level. `read_slices` asks for several Slices. `read_slice_levels` asks for several Levels. `read_slice_into` and `stream_slice` choose the delivery.
 
 ```rust
@@ -1208,6 +1250,29 @@ Functions that analyze, rather than prepare, are not part of `bil`. The widely u
 | `nuclear.uptake` | `suv` | Standardized uptake value normalized by body weight, from `nuclear.activity`, injected dose, decay and patient weight | A clinical measure with several definitions, from fields that are often wrong in practice. Its definition is stated, and it carries the statement that BIL is not for diagnostic use. |
 
 
+### 9.7 Parameters
+
+Every slice function that takes parameters names them here. They are passed in a `SliceSelector` (section 5).
+
+| Slice function | Parameter | Type | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| Any function defined for one component | `component` | Component name | The only component, where there is one | The component to use, as in `complex.polar` with `component="hv"` |
+| `pixel.weighted` | `weights` | One number for each component | None | The weights of the dot product |
+| `pixel.pair` | `i`, `j` | Component names | None | The two components |
+| `pixel.nearest` | `coordinate_name`, `value` | Coordinate name; number | The component index's only coordinate; none | The component whose coordinate is nearest the value |
+| `pixel.integrate` | `coordinate_name`, `from`, `to` | Coordinate name; numbers | The component index's only coordinate; none | The range to average over |
+| `pixel.peak` | `coordinate_name` | Coordinate name | The component index's only coordinate | The coordinate the peak is reported in |
+| `pixel.stretch` | `low`, `high` | Numbers | None | The values mapped to 0 and 1 |
+| `pol.pair` | `a`, `b` | Channel names | None | The two channels |
+| `cfa.demosaic` | `method` | Method name | `bilinear` | `bilinear` or `malvar_he_cutler`, or one a driver adds |
+| `spectral.integrate` | `from_nm`, `to_nm` | Numbers | None | The wavelength range, in nanometers |
+| `spectral.response` | `curves` | A name and an array of wavelength and weight for each curve | None | The response curves; each yields a Slice of its name |
+| `spectral.surface_reflectance` | `gain`, `offset` | One number for each band, or a mapping from band name to number | None | The caller's atmospheric terms: reflectance = `gain` × top-of-atmosphere reflectance + `offset` |
+| `spectral.angle`, in the extras package | `reference` | An array of one value for each band | None | The reference spectrum |
+
+- **A parameter with no default is required.** A read that leaves it out is an error.
+- **Parameters are checked before any pixel is read.** A wrong name or type is an error from `plan` as from `read`.
+
 ## 10. Driver plugin architecture
 
 A driver teaches BIL one format family by describing the Images in a Source, producing Fragments and exposing metadata. The core does everything else.
@@ -1254,6 +1319,28 @@ External drivers use the C interface because Rust has no stable binary interface
 
 - **Conversion stays parallel.** Under `Serial`, only the library call is locked. Conversion to float32, normalization and slice functions still run on several threads (section 12).
 - **A wrapper's lock is not a fault when the library needs it.** A lock is counted against a wrapper only when the library itself does not require one (section 10, the tests for wrappers).
+
+**What a registration gives.** `register_plugin` takes a description whose contents follow the plugin's kind. For a slice function and a level method, the two that add arithmetic, the description is fixed here.
+
+| A slice function gives | Meaning |
+| --- | --- |
+| `name` | Two parts, in a family the plugin may use (section 9) |
+| `representations` | The representations it accepts |
+| `slice_names` | Specified, as a list, or enumerated, as a rule over the `ImageInfo` |
+| `kinds` | For each Slice, how it is reduced at coarser Levels: linear, angle, label or range (section 5) |
+| `radius` | 0 for a pointwise function, or the neighborhood a local one reads |
+| `parameters` | Each parameter's name, type and default, as in section 9.7 |
+| `inputs` | The fields it needs (section 14.2) |
+| `kernel` | The code, as below |
+
+| A level method gives | Meaning |
+| --- | --- |
+| `name` | Its snake\_case name |
+| `weights` | The values applied along rows and columns at each halving |
+| `radius` | How far the weights reach |
+| `alignment` | Whether reduced values sit on full-resolution pixels or between them |
+
+**How a registered kernel runs.** BIL calls a registered kernel once for each block of rows. It receives each input component already converted to float32, with the margin rows and columns its radius needs, and the values of its parameters, and it writes one row block for each Slice. BIL does everything else: reading, conversion, Levels, delivery and threads. The core's own functions are compiled into the fused loop of section 12; a registered kernel runs as a call for each row block, which is slower but keeps every other guarantee.
 
 **Plugin interface version.** `bil_register_driver` carries the version of the plugin interface the plugin was built against.
 
@@ -1610,7 +1697,8 @@ BIL writes a small set of simple formats through writers of its own. Reading sta
 | `list_writers()` | The formats BIL can write |
 | `create_source(location, format_name, image_info)` | Starts a new file with a stated size, pixel type and component names. Takes `WriteOptions`. |
 | `write_fragment(window, fragment)` | Writes native pixels for a Window |
-| `write_slice(window, slice)` | Writes float32 values for a Window |
+| `write_slice(window, slice, component)` | Writes float32 values for a Window into one component. `component` is named; by default it is the component whose name is the Slice's name. |
+| `write_geo_model(model)` | Writes a geo model, as far as the format can hold it. What it cannot hold goes to the companion file. |
 | `write_metadata(fields)` | Writes the fields the format can hold (section 14). Markings and identity follow the rules below. |
 | `close()` | Completes the file |
 
@@ -1727,6 +1815,8 @@ The core owns the steps, and drivers supply the parameters. A driver's job is to
 5. **Geometry can vary by index.** Video carries a model for each frame and a pushbroom sensor a pose for each row. A `pose` step looks these up through the time coordinate of section 3.1.
 6. **Positions are 64-bit.** A 32-bit float resolves latitude and longitude to only about a meter, so geocoded positions are returned as 64-bit coordinates, not as Slices. Slices that carry positions, such as `depth.points`, are in a local space such as the sensor's, where 32 bits are enough.
 7. **An Image can carry several models.** A NITF file may hold corner coordinates, RPC coefficients and a camera model at once. BIL lists them all, most rigorous first, and the caller may choose one by name.
+    - **Named for the step that does the main work,** such as `rational_polynomial`, `projective`, `coordinate_grid`, `camera` or `range_doppler`. Where two models would share a name, both are numbered, as `rational_polynomial_1` and `rational_polynomial_2`.
+    - **The format's own name is kept as the model's label,** as a Slice keeps its label.
 8. **Callers can extend a chain.** A step or another chain can be added to either end, for example a `reference_change` to a map projection, or a correction found by a registration layer above BIL.
 9. **A line of sight stops at the first surface it meets.** Where it crosses the terrain more than once, the result is the crossing nearest the sensor, which is the point the sensor saw.
 10. **A position is returned only when it is sound.** Every result carries a status. An inverse that does not converge, or that has more than one answer, says so and returns no position.
@@ -1742,10 +1832,11 @@ The statuses are those of section 3.3. A position is `Complete`, `Missing`, `Not
 | `read_geo_model(model_name, frame)` | The chain for one frame |
 | `for_slice(slice)` | The same chain with BIL's `image_window` step in front, built from the Slice's `origin` and `scale`, so it covers any Window, Level, stored level or `step` |
 | `for_window(window, level)` | A short form of `for_slice` for a computed Level, before any Slice is read |
-| `image_to_world(positions, surface)` | World positions, as 64-bit values, for pixel positions, each with a status |
+| `image_to_world(positions, surface)` | World positions, as 64-bit values, for pixel positions, each with a status. `surface` may be left out: a chain that needs one then uses the constant height of section 13.6, and a chain that ends in a plane, such as patient space, needs none. |
 | `world_to_image(positions)` | Pixel positions for world positions, each with a status |
 | `list_steps()` | Each step of a chain, with its spaces and parameters |
 | `concatenate(step_or_chain)` | A new chain with a step or chain added |
+| `make_step(step_name, parameters)` | A step from the library of section 13.2, made by the caller, such as `make_step("reference_change", target="EPSG:32611")` |
 
 **A worked chain.** A chip cut from a satellite image, stored as NITF with RPC coefficients and read at Level 2, is located like this.
 
@@ -1963,6 +2054,20 @@ Geocoding, normalization parameters and coordinates are built from metadata, and
 - **A date and time states whether its zone is known.** With a known zone it is held in UTC, with the offset the file stated. Without one it is held as local time, marked as having no known zone, and is never silently taken as UTC.
 - **Field definitions name the specified fields.** A definition gives a code or position its name, value type and unit. Each driver carries the definitions for its formats.
 - **Definitions can be added.** A driver, a scripted driver or a caller can add definitions without rebuilding BIL, for example for a new NITF extension or a vendor's private DICOM tags.
+
+**The form of a field definition.** Definitions are records with these parts, kept as JSON when they are in a file.
+
+| Part | Meaning | Example |
+| --- | --- | --- |
+| `name` | The native name, as a list of parts | `["nitf", "VNDRTRE", "GAIN"]` |
+| `locator` | Where the value is, in the format's own terms | `{"extension": "VNDRTRE", "offset": 12, "length": 6}`, or `{"tag": "0018,1150"}` for DICOM |
+| `value_type` | Text, integer, float, boolean, date and time, bytes, or a list of one of these | `"float"` |
+| `encoding` | How the stored bytes become the value | `"ascii_decimal"`, `"big_endian_u16"` |
+| `unit` | The unit, where there is one | `"dB"` |
+| `handling` | `Ordinary`, `Marking` or `Identity` | `"Ordinary"` |
+| `provides` | The dictionary item it provides, where it is plainly the same (section 14.2) | `"common.exposure_time"` |
+
+The `locator` and `encoding` each format accepts are listed by its driver.
 - **Nothing is hidden.** A value with no definition is still listed, under its native code, with its value as bytes.
 
 ### 14.2 The metadata dictionary
@@ -2016,6 +2121,8 @@ The mapping lives in the native field's definition, which names the dictionary i
 | `common.incidence_angle` | Degrees | SAR products | The sensor's position, the center position and the surface |
 | `common.band_center` | Nanometers, for each component | ENVI `wavelength`, HDF5 attributes | The middle of each band's lower and upper edges |
 | `common.radar_wavelength` | Meters | SAR products | The radar's center frequency |
+| `common.gate_range` | Meters, for each frame | Range-gated sensors | Not derived |
+| `common.projection_angle` | Degrees, for each frame | CT projections | Not derived |
 | `common.color_primaries`, `common.transfer_characteristics`, `common.matrix_coefficients`, `common.video_full_range` | H.273 code points | A stream's own code points; format color tags that are plainly the same | Not derived; a stated default applies (section 9.3) |
 
 **Local times.** Exif and some other formats record the time on the camera's clock, with no zone. BIL takes such a time as local time at the place of collection, and finds the zone in this order.
@@ -2076,6 +2183,7 @@ The calls exist on a Source and on each of its Images.
 | `find_fields(pattern, extract)` | The names that match a pattern, among the defined names and the groups already extracted. With `extract` true, every group is extracted first. |
 | `add_field(field_name, value)` | Adds a caller's field. It is held with the Source and never changes the file. |
 | `add_field_definitions(definitions)` | Adds names, value types and units for coded fields, and any dictionary item each provides |
+| `load_field_definitions(location)` | Reads field definitions from a file in the form below |
 | `release_metadata(group_name)` | Frees a held group. It is extracted again if asked for. |
 
 ```python
@@ -2118,7 +2226,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Nine points are not yet settled, and fifty-seven have been decided. Each lists the current proposal.
+Nine points are not yet settled, and fifty-eight have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2147,6 +2255,7 @@ Nine points are not yet settled, and fifty-seven have been decided. Each lists t
 - [x] **Values for `color.hsv`.** Decided: hue, saturation and value are computed from the encoded values as stored, as most software does (section 9.3).
 - [x] **What the catalog holds.** Decided: a slice function belongs in BIL when it undoes the storage, calibrates, or re-expresses the measurement in a standard form that analysis starts from. Analysis goes to the `bil-extras` package. BIL is not for diagnostic use (sections 1.2 and 9).
 - [x] **Consistency, second review.** Decided: one rule for repeated names; one name and one meaning for each quantity; decibels beside their linear Slices; color converted only by the color functions; every input of a function a field; coordinates are dictionary items where the same; access classes describe the data only; Levels named in requests and geocoding built from the Slice; unknown names are errors and absent values `Missing`; one registration call; every option and held limit in section 3.4; one list of attachments; a display stretch as a kind of slice function; and packaging rules that match the FFmpeg decision (U1 to U16 of the second review).
+- [x] **The calling interface.** Decided: the gaps found by BIL by Example are closed. A caller lists Images and reads an `ImageInfo`; reads Fragments by Level name; passes selectors with parameters to `read_slices`; sends results to buffers or a callback; reads through a chosen Reader; finds the newest frame, with a timeout and cancellation; names geo models by their main step and makes steps; leaves out a surface where none is needed; registers slice functions and level methods by a stated description; writes field definitions in a stated form; writes into named components and writes geo models; and calls C by five conventions (sections 2, 3, 3.2, 3.4, 4, 5, 9.7, 10, 11, 13.3, 13.4, 14.1 and 14.2).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, and the formula for each derived one. The first entries are in section 14.2, and the list is settled as drivers are built.
 - [x] **Sensor geometry.** Decided: geocoding is a chain of steps between named coordinate spaces, covering affine, RPC, SAR and camera models, with Community Sensor Model plugins as one kind of step (section 13).

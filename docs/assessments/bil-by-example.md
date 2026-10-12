@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 57: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 58: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 57. Where an example needs something the specification does not yet define, it says so in a **Gap** note. Section 18 collects the gaps.
+- **Only calls the specification defines.** Every call, option and name comes from version 58. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -44,12 +44,12 @@ A NITF file with several image segments, or a satellite product with a panchroma
 
 ```python
 source = bil.open_source("product.ntf")
-for index in range(len(source.list_images())):
-    image = source.image(index)
-    print(index, image.list_slice_functions())
-```
+for index, info in enumerate(source.list_images()):
+    print(index, info.representation, info.row_count, info.col_count, info.relations)
+    print(source.image(index).list_slice_functions())
 
-> **Gap.** `list_images` is defined as a driver duty (section 10). The specification does not name the caller's call that counts or lists a Source's Images, or the one that reports how they are related.
+source.image_count()   # how many Images
+```
 
 ### 1.4 Choose the driver yourself
 
@@ -88,7 +88,8 @@ print(plan)   # size 4096 × 4096, access class SinglePass, 16 blocks to decode
 Window independence (section 5) means processing tile by tile gives the same result as processing the whole image at once.
 
 ```python
-rows, cols = 100_000, 100_000
+info       = image.info()
+rows, cols = info.row_count, info.col_count
 tile_size  = 4096
 
 for row in range(0, rows, tile_size):
@@ -97,8 +98,6 @@ for row in range(0, rows, tile_size):
         tile   = image.read_slice("pixel.raw.intensity", window)
         process(tile.data)
 ```
-
-> **Gap.** No caller call is named for an Image's size. The examples write `rows` and `cols` by hand.
 
 ### 2.3 Reuse one buffer for every tile
 
@@ -234,7 +233,7 @@ terms = bil.SliceSelector("spectral.surface_reflectance.red", gain=1.07, offset=
 surface_red = image.read_slice(terms, window)
 ```
 
-> **Gap.** The parameters of `spectral.surface_reflectance` are not named in section 9.4. `gain` and `offset` are this document's guess.
+The parameters are listed in section 9.7 of the specification: `gain` and `offset`, one for each band or a mapping by band name.
 
 ### 4.7 Hyperspectral cubes
 
@@ -249,7 +248,7 @@ synth    = image.read_slices(bil.SliceSelector("spectral.response", curves=curve
 image.read_coordinate("wavelength")   # the band centers, as 64-bit values
 ```
 
-> **Gap.** `pixel.peak(coordinate_name)` needs its coordinate named. How a `SliceSelector` is passed to `read_slices`, which takes a function name, is not shown in the specification.
+`coordinate_name` defaults to the component index's only coordinate, here wavelength, so `pixel.peak` could also be asked for by its plain name. A two-part `SliceSelector` names a function with its parameters, which is how `read_slices` takes one.
 
 ### 4.8 Ratios and differences of two components
 
@@ -443,22 +442,26 @@ request = bil.SliceRequest(
     delivery=bil.Delivery.Streamed,
 )
 print(image.plan(request))   # what it will deliver, and what it will cost
-for block in image.read(request):
-    consume(block)
+def consume(block):
+    # One call for each block of rows, tagged with its Slice and Level.
+    store(block.slice_name, block.level_name, block.rows, block.data)
+
+image.read(request, consume)
 ```
 
-> **Gap.** How a streamed request hands back blocks from several Slices and Levels is not described: one callback per block, tagged with Slice and Level, or one stream per Slice.
+Blocks of one Slice and Level arrive in row order. Blocks of different Slices and Levels may interleave.
 
 ### 5.3 Into buffers the caller owns
 
 ```python
-buffers = {"color.rgb.red": red_buffer, "color.rgb.green": green_buffer}
-request = bil.SliceRequest(slices=list(buffers), window=window, levels=[0],
+request = bil.SliceRequest(slices=["color.rgb.red", "color.rgb.green"], window=window, levels=["level0"],
                            options=bil.SliceOptions(), delivery=bil.Delivery.IntoBuffers)
+sizes   = image.plan(request).sizes             # the size of each buffer to provide
+buffers = {("color.rgb.red", "level0"): red_buffer, ("color.rgb.green", "level0"): green_buffer}
 image.read(request, buffers)
 ```
 
-> **Gap.** The specification does not say how buffers are passed with an `IntoBuffers` request.
+Buffers are keyed by Slice name and level name, and each must have the size `plan` reports.
 
 ## 6. Missing data
 
@@ -526,7 +529,7 @@ fragment.status
 native_overview = image.read_fragment(window, level="stored2")
 ```
 
-> **Gap.** The caller's form of `read_fragment` is used in section 10.2 of the specification but not defined. This example names the stored level as a request does.
+`level` is `level0` by default, or a stored level's name. A computed Level holds new values, so it is never a Fragment, and naming one is an error.
 
 ## 8. Frames, time and coordinates
 
@@ -555,8 +558,6 @@ burst = lidar.read_slice("pixel.raw.intensity", bil.Window(0, 0, 256, 256, frame
 gate_range = lidar.read_field_at("common.gate_range", frame)
 ```
 
-> **Gap.** `common.gate_range` is not in the dictionary's first entries. The example assumes a name for it.
-
 ### 8.4 A pushbroom line's time
 
 ```python
@@ -566,12 +567,16 @@ times = pushbroom.read_coordinate("time")   # one 64-bit time per row
 ### 8.5 A live stream
 
 ```python
-live = bil.open_source("udp://239.0.0.1:5000")
-live.image(0).count_frames()   # (frames received so far, AtLeast)
-latest = live.image(0).read_slice("video.planes.luma", bil.Window(0, 0, 720, 1280, frame=latest_frame))
+live   = bil.open_source("udp://239.0.0.1:5000").image(0)
+live.count_frames()                 # (frames received so far, AtLeast)
+newest = live.latest_frame()
+
+stop   = bil.Cancel()               # stop.trigger() from another thread ends the read
+frame  = live.read_slice("video.planes.luma", bil.Window(0, 0, 720, 1280, frame=newest),
+                         timeout=2.0, cancel=stop)
 ```
 
-> **Gap.** No call gives the newest frame of a live stream, and no read takes a timeout (finding R34 of the second review).
+A read that waits longer than its `timeout`, or is cancelled, returns an error.
 
 ## 9. Metadata
 
@@ -675,13 +680,14 @@ out = bil.create_source("study.tif", "GeoTIFF", info, bil.WriteOptions(keep_iden
 ### 11.1 List and choose a model
 
 ```python
-image.list_geo_models()                     # most rigorous first: ["rpc", "corners"] for example
-model = image.read_geo_model("rpc", 0)
+image.list_geo_models()                     # most rigorous first: ["rational_polynomial", "projective"]
+model = image.read_geo_model("rational_polynomial", 0)
+model.label                                 # the format's own name for it, such as "RPC00B"
 for step in model.list_steps():
     print(step)                             # each step with its spaces and parameters
 ```
 
-> **Gap.** Model names are not specified. "rpc" and "corners" are guesses.
+A model is named for the step that does its main work. Two models that would share a name are numbered.
 
 ### 11.2 Where is this pixel?
 
@@ -718,11 +724,9 @@ corner   = chain.image_to_world([(0.0, 0.0)], terrain)
 ### 11.6 Project the result
 
 ```python
-utm   = chain.concatenate(bil.reference_change("EPSG:32611"))
+utm   = chain.concatenate(bil.make_step("reference_change", target="EPSG:32611"))
 east_north = utm.image_to_world(pixel_positions, terrain)
 ```
-
-> **Gap.** How a caller makes a step to concatenate, here `bil.reference_change`, is not specified.
 
 ### 11.7 A model for each video frame
 
@@ -756,10 +760,8 @@ hits    = surface.intersect(lines_of_sight)
 
 ```python
 chain = ct.read_geo_model(ct.list_geo_models()[0], 120).for_window(axial_window, 0)
-patient_mm = chain.image_to_world([(256.0, 256.0)], None)
+patient_mm = chain.image_to_world([(256.0, 256.0)])   # no surface: the chain ends in patient space
 ```
-
-> **Gap.** For an `affine` to patient space no surface is needed, but `image_to_world` always takes one.
 
 ## 12. Writing
 
@@ -768,13 +770,14 @@ patient_mm = chain.image_to_world([(256.0, 256.0)], None)
 ```python
 info = bil.ImageInfo(4096, 4096, bil.PixelType(bil.SampleType.F32, 2, 32), ["sigma0", "coherence"])
 out  = bil.create_source("product.tif", "GeoTIFF", info)
-out.write_slice(window, sigma0)
-out.write_slice(window, coherence)
+out.write_slice(window, sigma0, "sigma0")        # into the component named sigma0
+out.write_slice(window, coherence, "coherence")
 out.write_metadata([source.read_field("common.collection_time")])
+out.write_geo_model(sicd.read_geo_model(sicd.list_geo_models()[0], 0))
 out.close()
 ```
 
-> **Gap.** How a Slice is matched to one of several output components, and how a geo model is written, are not described (finding R30 of the second review).
+A Slice goes into the component of its own name unless another is named. A geo model is written as far as the format holds it, and the rest goes to the companion file. What a writer does when no geo model is given is still open, as finding R30 of the second review.
 
 ### 12.2 Native pixels to ENVI
 
@@ -835,9 +838,11 @@ with ThreadPoolExecutor(8) as pool:
 
 ```python
 ahead = luma.open_reader()   # a second Reader, holding its own place in the stream
+here  = luma.read_slice("video.planes.luma", bil.Window(0, 0, 1080, 1920, frame=1200))
+later = ahead.read_slice("video.planes.luma", bil.Window(0, 0, 1080, 1920, frame=9000))
 ```
 
-> **Gap.** How a caller reads through a particular Reader is not shown.
+A Reader offers every read call its Image offers.
 
 ### 13.4 Know which reads are borrowed
 
@@ -906,23 +911,45 @@ def describe_pixels(self, source, image_index):
 ### 15.3 A slice function under a driver's own family
 
 ```python
+def vendor_gain_kernel(inputs, parameters, outputs):
+    # inputs:  one float32 row block for each component, with any margin the radius needs
+    # outputs: one float32 row block for each Slice, to be filled
+    outputs["intensity"][:] = inputs[0] * parameters["gain"]
+
 bil.register_slice_function(
     name="vendor.gain_corrected",
+    representations=["intensity"],
     slice_names=["intensity"],
+    kinds={"intensity": "linear"},
     radius=0,
-    function=vendor_gain_kernel,
+    parameters=[("gain", float, 1.0)],
+    inputs=[],
+    kernel=vendor_gain_kernel,
 )
+
+bil.register_level_method(name="box2", weights=[1, 1], radius=1, alignment="between")
 ```
 
-> **Gap.** The arguments of `register_slice_function` and `register_level_method` are not specified. How a function written outside the core runs inside the fused loop is not described.
+BIL calls a registered kernel once for each block of rows, and does the reading, conversion, Levels, delivery and threads itself. The core's own functions run in the fused loop; a registered one runs as a call for each block, which is slower but keeps every other guarantee.
 
 ### 15.4 A new NITF extension, without rebuilding
 
 ```python
-source.add_field_definitions(bil.load_definitions("new_tre.json"))
+source.load_field_definitions("new_tre.json")
 ```
 
-> **Gap.** The form of field definitions is not specified.
+```json
+[
+  {
+    "name": ["nitf", "VNDRTRE", "GAIN"],
+    "locator": {"extension": "VNDRTRE", "offset": 12, "length": 6},
+    "value_type": "float",
+    "encoding": "ascii_decimal",
+    "unit": "dB",
+    "handling": "Ordinary"
+  }
+]
+```
 
 ### 15.5 A sensor model from a plugin
 
@@ -1007,14 +1034,20 @@ BilStatus status = bil_open_source("scene.ntf", &source);
 if (status == BIL_OK) status = bil_image(source, 0, &image);
 if (status == BIL_OK) status = bil_read_slice(image, "complex.polar.magnitude", &window, &slice);
 if (status == BIL_OK) {
-    const float *values = bil_slice_data(slice);
-    /* ... */
+    const float *values;
+    size_t rows, cols, row_stride;
+    status = bil_slice_data(slice, &values, &rows, &cols, &row_stride);
+    /* ... values are valid until the Slice is freed ... */
     bil_free_slice(slice);
+}
+if (status != BIL_OK) {
+    char message[512];
+    bil_last_error(message, sizeof message);
 }
 bil_close_source(source);
 ```
 
-> **Gap.** The C interface's functions for reaching a Slice's data, freeing objects and closing a Source are not named. `bil_slice_data`, `bil_free_slice` and `bil_close_source` are guesses.
+Every C function returns a status, every object is an opaque handle freed by its matching call, and the message for the last failed call on a thread is read with `bil_last_error`.
 
 ### 17.4 C: into a buffer the caller owns
 
@@ -1023,24 +1056,28 @@ float *buffer = malloc(4096 * 4096 * sizeof(float));
 status = bil_read_slice_into(image, "pixel.raw.intensity", &window, buffer);
 ```
 
-## 18. Gaps found while writing these examples
+## 18. Gaps closed in version 58
 
-Writing calls against the specification shows where it is not yet complete enough to code against. None of these changes the design. Each needs a name or a form.
+Version 1 of this document found these gaps in the calling interface. Version 58 of the specification closes each one.
 
-| Gap | Where it arose | What is missing |
-| --- | --- | --- |
-| Listing Images | 1.3 | The caller's call that counts and lists a Source's Images, and reports their relations |
-| Image size | 2.2 | A caller's call for an Image's rows, columns and frame count together |
-| Caller's `read_fragment` | 7.5 | Its signature, and how it names a stored level |
-| Streamed and buffered requests | 5.2, 5.3 | How several Slices and Levels come back from one streamed request, and how buffers are passed |
-| Function parameters | 4.6, 4.7 | The parameter names of several slice functions, and how a selector with parameters is passed to `read_slices` |
-| Geo model names | 11.1 | How models are named in `list_geo_models` |
-| Making steps | 11.6 | How a caller makes a step to concatenate |
-| Surfaces that are not needed | 11.10 | An `image_to_world` with no surface, for chains that end in a plane or a patient |
-| Readers | 13.3 | How a caller reads through a chosen Reader |
-| Live streams | 8.5 | The newest frame, timeouts and cancellation |
-| Registering functions and methods | 15.3 | The arguments of `register_slice_function` and `register_level_method`, and how their code joins the fused loop |
-| Field definitions | 15.4 | Their form |
-| Dictionary items | 8.3 | Items such as gate range, which section 7 uses as a frame coordinate |
-| The C interface | 17.3 | Accessors, freeing and closing |
-| Writing several components | 12.1 | How Slices map to output components, and how the geo model is written |
+| Gap | Example | Closed by | Section of the specification |
+| --- | --- | --- | --- |
+| Listing Images | 1.3 | `image_count`, `list_images`, `image` and `ImageInfo` | 3 |
+| Image size | 2.2 | `info()` on an Image | 3 |
+| The caller's `read_fragment` | 7.5 | `read_fragment(window, level)`, by Level name | 4 |
+| Streamed and buffered requests | 5.2, 5.3 | `read(request, target)`: a callback of tagged blocks, or buffers keyed by Slice and Level | 5 |
+| Function parameters | 4.6, 4.7 | A table of every parameter, and two-part selectors for `read_slices` | 5, 9.7 |
+| `OpenOptions` | 1.5, 8.2, 14.1 | Every option listed with its default | 3.4 (version 57) |
+| Corrupt data as missing | 16.2 | `corrupt_as_missing` in `OpenOptions` | 3.4 (version 57) |
+| Geo model names | 11.1 | Named for the step that does the main work, with the format's name as label | 13.3 |
+| Making steps | 11.6 | `make_step(step_name, parameters)` | 13.4 |
+| Surfaces that are not needed | 11.10 | `surface` may be left out | 13.4 |
+| Readers | 13.3 | A Reader offers every read call of its Image | 4 |
+| Live streams | 8.5 | `latest_frame`, and `timeout` and `cancel` in `SliceOptions` | 3.2, 3.4 |
+| Registering functions and methods | 15.3 | The descriptions a slice function and a level method give, and how a registered kernel runs | 10 |
+| Field definitions | 15.4 | The parts of a definition, kept as JSON, and `load_field_definitions` | 14.1, 14.4 |
+| Dictionary items | 8.3 | `common.gate_range` and `common.projection_angle` | 14.2 |
+| The C interface | 17.3 | Five conventions: handles, status, ownership, data and errors | 2 |
+| Writing several components | 12.1 | `write_slice(window, slice, component)` and `write_geo_model` | 11 |
+
+**Still open, as design rather than interface.** What a writer does when no geo model is given is finding R30 of the second review. How a live stream behaves when two Readers read it, and what a request for a frame no longer held returns, are finding R34.

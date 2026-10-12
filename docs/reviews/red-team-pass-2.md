@@ -402,6 +402,8 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 
 **Decision needed.** Accept.
 
+**Note.** Version 58 adds `write_slice(window, slice, component)` and `write_geo_model(model)`, so a caller can write into named components and write a geo model. Still open: whether writers write the geo model without being asked, the sample types each writer refuses, and how a Slice from a reduced Level is written.
+
 ### R31. A deferred Fragment has no decoder of its own
 
 **Status:** Open · **Where:** section 4
@@ -467,6 +469,8 @@ The options that set them are scattered: `OpenOptions` gathers limits, mapping, 
 - **Timeouts and cancellation.** Every read on a stream takes a timeout, and `SliceRequest` and `stream_slice` take a cancellation handle the caller can trigger from another thread.
 
 **Decision needed.** Accept.
+
+**Note.** Version 58 adds `latest_frame()`, and `timeout` and `cancel` in `SliceOptions`. Still open: one shared position for a live stream, and `Missing` for a frame no longer held.
 
 ### R35. The LGPL may keep Rust developers away
 
