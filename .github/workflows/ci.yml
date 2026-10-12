@@ -21,7 +21,14 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
       - name: Lint
-        run: cargo clippy --release --all-targets -- -D warnings
+        shell: bash
+        # Lint messages are also raised as annotations, which can be read without the logs.
+        run: |
+          set -o pipefail
+          cargo clippy --release --all-targets --message-format=short -- -D warnings 2>&1 | tee clippy.txt || {
+            grep -E "^(error|warning)|: (error|warning)" clippy.txt | head -20 | sed 's/^/::error::/'
+            exit 1
+          }
       - name: Build
         run: cargo build --release
       - name: Experiment 1, correctness
@@ -38,4 +45,10 @@ jobs:
       - name: Latest stable
         run: rustup toolchain install stable --profile minimal -c clippy && rustup override set stable
       - name: Lint
-        run: cargo +stable clippy --release --all-targets -- -D warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo +stable clippy --release --all-targets --message-format=short -- -D warnings 2>&1 | tee clippy.txt || {
+            grep -E "^(error|warning)|: (error|warning)" clippy.txt | head -20 | sed 's/^/::warning::/'
+            exit 1
+          }

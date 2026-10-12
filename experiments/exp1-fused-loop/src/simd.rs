@@ -332,6 +332,8 @@ unsafe impl Vf for Avx512 {
 
 /// The instruction set a pass runs on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// On processors other than x86 only `Scalar` is ever made.
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub enum Isa {
     Scalar,
     Avx2,
@@ -341,6 +343,8 @@ pub enum Isa {
 impl Isa {
     /// Every instruction set this processor can run, scalar first.
     pub fn available() -> Vec<Isa> {
+        // Only x86 adds to the list.
+        #[cfg_attr(not(target_arch = "x86_64"), allow(unused_mut))]
         let mut v = vec![Isa::Scalar];
         #[cfg(target_arch = "x86_64")]
         {
