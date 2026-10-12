@@ -1,4 +1,15 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Nothing was built or measured. Version 2 revises section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Version 3 brings the document in step with specification version 65: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.
+
+**What has changed between versions 56 and 65**
+
+| Change | Where it bears |
+| --- | --- |
+| Agreement to a tolerance, not to the bit (R27). Experiment 1 found bitwise agreement cheap all the same. | H1 |
+| The interpreter is CPython from the machine, run in a helper process for Rust, C and C++ callers | H5 |
+| What ships stays compatible with LGPL 2.1, so SIX, which is LGPL 3, cannot be inside a package | H6 |
+| Decoding on request, and the mapped format's layout, start-up, readiness and slot marking, are designed | H8 |
+| Geocoding carries full accuracy records (section 13.9), which adds partial derivatives to every step | H7 |
+| Tier 1 reads GeoTIFF and NITF with Rust readers, and 22 real NITF test files are pinned | Section 7 |
 
 ## 1. Verdict
 
@@ -10,7 +21,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 
 **The main danger is breadth, not any single part.** Section 8 and Appendix A name roughly 60 kinds of data and about 40 libraries. With one implementer, an attempt to keep all of them working would spend almost all its time on builds and packaging, not on the core. The tier plan is the right defense, and this document argues for holding to it strictly.
 
-**Five problems should be tried in small experiments before Tier 1 is coded.** They are listed in section 8: the fused loop and its bitwise window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python.
+**Five problems should be tried in small experiments before Tier 1 is coded.** They are listed in section 8: the fused loop and its window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python. The first, the fused loop, is done, in experiments 1 and 1b.
 
 ## 2. What makes BIL easier to build than it looks
 
@@ -56,9 +67,9 @@ The difficulty ratings are judgments: Low is routine work, Medium needs care, Hi
 | Rust interface | Medium | Lifetimes of borrowed Slices and Fragments | Ergonomics of `Cow` and lifetimes for callers |
 | C interface over all of Rust | High, and large | Every type and call needs a C form, with ownership rules | Size of the surface, and keeping it stable (pass 2, R39) |
 | Python interface | Medium | PyO3 and NumPy are mature | Borrowed arrays keeping Sources alive; the interpreter lock in callbacks |
-| Embedded interpreter | High | Embedding Python in a library that is also loaded by Python | Packaging, still an open decision (H5) |
+| Python for scripted drivers | Medium | A helper process for Rust, C and C++ callers; the caller's own Python inside Python | The round trip's cost, which is benchmarked (H5) |
 | Scripted drivers | Medium | The `PixelLayout` path is simple; the array fallback is not | Keeping the interpreter off the pixel path in every case |
-| External decoding, mapped format, isolation | Very high | Processes, shared memory and sandboxing on three systems | Design still to be done (pass 2, R26), and sandbox limits on macOS and Windows |
+| External decoding, mapped format, isolation | Very high | Processes, shared memory and sandboxing on three systems | Passing unnamed shared memory and marking slots on three systems; sandbox limits on macOS and Windows (H8) |
 | Packaging and coexistence | High | Private copies with hidden symbols, conda and system packages | Clashes with GDAL, HDF5 and FFmpeg from other packages (H2) |
 | Conformance suite | Medium, and large | One suite for every driver, slice function, Level and instruction set | Run time of the full matrix |
 | Fuzz testing | Medium | Standard tools exist for Rust | Coverage of the Rust layer over C libraries |
@@ -81,6 +92,8 @@ Each problem says what it is, why it is hard, how likely and how damaging it is,
 **Likelihood and impact.** Likely to cost more time than planned. High impact, because every Slice passes through it.
 
 **How to retire it.** A two-week experiment: three slice functions (`pixel.raw`, `complex.polar`, `color.hsv`) on two sample types, two instruction sets, Levels 0 to 4 in one pass, with the Window independence test run bitwise over thousands of random Windows. Measure speed against a plain memory copy, compile time and code size.
+
+**What happened.** Agreement is now required to a tolerance (R27), and experiment 1 ran this plan with two sample types for each function, on scalar, AVX2 and AVX-512 code. Bitwise agreement held everywhere at little cost, the kernels ran at memory speed, and the program built in 13 seconds at 0.6 MB. The whole pass missed the speed criterion, at 5 to 90 times a copy, because it made whole planes. Experiment 1b's rolling buffer kept every bit and brought `pixel.raw` to 1.9 to 3.6 times a copy. `complex.polar` and `color.hsv` are limited by their own arithmetic, at 6 to 20 times a copy and 1.7 to 2.4 times their arithmetic alone. Whether that meets the criterion is for the author to rule (`RESULTS.md` and `RESULTS-1b.md` in `experiments/exp1-fused-loop`).
 
 ### H2. Containing many C and C++ libraries in one process
 
@@ -122,29 +135,29 @@ Each problem says what it is, why it is hard, how likely and how damaging it is,
 
 **How to retire it.** Before Tier 2 is planned in detail, build a frame-accurate reader over FFmpeg for a test set of awkward streams: open groups of pictures, variable rate, transport streams with KLV, and interlaced video. Compare every frame against a full sequential decode.
 
-### H5. The embedded Python interpreter
+### H5. The Python interpreter for scripted drivers
 
 **What.** Scripted drivers must work for Rust, C and C++ callers, so BIL embeds Python. When BIL is itself loaded by Python, it must use that interpreter instead.
 
 **Why it is hard.**
 
-- **Which Python.** Embedding needs a Python runtime of a known version. Shipping one inside BIL adds size and a second Python on the machine. Using the installed one ties BIL to its version. This is still an open decision.
-- **Two roles in one library.** The same shared library may be a Python extension in one process and an embedder in another. PyO3 supports both, but the build differs.
+- **Which Python.** Settled in version 62: the Python installed on the machine, and BIL ships none. In version 63, Rust, C and C++ callers reach it through a helper process, so BIL is not tied to its version.
+- **Two roles in one library.** Inside Python, BIL uses that interpreter. Outside it, the helper process does, so the shared library is never an embedder in the caller's process.
 - **Libraries the scripts call.** A script that imports SARkit or SarPy needs those installed in whatever Python BIL runs.
 
 **Likelihood and impact.** Likely to cause packaging problems. Medium impact, since scripted drivers are a Tier 2 feature.
 
-**How to retire it.** Decide the packaging question first. Then build one scripted driver and call it from C, from Rust and from Python on all three systems.
+**How to retire it.** Build one scripted driver and call it from C, from Rust and from Python on all three systems, and benchmark the helper process's round trip.
 
 ### H6. Building and shipping SIX and the other large C++ libraries
 
 **What.** SIX is the reference for SICD and SIDD, and the planned driver for both. It is a large C++ code base built on its own support libraries.
 
-**Why it is hard.** Large C++ libraries are the hardest to build as private copies with hidden symbols, and the C++ standard library itself is a common source of clashes between packages. SIX is also LGPL-3.0, which fixes BIL's packages that contain it at version 3 of the LGPL.
+**Why it is hard.** Large C++ libraries are the hardest to build as private copies with hidden symbols, and the C++ standard library itself is a common source of clashes between packages. SIX is also LGPL-3.0. What BIL ships stays compatible with LGPL 2.1, so SIX cannot be inside a BIL package, and it is assessed under that rule when Tier 2 starts.
 
 **Likelihood and impact.** Likely. Medium impact, in Tier 2.
 
-**How to retire it.** Check which package managers already carry SIX, which this review did not confirm. If none does, compare the cost of building it against a Rust or scripted SICD reader, with SIX or SARkit kept as the test reference.
+**How to retire it.** Check which package managers already carry SIX, which this review did not confirm. Compare the cost of an optional SIX plugin against a Rust or scripted SICD reader, with SIX or SARkit kept as the test reference.
 
 ### H7. Geocoding steps with no open reference
 
@@ -162,13 +175,13 @@ Each problem says what it is, why it is hard, how likely and how damaging it is,
 
 **Why it is hard.**
 
-- **Redesign needed.** Pass 2 (R26) found that the design decodes the whole Source, which must change to decoding on request.
+- **Designed, not built.** Decoding on request (R26) and the mapped format's details (version 64) are settled: page-aligned slots, a control channel, slot marking, and shared memory passed without a name.
 - **Three systems.** Shared memory, process start-up and clean-up of leftovers differ on Linux, macOS and Windows.
 - **Reduced privileges.** Removing network access and limiting file access from a decoder process is well supported on Linux and much weaker or harder elsewhere. Section 10.3 already says "where the platform allows", which is honest, but users may expect more.
 
 **Likelihood and impact.** Very likely to take longer than planned. Medium impact, because isolation is off by default and outside Tier 1.
 
-**How to retire it.** Keep it out of Tier 1, as planned. Design the request-driven form first (R26), and build it for Linux before the others.
+**How to retire it.** Keep it out of Tier 1, as planned. Build it for Linux first, then pass unnamed shared memory on Windows and macOS.
 
 ### H9. The C interface over all of Rust
 
@@ -255,37 +268,37 @@ These are the backing libraries whose health matters most to the early tiers. He
 
 ## 7. What the specification must settle before coding
 
-These are the points where code cannot be written, or would have to be rewritten, until a decision is made.
+These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 65, every one is settled.
 
 **Before Tier 1**
 
 | Item | Why it blocks |
 | --- | --- |
-| R27, bitwise window independence | It decides how every loop is written |
-| R29, stored levels and the Level grid | It decides how stored levels are used in Tier 1's GeoTIFF and NITF |
-| R30, writing geocoding | Tier 1 writes GeoTIFF |
-| R28, markings inside written files | Tier 1 writes TIFF from NITF, which can carry markings |
-| U8, how resolution is named in a request | It shapes `SliceRequest` and geocoding calls in every interface |
-| U9, how "no value" is reported | It shapes every metadata call |
-| The gaps listed in BIL by Example | Each is a name or form every interface will carry |
-| Test data | Tier 1 needs GeoTIFF and NITF reference files |
-| R39, interface stability policy | Before the first release, not the first line of code |
+| R27, bitwise window independence | It decides how every loop is written. Settled: to a tolerance (version 59). |
+| R29, stored levels and the Level grid | It decides how stored levels are used in Tier 1's GeoTIFF and NITF. Settled: a misaligned stored level never makes a Level (version 60). |
+| R30, writing geocoding | Tier 1 writes GeoTIFF. Settled: writers write the geo model (version 59). |
+| R28, markings inside written files | Tier 1 writes TIFF from NITF, which can carry markings. Settled (version 59). |
+| U8, how resolution is named in a request | It shapes `SliceRequest` and geocoding calls in every interface. Settled: Levels by name, such as `stored2.level1` (version 57). |
+| U9, how "no value" is reported | It shapes every metadata call. Settled: status `Missing` with no value (version 57). |
+| The gaps listed in BIL by Example | Each is a name or form every interface will carry. Settled: all 17 closed (version 58). |
+| Test data | Tier 1 needs GeoTIFF and NITF reference files. Settled: two layers, with 22 real NITF files pinned (version 61). |
+| R39, interface stability policy | Before the first release, not the first line of code. Settled: semantic versioning (version 59). |
 
 **Before Tier 2**
 
 | Item | Why it blocks |
 | --- | --- |
-| R26, isolation on request | The mapped format's design depends on it |
-| R31, decoders for deferred Fragments | Video's threading depends on it |
-| R34, live streams | Timeouts and cancellation shape the stream interface |
-| Interpreter packaging | Scripted drivers depend on it |
-| Mapped format details | External decoding depends on it |
+| R26, isolation on request | The mapped format's design depends on it. Settled (version 59). |
+| R31, decoders for deferred Fragments | Video's threading depends on it. Settled: deferred Fragments are self-contained (version 59). |
+| R34, live streams | Timeouts and cancellation shape the stream interface. Settled (version 59). |
+| Interpreter packaging | Scripted drivers depend on it. Settled: CPython from the machine, in a helper process (versions 62 and 63). |
+| Mapped format details | External decoding depends on it. Settled (version 64). |
 
 ## 8. The first experiments, in order
 
 Each is small, answers one question, and can change the design while change is cheap. Experiments 1, 3 and 5 can run in this workspace. Experiment 2 needs large NITF files from the author, and experiment 4 needs CI on macOS and Windows.
 
-1. **The fused loop (H1).** Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy.
+1. **The fused loop (H1). Done, in experiments 1 and 1b: correct to the bit, and fast for `pixel.raw`; see H1 for the speed of the other functions.** Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy.
 2. **JPEG 2000 on real NITF (H3).** Time region and reduced-resolution reads on large files with OpenJPEG and, if possible, Kakadu. Pass when a small Window's cost does not grow with the file, or the shortfall is known and a route around it is chosen.
 3. **Containing C errors (H2).** One libjpeg-family library and GDAL behind BIL's C layer, with corrupt files from a fuzzer. Pass when no corrupt file crashes the process or leaves global state changed.
 4. **Packaging (H2).** BIL as a Python wheel and a conda package, with private GDAL and PROJ, loaded beside rasterio and pyproj. Pass when both read correctly in one process on Linux, macOS and Windows.
@@ -301,7 +314,7 @@ If time runs short, these cuts keep BIL's purpose and remove the most risk.
 | --- | --- | --- |
 | AVX-512 paths | AVX2 and NEON | Some speed on the newest Intel servers |
 | Isolation and external decoding | Limits, configured plugin locations and fuzzing | Protection from a library that a hostile file takes over |
-| The embedded interpreter | Scripted drivers when BIL is called from Python | Scripted drivers for Rust, C and C++ callers |
+| The Python interpreter for scripted drivers | Scripted drivers when BIL is called from Python | Scripted drivers for Rust, C and C++ callers |
 | Most of Tier 3 | The formats users ask for | The claim to read nearly everything |
 | C interface beyond the core calls | Opening, reading, metadata and geocoding from C | Advanced calls from C, which Rust and Python keep |
 

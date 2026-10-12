@@ -103,7 +103,7 @@ BIL is used on closed networks and with data that must not leak. Two rules follo
 
 **No copy unless asked**
 
-- **Only at a place the caller named.** BIL writes to storage only for an output file, a companion file, a saved frame index, or mapped data.
+- **Only at a place the caller named.** BIL writes to storage only for an output file, a companion file, a saved frame index, or mapped data with the lock file and control channel of its decoder process (section 10.2).
 - **No files of its own.** BIL creates no temporary files and no cache files. The Fragment cache and held metadata exist in memory only.
 - **One decoded copy is possible.** Mapped data is the only decoded copy BIL can leave on storage, and section 10.2 fixes how it is handled.
 
@@ -127,7 +127,7 @@ BIL is built in tiers. Each tier is finished before the next is started, so the 
 | Interfaces | Rust, Python, and the C-callable interface of the shared library |
 | Safeguards | Containment, resource limits and fuzz testing |
 
-**What Tier 1 leaves out.** Video with its Readers and deferred Fragments, scripted drivers and the embedded interpreter, external decoding with the mapped format and isolation, terrain files, and every other format.
+**What Tier 1 leaves out.** Video with its Readers and deferred Fragments, scripted drivers and their interpreter, external decoding with the mapped format and isolation, terrain files, and every other format.
 
 **When a tier is finished.** Each of its drivers passes the conformance suite of section 10.4, and its slice functions meet the requirements of section 12.
 
@@ -410,13 +410,13 @@ Every call returns a result, and everything that is delivered carries a status. 
 
 **What is delivered carries a status**
 
-| Status | Meaning | For pixels | For positions | For fields |
-| --- | --- | --- | --- | --- |
-| `Complete` | Everything asked for is there | No pixel is missing | The position is sound | The value was found |
-| `Partial` | Delivered, with some of it missing | Some pixels are missing, and are marked | Not used | Some items of a group could not be read |
-| `Missing` | Nothing is there to deliver | Every pixel is missing | No surface was available at that place | The field has no value at that index |
-| `NotConverged` | An iteration did not settle on an answer | Not used | The inverse did not converge | Not used |
-| `Ambiguous` | More than one answer exists | Not used | As in the fold of a coordinate grid | Not used |
+| Status | Meaning | For pixels | For positions | For accuracy | For fields |
+| --- | --- | --- | --- | --- | --- |
+| `Complete` | Everything asked for is there | No pixel is missing | The position is sound | Every step has an error estimate | The value was found |
+| `Partial` | Delivered, with some of it missing | Some pixels are missing, and are marked | Not used | Some steps have no estimate, and are named | Some items of a group could not be read |
+| `Missing` | Nothing is there to deliver | Every pixel is missing | No surface was available at that place | No step has an estimate | The field has no value at that index |
+| `NotConverged` | An iteration did not settle on an answer | Not used | The inverse did not converge | Not used | Not used |
+| `Ambiguous` | More than one answer exists | Not used | As in the fold of a coordinate grid | Not used | Not used |
 
 - **Per element, where elements differ.** A set of positions carries a status for each position. For pixels, the per-pixel form of the status is the validity mask of a Fragment and NaN in a Slice.
 - **An unknown name is an error, and a known one with no value is `Missing`.** A field name that is not defined for this Source is an error. A defined field or a dictionary item that has no value here is delivered with status `Missing` and no value. The same holds along an index.
@@ -1322,7 +1322,7 @@ A driver teaches BIL one format family by describing the Images in a Source, pro
 | Built-in | Rust, compiled into `bil`, each behind a build feature | Wrapping the chosen open source libraries |
 | External | Shared library that calls `bil_register_driver` through the C interface | Special drivers in C, C++ or Rust, added without rebuilding BIL |
 | Optional | A separate package that BIL finds at run time, through its configured locations (section 10.3) | Plugins under a license stricter than the LGPL, such as Grok, and `bil-extras`, the analysis functions of section 9.6 |
-| Scripted | Python code registered at run time and run by the embedded interpreter (section 10.1) | Esoteric and evolving formats, and additional data the compiled drivers do not read |
+| Scripted | Python code registered at run time and run in CPython (section 10.1) | Esoteric and evolving formats, and additional data the compiled drivers do not read |
 | External decoding | A separate decoder process that fills BIL's mapped format (section 10.2) | Any supported format, when configured |
 
 External drivers use the C interface because Rust has no stable binary interface between separately compiled libraries.
@@ -1393,7 +1393,7 @@ A caller can also name the driver explicitly with `open_source_with`.
 
 | Plugin kind | What it does | Planned plugins |
 | --- | --- | --- |
-| Container driver | Opens a Source, lists its Images and produces Fragments | GDAL, OxiGeo, NITRO, SIX, nitf-rs, async-tiff, libtiff, LibRaw, RawSpeed, rawler, libheif, HDF5, NetCDF, zarrs, hidefix, CFITSIO, DCMTK, ITK, the native ENVI driver |
+| Container driver | Opens a Source, lists its Images and produces Fragments | GDAL, OxiGeo, nitf-rs, async-tiff, libtiff, LibRaw, RawSpeed, rawler, HDF5, NetCDF, zarrs, CFITSIO, DCMTK, ITK, the native ENVI driver. Under LGPL 3, and so test references or optional plugins only (section 10.6): NITRO, SIX, libheif and hidefix. |
 | Codec | Decodes compressed pixel blocks handed over by a container driver | emuella-j2k, j2k-native, OpenJPH, OpenJPEG, Grok (optional), libjpeg-turbo, jxl-oxide, CharLS, LERC, rav1d, dav1d |
 | Stream source | Delivers frames from video files, network streams and live cameras | FFmpeg, GStreamer, ts-transformer, Aravis, cameleon |
 | Metadata parser | Turns embedded metadata into named fields (section 14) | libmisbklv, klv-uas, ts-transformer, Exiv2 |
@@ -1415,7 +1415,7 @@ A caller can also name the driver explicitly with `open_source_with`.
 | GeoTIFF | The Rust [`tiff`](https://github.com/image-rs/image-tiff) crate, with BIL's own reading of GeoTIFF keys | Tier 1's GeoTIFF reader, with no C library. GDAL is the reference it is tested against. |
 | General rasters | GDAL | Broad raster coverage beyond Tier 1. Its JPEG 2000 support is not used. |
 | NITF | A native Rust NITF reader | Tier 1's NITF container reader. Headers and extensions are read through the field definitions of section 14.1. NITRO, which is LGPL 3.0, and GDAL are the references it is tested against. |
-| SICD, SIDD | [SIX](https://github.com/ngageoint/six-library) | SICD, SIDD and CPHD metadata and pixels, in Tier 2 |
+| SICD, SIDD | [SIX](https://github.com/ngageoint/six-library) | SICD, SIDD and CPHD metadata and pixels, in Tier 2. SIX is LGPL 3, so it is assessed under section 10.6 when Tier 2 starts. |
 | Raw camera files | LibRaw | Raw camera decoding |
 | Video | FFmpeg, version 6 or later | Demuxing and decoding compressed video. Always the shared copy from conda or the system package manager, reached through the rusty\_ffmpeg bindings and a thin safe layer of BIL's own (section 10.5). |
 | HDF5, NetCDF | The HDF5 and NetCDF C libraries | Scientific and hyperspectral containers |
@@ -1512,14 +1512,15 @@ class VendorDriver(bil.ScriptedDriver):
 bil.register_driver(VendorDriver)
 ```
 
-**Embedded interpreter.** BIL includes an embedded Python interpreter, so scripted drivers work for Rust, C and C++ callers as well as from Python.
+**The interpreter.** Scripted drivers run in CPython, so they work for Rust, C and C++ callers as well as from Python.
 
 - **CPython.** The interpreter is CPython, the standard Python, because scripted drivers call existing Python libraries, and many of those, such as NumPy, are built for it alone. Smaller interpreters run only a subset of Python and none of its compiled libraries.
 - **Taken from the machine, not shipped.** BIL uses the Python installed on the machine, as it uses any library a package manager supplies (section 10.5). BIL's packages contain no interpreter. Where no Python is installed, a scripted driver fails with an error that says so, and everything else works.
 - **Started on first use.** The interpreter starts only when a scripted driver is first needed. Callers that never use one pay nothing.
 - **One interpreter.** When BIL is itself running inside Python, it uses that interpreter and does not start a second.
 - **A helper process for other callers.** For Rust, C and C++ callers, CPython runs in a separate BIL helper process, started on first use. A failing script, or a clash between the caller's libraries and Python's, stays out of the caller's process, and whichever Python 3 is installed can be used.
-- **The round trip is watched.** Each call into a scripted driver from a helper process is a round trip between processes. It is made when a Source is opened and when additional data is read, never for pixels. Its cost is benchmarked (section 12), and the choice is reviewed if it becomes prohibitive.
+- **The round trip is watched.** Each call into a scripted driver from a helper process is a round trip between processes. It is made when a Source is opened and when additional data is read, never for pixels a `PixelLayout` describes. A script that returns pixels as an array pays it for every read, as `plan_slice` reports. Its cost is benchmarked (section 12), and the choice is reviewed if it becomes prohibitive.
+- **Only from configured locations.** The helper program is found only where the configuration says, as plugins are (section 10.3).
 - **Kept off the pixel path.** The interpreter runs when a Source is opened and when additional data is read. Pixel reads from a `PixelLayout` never enter it, so they run in parallel as for any other driver.
 
 **Python libraries.** A scripted driver may call existing Python libraries, such as SARkit, to interpret metadata.
@@ -1560,7 +1561,7 @@ This is an optional layer, built and supported as part of BIL. It is switched on
 | The caller chooses the place | The configuration names a folder, or shared memory with no file. There is no default, so nothing is decoded externally until one is chosen. |
 | Private to its owner | Mapped data is created so that only its owner can read or write it. |
 | Marked | It carries the Source's markings, and its identity fields are empty unless the caller keeps them (section 11). |
-| Removed after use | It is removed when the decoder process ends, unless the caller sets `keep_mapped`. |
+| Removed after use | It is removed when the decoder process ends, unless the configuration sets `keep_mapped`. |
 | Leftovers are cleared | A decoder that stops abnormally can leave data behind. When external decoding next starts in that place, BIL removes mapped data that no running decoder owns and that was not set to be kept. |
 | Not encrypted | BIL does not encrypt mapped data. Where that is needed, the caller names a place on encrypted storage or uses shared memory. |
 
@@ -1585,7 +1586,8 @@ This is an optional layer, built and supported as part of BIL. It is switched on
 **Starting the decoder process**
 
 - **Spawned on first use.** BIL starts the decoder process when external decoding is first needed, and it ends when its parent ends.
-- **Or attached to.** Where a decoder is already running in the configured place, BIL attaches to it instead, so one decoding can serve several processes. A lock file there names each decoder's owner, which is also how leftovers are cleared.
+- **Or attached to.** Where a decoder is already running in the configured folder, BIL attaches to it instead, so one decoding can serve several processes. A lock file there names each decoder's owner and its control channel, which is also how leftovers are cleared.
+- **A folder is needed to attach or to keep.** Attaching finds a decoder through its lock file, and a kept whole copy lives in a file, so both need the configuration to name a folder. With shared memory and no folder, each caller spawns its own decoder.
 - **Only from configured locations.** The decoder program is found only where the configuration says, as plugins are (section 10.3).
 
 **Learning that data is ready**
@@ -1598,7 +1600,7 @@ This is an optional layer, built and supported as part of BIL. It is switched on
 - **A reader marks each slot it is using,** and the decoder reuses only slots that no reader has marked.
 - **A dead reader's marks are cleared.** When a reader's control channel closes, the decoder clears that reader's marks.
 
-**Private by construction.** Shared memory is created with no name and passed over the control channel: as a file descriptor on Linux and macOS, and as a duplicated handle on Windows. No other process can find it, so it is private to its owner without relying on file permissions.
+**Private by construction.** Shared memory is created with no name and passed over the control channel to each reader: as a file descriptor on Linux and macOS, and as a duplicated handle on Windows. No other process can find it, so it is private to its owner and the readers it serves without relying on file permissions. Mapped data in a folder is protected by file permissions, as the table above says.
 
 ### 10.3 Untrusted files
 
@@ -1745,7 +1747,7 @@ BIL is licensed under the LGPL, version 2.1 or later, with a static-linking exce
 - **Notices.** Each package carries the license notices of everything in it.
 - **Checked at every release.** The contents of each package are checked against these rules before it is published.
 
-**Compatible with version 2.1 itself.** Everything in a BIL package is under a license compatible with LGPL 2.1, so that no package becomes LGPL 3 by accident. Apache-2.0 components, such as emuella-j2k, are accepted by the author's ruling, which accepts the risk that the Free Software Foundation holds Apache-2.0 incompatible with version 2.1. LGPL 3 code, such as NITRO, is used only in tests and never shipped. SIX is LGPL 3, so it is assessed under this rule when Tier 2 starts (section 16).
+**Compatible with version 2.1 itself.** Everything in a BIL package is under a license compatible with LGPL 2.1, so that no package becomes LGPL 3 by accident. Apache-2.0 components, such as emuella-j2k, are accepted by the author's ruling, which accepts the risk that the Free Software Foundation holds Apache-2.0 incompatible with version 2.1. LGPL 3 code is never inside a BIL package. It is used in tests, as NITRO is, or as an optional plugin packaged separately, as plugins under stricter licenses are. SIX is LGPL 3, so how SICD and SIDD are read is assessed under this rule when Tier 2 starts (section 16).
 
 **Checked automatically.** In the build, cargo-deny checks the license of every dependency of what ships against one list, and of test-only code against a wider one. Every source file carries an SPDX license line.
 
@@ -1916,7 +1918,7 @@ The statuses are those of section 3.3. A position is `Complete`, `Missing`, `Not
 | `read_geo_model(model_name, frame)` | The chain for one frame |
 | `for_slice(slice)` | The same chain with BIL's `image_window` step in front, built from the Slice's `origin` and `scale`, so it covers any Window, Level, stored level or `step` |
 | `for_window(window, level)` | A short form of `for_slice` for a computed Level, before any Slice is read |
-| `image_to_world(positions, surface)` | World positions, as 64-bit values, for pixel positions, each with a status. `surface` may be left out: a chain that needs one then uses the constant height of section 13.6, and a chain that ends in a plane, such as patient space, needs none. |
+| `image_to_world(positions, surface)` | World positions, as 64-bit values, for pixel positions, each with a status. `surface` may be left out: a chain that needs one then uses the constant height of section 13.6, and a chain that ends in a plane, such as patient space, needs none. With `accuracy`, each position also carries its `Accuracy` (section 13.9). |
 | `world_to_image(positions)` | Pixel positions for world positions, each with a status |
 | `list_steps()` | Each step of a chain, with its spaces and parameters |
 | `concatenate(step_or_chain)` | A new chain with a step or chain added |
@@ -2138,18 +2140,26 @@ Every position BIL computes can come with a full record of how accurate it is, c
 - **`image_window` adds no error.** A Window, Level or stored level changes the pixel units, and the covariance is scaled with them.
 - **The surface contributes its own error.** An error in height moves the ground point along the line of sight, so terrain error is carried through the geometry of the intersection, not added as a vertical term alone.
 - **A step with no estimate is marked unknown.** It is never treated as perfect.
-- **First order by default, checked by sampling.** `accuracy_method` is `first_order` or `sampled`. The sampled method propagates a set of points through the chain itself, as an unscented transform, and confirms the first-order result where the geometry is strongly curved, such as a line of sight near grazing.
+- **First order by default, checked by sampling.** The `accuracy_method` argument is `first_order`, the default, or `sampled`. The sampled method propagates a set of points through the chain itself, as an unscented transform, and confirms the first-order result where the geometry is strongly curved, such as a line of sight near grazing.
 
 **The record**
 
-An `Accuracy` is returned for each position when the caller asks for it.
+An `Accuracy` is returned for each position, as its `accuracy`, when the caller asks for it.
 
 | Part | Content |
 | --- | --- |
 | `covariance` | The full covariance of the position: 3 × 3 in a local east, north and up space at the point, in meters, for the Earth. For any other world, in that world's own space. For `world_to_image`, 2 × 2 in pixels. |
-| `contributions` | One entry for each source of error, named by step and kind, such as `rational_polynomial.bias`, `pose.position` or `surface.height`, each with its own covariance |
-| `provenance` | For each contribution: stated by the format, derived by BIL, given by the caller, or assumed, with the field it came from |
+| `contributions` | One `Contribution` for each source of error |
 | `status` | `Complete` when every step has an estimate, `Partial` when some steps have none, and `Missing` when none has |
+
+**A contribution**
+
+| Part | Content |
+| --- | --- |
+| `name` | The step and the quantity in error, such as `rational_polynomial.error`, `pose.position` or `surface.height` |
+| `kind` | `Bias`, `Random` or `Correlated`. A name and a kind together identify a contribution, so the bias and random error of RPC coefficients are two contributions. |
+| `covariance` | Its own covariance, in the same space and units as the total |
+| `provenance` | `Stated` by the format, `Derived` by BIL, `Given` by the caller, or `Assumed`, with the field it came from |
 
 - **Never smaller than the truth by omission.** A total with unknown contributions is `Partial`, and the unknown steps are named.
 - **Computed only when asked.** Positions without accuracy cost no more than before.
@@ -2158,8 +2168,8 @@ An `Accuracy` is returned for each position when the caller asks for it.
 
 | Call | Result |
 | --- | --- |
-| `image_to_world(positions, surface, accuracy=True)` | Each position with its `Accuracy` |
-| `world_to_image(positions, accuracy=True)` | Each pixel position with its `Accuracy` in pixels |
+| `image_to_world(positions, surface, accuracy, accuracy_method)` | With `accuracy` true, each position with its `Accuracy`. `accuracy_method` is `first_order` by default. |
+| `world_to_image(positions, accuracy, accuracy_method)` | With `accuracy` true, each pixel position with its `Accuracy` in pixels |
 | `relative_accuracy(positions_a, positions_b)` | The covariance of the difference between paired positions, in which shared bias cancels and correlated error partly cancels |
 | `list_error_sources()` | Each contribution the chain carries, with its kind and provenance |
 | `circular_error(accuracy, probability)` | The horizontal radius holding the position with the given probability, such as CE90 |
@@ -2169,7 +2179,7 @@ An `Accuracy` is returned for each position when the caller asks for it.
 - **Exact summary measures.** `circular_error` integrates the two-dimensional normal distribution of the covariance as it is, without assuming the error is circular and without a fixed conversion factor.
 - **Steps the caller makes carry error too.** `make_step` takes an optional `covariance`, so a correction from a registration layer above BIL carries its own accuracy forward.
 
-**Carried forward when written.** `write_geo_model` writes the error estimates into the output wherever the format has a place for them, such as the error fields of RPC coefficients or the error statistics of a SICD. Otherwise they go to the companion file, so the record is never lost by writing (sections 11 and 14.2).
+**Carried forward when written.** `write_geo_model` writes the error estimates into the output wherever the format has a place for them, such as the bias and random error fields of RPC coefficients in a GeoTIFF. Otherwise they go to the companion file, so the record is never lost by writing (sections 11 and 14.2).
 
 **Tested**
 
@@ -2442,9 +2452,9 @@ Two points are not yet settled, and sixty-eight have been decided. Each lists th
 - [x] **Terrain access.** Decided: BIL reads external terrain through its own `Terrain` interface, using its own drivers for the pixels and PROJ for the geoid (section 13.6).
 - [x] **Backing libraries and licenses.** Decided: Tier 1 reads GeoTIFF and NITF with Rust readers, and keeps GDAL and NITRO as test references, so Tier 1 needs no LGPL 3.0 library and no C++ build. Each library of a later tier is assessed when its tier starts, for license, maintenance, availability from package managers and conformance (section 10). Every library in Appendix A stays in the plugin design until then.
 - [x] **Python-authored drivers.** Decided: allowed, as the scripted drivers of section 10.1.
-- [x] **Scripted drivers outside Python.** Decided: BIL includes an embedded interpreter, so Rust, C and C++ callers can use scripted drivers.
+- [x] **Scripted drivers outside Python.** Decided: Rust, C and C++ callers can use scripted drivers, through CPython in a helper process (section 10.1).
 - [x] **Interpreter packaging.** Decided: the interpreter is CPython, taken from the Python installed on the machine, and BIL's packages contain none. Inside Python, BIL uses that interpreter. Without an installed Python, only scripted drivers are unavailable (section 10.1).
-- [x] **Interpreter process.** Decided: for Rust, C and C++ callers, CPython runs in a helper process, and inside Python BIL uses that interpreter. The cost of the round trip is benchmarked and watched, and the choice is reviewed if it becomes prohibitive (section 10.1).
+- [x] **Interpreter process.** Decided: for Rust, C and C++ callers, CPython runs in a helper process. The cost of the round trip is benchmarked and watched, and the choice is reviewed if it becomes prohibitive (section 10.1).
 - [x] **NaN for missing data.** Decided: a Slice value with no data behind it is NaN by default. `missing_value` in `SliceOptions` fills such positions with a number the caller chooses (section 5).
 - [x] **Registry names.** Decided: hold the names with genuine first releases rather than empty placeholders. `bil` 0.0.1 on crates.io holds the vector layer and kernels from experiment 1, `bil-sys` 0.0.1 holds the name for native bindings, and `bil` 0.0.1 on PyPI holds the Python name. The project's owner publishes them through the repository's Publish workflow. If `bil` is taken on PyPI, the package is `blazing-imaging` and still imports as `bil`.
 - [x] **Default demosaicing method.** Decided: `bilinear`, the same method used for the resolution levels, so both come from a single pass. `malvar_he_cutler` remains available.
@@ -2453,7 +2463,7 @@ Two points are not yet settled, and sixty-eight have been decided. Each lists th
 - [x] **JPEG 2000 codecs.** Decided: OpenJPEG is the fallback, and decodes every file until a Rust codec is proven. j2k-native is on trial as the Rust fallback. emuella-j2k is preferred for its declared profiles once it passes BIL's tests. hayro-jpeg2000 is a test reference. Grok stays an optional plugin (section 10).
 - [x] **LGPL version.** Decided: BIL is licensed under LGPL 2.1 or later.
 - [x] **License and responsibility.** Decided: BIL is a Rust library with a C-callable interface over it, delivered as one shared library. BIL answers for what its own packages contain, which is only LGPL-compatible builds. Users answer for what they install and pass on. `list_drivers` reports each library's license as built (section 10.6).
-- [x] **License review.** Closed by the author, with no legal review planned. The static-linking exception stands as worded in `LINKING-EXCEPTION.md`. What ships stays compatible with LGPL 2.1, with Apache-2.0 accepted, and LGPL 3 code is used only in tests. Licenses are checked in the build by cargo-deny (section 10.6).
+- [x] **License review.** Closed by the author, with no legal review planned. The static-linking exception stands as worded in `LINKING-EXCEPTION.md`. What ships stays compatible with LGPL 2.1, with Apache-2.0 accepted, and LGPL 3 code is used only in tests or as an optional plugin packaged separately. Licenses are checked in the build by cargo-deny (section 10.6).
 - [x] **Writable formats.** Decided: ENVI, TIFF and GeoTIFF (uncompressed or Deflate), and NumPy `.npy`, each through BIL's own writer (section 11).
 - [x] **Wrapper crates.** Decided: an existing wrapper is considered first for every C or C++ library, and used when it passes the four tests of maintenance, performance, capability and packaging. Otherwise an existing bindings crate is used where one passes, and BIL's own bindings only where none does (section 10).
 - [x] **Reaching FFmpeg.** Decided: through the existing rusty\_ffmpeg bindings, with a thin safe layer of BIL's own. BIL does not generate bindings or build FFmpeg (section 10).
@@ -2477,7 +2487,7 @@ Every library in this appendix is part of the plugin design for now, to be asses
 
 | Library | Language | License | What it adds, and what to watch |
 | --- | --- | --- | --- |
-| [SIX](https://github.com/ngageoint/six-library) | C++ | LGPL-3.0 | Included. Reads and writes SICD, SIDD and CPHD, and is the reference implementation for SIDD. |
+| [SIX](https://github.com/ngageoint/six-library) | C++ | LGPL-3.0 | To be assessed when Tier 2 starts: as LGPL 3, an optional plugin or test reference only (section 10.6). Reads and writes SICD, SIDD and CPHD, and is the reference implementation for SIDD. |
 | [nitf-rs](https://github.com/holmesv3/nitf-rs) with [sicd-rs](https://github.com/holmesv3/sicd-rs) | Rust | MIT (nitf-rs) | A minimal NITF reader and a SICD crate in Rust. A small project. |
 | [SARkit](https://pypi.org/project/sarkit/) | Python | MIT | Reads and writes SICD, SIDD, CPHD and CRSD and checks files for inconsistencies. Version 1.10.1, July 2026. Useful as a reference and test oracle, and usable from a scripted driver. |
 
@@ -2509,14 +2519,14 @@ Every library in this appendix is part of the plugin design for now, to be asses
 
 | Library | Language | License | What it adds, and what to watch |
 | --- | --- | --- | --- |
-| [libheif](https://github.com/strukturag/libheif) | C++ with a C interface | Not checked | Reads GIMI (GEOINT Imagery Media for ISR), a HEIF-based imagery format. The [OGC Testbed-20 report](https://docs.ogc.org/per/24-042r1.html) records support for uncompressed ISO/IEC 23001-17 data, tiling, pyramids, image sequences, integers to 64 bits, floats and complex numbers. |
+| [libheif](https://github.com/strukturag/libheif) | C++ with a C interface | LGPL-3.0, so an optional plugin only (section 10.6) | Reads GIMI (GEOINT Imagery Media for ISR), a HEIF-based imagery format. The [OGC Testbed-20 report](https://docs.ogc.org/per/24-042r1.html) records support for uncompressed ISO/IEC 23001-17 data, tiling, pyramids, image sequences, integers to 64 bits, floats and complex numbers. |
 
 ### A.7 Scientific arrays
 
 | Library | Language | License | What it adds, and what to watch |
 | --- | --- | --- | --- |
 | [zarrs](https://github.com/zarrs/zarrs) | Rust | Apache-2.0 or MIT | Zarr version 3 arrays, the usual layout for cloud-hosted multidimensional data. |
-| [hidefix](https://docs.rs/hidefix/latest/hidefix/) | Rust | LGPL-3.0-or-later | Concurrent HDF5 and NetCDF4 reading through a prebuilt chunk index. Experimental, and used alongside the HDF5 C library. Version 0.12.0, September 2026. |
+| [hidefix](https://docs.rs/hidefix/latest/hidefix/) | Rust | LGPL-3.0-or-later, so an optional plugin or test reference only (section 10.6) | Concurrent HDF5 and NetCDF4 reading through a prebuilt chunk index. Experimental, and used alongside the HDF5 C library. Version 0.12.0, September 2026. |
 
 ### A.8 Live cameras
 
@@ -2607,7 +2617,7 @@ These 40 libraries were each opened on 10 October 2026 and assessed for BIL. All
 | --- | --- | --- | --- |
 | [dav1d](https://github.com/videolan/dav1d) | C and assembly; BSD-2-Clause | Adopt | The AV1 decoder, covering every AV1 feature, subsampling and bit depth, with vector code for x86, ARM and other processors. FFmpeg can use it, and rav1d is its Rust port with the same interface. |
 | [GStreamer](https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licensing.html) | C; LGPL | Adopt | The second stream source beside FFmpeg, strongest for live streams and pipelines. libmisbklv already builds on it for KLV. Its "ugly" plugin set holds codecs with known patent claims, so that set should not ship by default. |
-| [libde265](https://github.com/strukturag/libde265) | C; LGPL | Use indirectly | An HEVC decoder with tile and wavefront threading. It is the decoder behind HEVC images in libheif, so it arrives with the GIMI and HEIF plugin. |
+| [libde265](https://github.com/strukturag/libde265) | C; LGPL-3.0 | Use indirectly, through the optional libheif plugin (section 10.6) | An HEVC decoder with tile and wavefront threading. It is the decoder behind HEVC images in libheif, so it arrives with the GIMI and HEIF plugin. |
 | [OpenH264](https://github.com/cisco/openh264) | C++; BSD-2-Clause | Defer | Its decoder covers the Constrained Baseline profile only and fails on compressed frames over 1 MB. Too narrow for sensor video, so FFmpeg's H.264 decoder is used. |
 
 **Scientific arrays**

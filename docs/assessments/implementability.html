@@ -145,26 +145,61 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Assessment · Version 2</p>
+      <p class="eyebrow">Assessment · Version 3</p>
       <h1>BIL Implementability</h1>
       <p class="lede">Whether the Blazing Imaging Library can be built as specified, where it is likely to go wrong, and what to try first.</p>
     </div>
     <svg class="motif" viewBox="0 0 90 33" role="img" aria-label="Ten hard problems"><rect class="px in" x="0" y="0" width="14" height="14" rx="2"/><rect class="px in" x="19" y="0" width="14" height="14" rx="2"/><rect class="px in" x="38" y="0" width="14" height="14" rx="2"/><rect class="px in" x="57" y="0" width="14" height="14" rx="2"/><rect class="px in" x="76" y="0" width="14" height="14" rx="2"/><rect class="px in" x="0" y="19" width="14" height="14" rx="2"/><rect class="px in" x="19" y="19" width="14" height="14" rx="2"/><rect class="px in" x="38" y="19" width="14" height="14" rx="2"/><rect class="px in" x="57" y="19" width="14" height="14" rx="2"/><rect class="px in" x="76" y="19" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>2</dd></div><div><dt>As of</dt><dd>12 October 2026</dd></div><div><dt>Specification</dt><dd>Version 56</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Method</dt><dd>Judgment; nothing was built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>3</dd></div><div><dt>As of</dt><dd>12 October 2026</dd></div><div><dt>Specification</dt><dd>Version 65</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Blocking items</dt><dd>None left; all settled</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
       <p class="toc-title">Contents</p>
-      <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-embedded-python-interpreter">H5. The embedded Python interpreter</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#sources">Sources</a></li></ol>
+      <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#sources">Sources</a></li></ol>
     </nav>
     <div class="column">
       <details class="toc-inline toc">
         <summary>Contents</summary>
-        <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-embedded-python-interpreter">H5. The embedded Python interpreter</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#sources">Sources</a></li></ol>
+        <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#sources">Sources</a></li></ol>
       </details>
       <main>
-<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Nothing was built or measured. Version 2 revises section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach.</p>
+<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Version 3 brings the document in step with specification version 65: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.</p>
+<p><strong>What has changed between versions 56 and 65</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Where it bears</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agreement to a tolerance, not to the bit (R27). Experiment 1 found bitwise agreement cheap all the same.</td>
+<td>H1</td>
+</tr>
+<tr>
+<td>The interpreter is CPython from the machine, run in a helper process for Rust, C and C++ callers</td>
+<td>H5</td>
+</tr>
+<tr>
+<td>What ships stays compatible with LGPL 2.1, so SIX, which is LGPL 3, cannot be inside a package</td>
+<td>H6</td>
+</tr>
+<tr>
+<td>Decoding on request, and the mapped format's layout, start-up, readiness and slot marking, are designed</td>
+<td>H8</td>
+</tr>
+<tr>
+<td>Geocoding carries full accuracy records (section 13.9), which adds partial derivatives to every step</td>
+<td>H7</td>
+</tr>
+<tr>
+<td>Tier 1 reads GeoTIFF and NITF with Rust readers, and 22 real NITF test files are pinned</td>
+<td>Section 7</td>
+</tr>
+</tbody>
+</table></div>
 <h2 id="1-verdict">1. Verdict</h2>
 <p><strong>BIL can be built, but not all at once.</strong> Tier 1 (GeoTIFF and NITF) is a realistic first project. Its hardest parts are known problems with known solutions. The risks grow sharply after Tier 1, for three reasons:</p>
 <ul>
@@ -173,7 +208,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Isolation and the mapped format.</strong> Process isolation that is safe on Linux, macOS and Windows is a project of its own.</li>
 </ul>
 <p><strong>The main danger is breadth, not any single part.</strong> Section 8 and Appendix A name roughly 60 kinds of data and about 40 libraries. With one implementer, an attempt to keep all of them working would spend almost all its time on builds and packaging, not on the core. The tier plan is the right defense, and this document argues for holding to it strictly.</p>
-<p><strong>Five problems should be tried in small experiments before Tier 1 is coded.</strong> They are listed in section 8: the fused loop and its bitwise window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python.</p>
+<p><strong>Five problems should be tried in small experiments before Tier 1 is coded.</strong> They are listed in section 8: the fused loop and its window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python. The first, the fused loop, is done, in experiments 1 and 1b.</p>
 <h2 id="2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</h2>
 <p>Several decisions already taken reduce the work and the risk.</p>
 <div class="table-wrap"><table>
@@ -365,10 +400,10 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <td>Borrowed arrays keeping Sources alive; the interpreter lock in callbacks</td>
 </tr>
 <tr>
-<td>Embedded interpreter</td>
-<td>High</td>
-<td>Embedding Python in a library that is also loaded by Python</td>
-<td>Packaging, still an open decision (H5)</td>
+<td>Python for scripted drivers</td>
+<td>Medium</td>
+<td>A helper process for Rust, C and C++ callers; the caller's own Python inside Python</td>
+<td>The round trip's cost, which is benchmarked (H5)</td>
 </tr>
 <tr>
 <td>Scripted drivers</td>
@@ -380,7 +415,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <td>External decoding, mapped format, isolation</td>
 <td>Very high</td>
 <td>Processes, shared memory and sandboxing on three systems</td>
-<td>Design still to be done (pass 2, R26), and sandbox limits on macOS and Windows</td>
+<td>Passing unnamed shared memory and marking slots on three systems; sandbox limits on macOS and Windows (H8)</td>
 </tr>
 <tr>
 <td>Packaging and coexistence</td>
@@ -415,6 +450,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </ul>
 <p><strong>Likelihood and impact.</strong> Likely to cost more time than planned. High impact, because every Slice passes through it.</p>
 <p><strong>How to retire it.</strong> A two-week experiment: three slice functions (<code>pixel.raw</code>, <code>complex.polar</code>, <code>color.hsv</code>) on two sample types, two instruction sets, Levels 0 to 4 in one pass, with the Window independence test run bitwise over thousands of random Windows. Measure speed against a plain memory copy, compile time and code size.</p>
+<p><strong>What happened.</strong> Agreement is now required to a tolerance (R27), and experiment 1 ran this plan with two sample types for each function, on scalar, AVX2 and AVX-512 code. Bitwise agreement held everywhere at little cost, the kernels ran at memory speed, and the program built in 13 seconds at 0.6 MB. The whole pass missed the speed criterion, at 5 to 90 times a copy, because it made whole planes. Experiment 1b's rolling buffer kept every bit and brought <code>pixel.raw</code> to 1.9 to 3.6 times a copy. <code>complex.polar</code> and <code>color.hsv</code> are limited by their own arithmetic, at 6 to 20 times a copy and 1.7 to 2.4 times their arithmetic alone. Whether that meets the criterion is for the author to rule (<code>RESULTS.md</code> and <code>RESULTS-1b.md</code> in <code>experiments/exp1-fused-loop</code>).</p>
 <h3 id="h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</h3>
 <p><strong>What.</strong> BIL loads GDAL, NITRO, SIX, LibRaw, HDF5, NetCDF, OpenJPEG, FFmpeg, PROJ and others into the caller's process, beside other packages that may hold their own copies.</p>
 <p><strong>Why it is hard.</strong></p>
@@ -442,21 +478,21 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </ul>
 <p><strong>Likelihood and impact.</strong> Very likely to take longer than planned. High impact for Tier 2.</p>
 <p><strong>How to retire it.</strong> Before Tier 2 is planned in detail, build a frame-accurate reader over FFmpeg for a test set of awkward streams: open groups of pictures, variable rate, transport streams with KLV, and interlaced video. Compare every frame against a full sequential decode.</p>
-<h3 id="h5-the-embedded-python-interpreter">H5. The embedded Python interpreter</h3>
+<h3 id="h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</h3>
 <p><strong>What.</strong> Scripted drivers must work for Rust, C and C++ callers, so BIL embeds Python. When BIL is itself loaded by Python, it must use that interpreter instead.</p>
 <p><strong>Why it is hard.</strong></p>
 <ul>
-<li><strong>Which Python.</strong> Embedding needs a Python runtime of a known version. Shipping one inside BIL adds size and a second Python on the machine. Using the installed one ties BIL to its version. This is still an open decision.</li>
-<li><strong>Two roles in one library.</strong> The same shared library may be a Python extension in one process and an embedder in another. PyO3 supports both, but the build differs.</li>
+<li><strong>Which Python.</strong> Settled in version 62: the Python installed on the machine, and BIL ships none. In version 63, Rust, C and C++ callers reach it through a helper process, so BIL is not tied to its version.</li>
+<li><strong>Two roles in one library.</strong> Inside Python, BIL uses that interpreter. Outside it, the helper process does, so the shared library is never an embedder in the caller's process.</li>
 <li><strong>Libraries the scripts call.</strong> A script that imports SARkit or SarPy needs those installed in whatever Python BIL runs.</li>
 </ul>
 <p><strong>Likelihood and impact.</strong> Likely to cause packaging problems. Medium impact, since scripted drivers are a Tier 2 feature.</p>
-<p><strong>How to retire it.</strong> Decide the packaging question first. Then build one scripted driver and call it from C, from Rust and from Python on all three systems.</p>
+<p><strong>How to retire it.</strong> Build one scripted driver and call it from C, from Rust and from Python on all three systems, and benchmark the helper process's round trip.</p>
 <h3 id="h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</h3>
 <p><strong>What.</strong> SIX is the reference for SICD and SIDD, and the planned driver for both. It is a large C++ code base built on its own support libraries.</p>
-<p><strong>Why it is hard.</strong> Large C++ libraries are the hardest to build as private copies with hidden symbols, and the C++ standard library itself is a common source of clashes between packages. SIX is also LGPL-3.0, which fixes BIL's packages that contain it at version 3 of the LGPL.</p>
+<p><strong>Why it is hard.</strong> Large C++ libraries are the hardest to build as private copies with hidden symbols, and the C++ standard library itself is a common source of clashes between packages. SIX is also LGPL-3.0. What BIL ships stays compatible with LGPL 2.1, so SIX cannot be inside a BIL package, and it is assessed under that rule when Tier 2 starts.</p>
 <p><strong>Likelihood and impact.</strong> Likely. Medium impact, in Tier 2.</p>
-<p><strong>How to retire it.</strong> Check which package managers already carry SIX, which this review did not confirm. If none does, compare the cost of building it against a Rust or scripted SICD reader, with SIX or SARkit kept as the test reference.</p>
+<p><strong>How to retire it.</strong> Check which package managers already carry SIX, which this review did not confirm. Compare the cost of an optional SIX plugin against a Rust or scripted SICD reader, with SIX or SARkit kept as the test reference.</p>
 <h3 id="h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</h3>
 <p><strong>What.</strong> Section 13.8 requires every step to agree with an established implementation to one hundredth of a pixel.</p>
 <p><strong>Why it is hard.</strong> Some models have no open implementation to test against. The NITF replacement sensor model is the main case: GDAL does not implement it, and the established implementation known to this review is not open source. GRDL lists support for it, which may serve as a check. Camera models depend on a Community Sensor Model plugin existing for the same sensor, which is often not the case.</p>
@@ -466,12 +502,12 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <p><strong>What.</strong> Section 10.2 runs decoding in a separate process and shares the result through a memory-mapped format. Section 10.3 builds isolation on it.</p>
 <p><strong>Why it is hard.</strong></p>
 <ul>
-<li><strong>Redesign needed.</strong> Pass 2 (R26) found that the design decodes the whole Source, which must change to decoding on request.</li>
+<li><strong>Designed, not built.</strong> Decoding on request (R26) and the mapped format's details (version 64) are settled: page-aligned slots, a control channel, slot marking, and shared memory passed without a name.</li>
 <li><strong>Three systems.</strong> Shared memory, process start-up and clean-up of leftovers differ on Linux, macOS and Windows.</li>
 <li><strong>Reduced privileges.</strong> Removing network access and limiting file access from a decoder process is well supported on Linux and much weaker or harder elsewhere. Section 10.3 already says "where the platform allows", which is honest, but users may expect more.</li>
 </ul>
 <p><strong>Likelihood and impact.</strong> Very likely to take longer than planned. Medium impact, because isolation is off by default and outside Tier 1.</p>
-<p><strong>How to retire it.</strong> Keep it out of Tier 1, as planned. Design the request-driven form first (R26), and build it for Linux before the others.</p>
+<p><strong>How to retire it.</strong> Keep it out of Tier 1, as planned. Build it for Linux first, then pass unnamed shared memory on Windows and macOS.</p>
 <h3 id="h9-the-c-interface-over-all-of-rust">H9. The C interface over all of Rust</h3>
 <p><strong>What.</strong> Section 10.6 says the C interface covers all of BIL.</p>
 <p><strong>Why it is hard.</strong> Every type, option, callback and result needs a C form with rules for who owns and frees it. Streaming callbacks must not let a panic or a Python exception cross into C. The surface will run to hundreds of functions, and each one is a promise that cannot be broken without a major version.</p>
@@ -690,7 +726,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Video and isolation are the riskiest Tier 2 work.</strong> Both need many rounds of testing against real streams and real systems, so each depends on the author's test data and CI more than on code.</li>
 </ul>
 <h2 id="7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</h2>
-<p>These are the points where code cannot be written, or would have to be rewritten, until a decision is made.</p>
+<p>These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 65, every one is settled.</p>
 <p><strong>Before Tier 1</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -702,39 +738,39 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <tbody>
 <tr>
 <td>R27, bitwise window independence</td>
-<td>It decides how every loop is written</td>
+<td>It decides how every loop is written. Settled: to a tolerance (version 59).</td>
 </tr>
 <tr>
 <td>R29, stored levels and the Level grid</td>
-<td>It decides how stored levels are used in Tier 1's GeoTIFF and NITF</td>
+<td>It decides how stored levels are used in Tier 1's GeoTIFF and NITF. Settled: a misaligned stored level never makes a Level (version 60).</td>
 </tr>
 <tr>
 <td>R30, writing geocoding</td>
-<td>Tier 1 writes GeoTIFF</td>
+<td>Tier 1 writes GeoTIFF. Settled: writers write the geo model (version 59).</td>
 </tr>
 <tr>
 <td>R28, markings inside written files</td>
-<td>Tier 1 writes TIFF from NITF, which can carry markings</td>
+<td>Tier 1 writes TIFF from NITF, which can carry markings. Settled (version 59).</td>
 </tr>
 <tr>
 <td>U8, how resolution is named in a request</td>
-<td>It shapes <code>SliceRequest</code> and geocoding calls in every interface</td>
+<td>It shapes <code>SliceRequest</code> and geocoding calls in every interface. Settled: Levels by name, such as <code>stored2.level1</code> (version 57).</td>
 </tr>
 <tr>
 <td>U9, how "no value" is reported</td>
-<td>It shapes every metadata call</td>
+<td>It shapes every metadata call. Settled: status <code>Missing</code> with no value (version 57).</td>
 </tr>
 <tr>
 <td>The gaps listed in BIL by Example</td>
-<td>Each is a name or form every interface will carry</td>
+<td>Each is a name or form every interface will carry. Settled: all 17 closed (version 58).</td>
 </tr>
 <tr>
 <td>Test data</td>
-<td>Tier 1 needs GeoTIFF and NITF reference files</td>
+<td>Tier 1 needs GeoTIFF and NITF reference files. Settled: two layers, with 22 real NITF files pinned (version 61).</td>
 </tr>
 <tr>
 <td>R39, interface stability policy</td>
-<td>Before the first release, not the first line of code</td>
+<td>Before the first release, not the first line of code. Settled: semantic versioning (version 59).</td>
 </tr>
 </tbody>
 </table></div>
@@ -749,30 +785,30 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <tbody>
 <tr>
 <td>R26, isolation on request</td>
-<td>The mapped format's design depends on it</td>
+<td>The mapped format's design depends on it. Settled (version 59).</td>
 </tr>
 <tr>
 <td>R31, decoders for deferred Fragments</td>
-<td>Video's threading depends on it</td>
+<td>Video's threading depends on it. Settled: deferred Fragments are self-contained (version 59).</td>
 </tr>
 <tr>
 <td>R34, live streams</td>
-<td>Timeouts and cancellation shape the stream interface</td>
+<td>Timeouts and cancellation shape the stream interface. Settled (version 59).</td>
 </tr>
 <tr>
 <td>Interpreter packaging</td>
-<td>Scripted drivers depend on it</td>
+<td>Scripted drivers depend on it. Settled: CPython from the machine, in a helper process (versions 62 and 63).</td>
 </tr>
 <tr>
 <td>Mapped format details</td>
-<td>External decoding depends on it</td>
+<td>External decoding depends on it. Settled (version 64).</td>
 </tr>
 </tbody>
 </table></div>
 <h2 id="8-the-first-experiments-in-order">8. The first experiments, in order</h2>
 <p>Each is small, answers one question, and can change the design while change is cheap. Experiments 1, 3 and 5 can run in this workspace. Experiment 2 needs large NITF files from the author, and experiment 4 needs CI on macOS and Windows.</p>
 <ol>
-<li><strong>The fused loop (H1).</strong> Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy.</li>
+<li><strong>The fused loop (H1). Done, in experiments 1 and 1b: correct to the bit, and fast for <code>pixel.raw</code>; see H1 for the speed of the other functions.</strong> Three slice functions, two sample types, two instruction sets, Levels 0 to 4 in one pass. Pass when Window independence holds bitwise over random Windows and speed is within a stated factor of a memory copy.</li>
 <li><strong>JPEG 2000 on real NITF (H3).</strong> Time region and reduced-resolution reads on large files with OpenJPEG and, if possible, Kakadu. Pass when a small Window's cost does not grow with the file, or the shortfall is known and a route around it is chosen.</li>
 <li><strong>Containing C errors (H2).</strong> One libjpeg-family library and GDAL behind BIL's C layer, with corrupt files from a fuzzer. Pass when no corrupt file crashes the process or leaves global state changed.</li>
 <li><strong>Packaging (H2).</strong> BIL as a Python wheel and a conda package, with private GDAL and PROJ, loaded beside rasterio and pyproj. Pass when both read correctly in one process on Linux, macOS and Windows.</li>
@@ -801,7 +837,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <td>Protection from a library that a hostile file takes over</td>
 </tr>
 <tr>
-<td>The embedded interpreter</td>
+<td>The Python interpreter for scripted drivers</td>
 <td>Scripted drivers when BIL is called from Python</td>
 <td>Scripted drivers for Rust, C and C++ callers</td>
 </tr>
@@ -826,7 +862,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><a href="https://github.com/uclouvain/openjpeg">OpenJPEG on GitHub</a>, on its maintenance status.</li>
 </ul>
       </main>
-      <footer>BIL Implementability, version 2, an assessment of version 56 of the Blazing Imaging Library (BIL) specification, as of 12 October 2026. Section 6 is revised for a single implementer.</footer>
+      <footer>BIL Implementability, version 3, an assessment of the Blazing Imaging Library (BIL) specification, first made against version 56 and brought in step with version 65, as of 12 October 2026.</footer>
     </div>
   </div>
 </div>

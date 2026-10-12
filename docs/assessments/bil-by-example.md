@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 59: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 65: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 59. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 65. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -763,6 +763,43 @@ chain = ct.read_geo_model(ct.list_geo_models()[0], 120).for_window(axial_window,
 patient_mm = chain.image_to_world([(256.0, 256.0)])   # no surface: the chain ends in patient space
 ```
 
+### 11.11 How accurate is this position?
+
+```python
+results = chain.image_to_world(points, terrain, accuracy=True)
+a = results[0].accuracy
+a.status                                  # Status.Partial if a step stated no error
+a.covariance                              # 3 x 3, east, north and up, in meters
+for c in a.contributions:
+    print(c.name, c.kind, c.provenance)   # rational_polynomial.error, Bias, Stated; surface.height, Random, Stated; ...
+bil.circular_error(a, 0.9), bil.linear_error(a, 0.9)   # CE90 and LE90, computed exactly
+bil.error_ellipse(a, 0.9)                 # semi-axes and orientation
+```
+
+A step with no stated error is named among the contributions as unknown, and the status is `Partial`. It is never taken as perfect.
+
+### 11.12 How sure is the distance between two points?
+
+```python
+difference_covariance = chain.relative_accuracy(points_a, points_b)   # shared bias cancels
+chain.list_error_sources()                            # every contribution the chain carries
+```
+
+### 11.13 Check the first-order result on steep geometry
+
+```python
+grazing = chain.image_to_world(edge_points, terrain, accuracy=True, accuracy_method="sampled")
+```
+
+### 11.14 Carry a registration correction's own error
+
+```python
+correction = bil.make_step("affine", **fitted_affine, covariance=fit_covariance)   # the affine's own parameters
+registered = chain.concatenate(correction)   # its error is carried with the rest
+```
+
+The registration itself is a layer above BIL. BIL carries the correction and its error forward, and `write_geo_model` writes the error estimates with the model.
+
 ## 12. Writing
 
 ### 12.1 A float GeoTIFF from Slices
@@ -898,6 +935,8 @@ class VendorDriver(bil.ScriptedDriver):
 
 bil.register_driver(VendorDriver)
 ```
+
+The same driver serves Rust, C and C++ callers. For them, BIL runs it in a helper process with the Python installed on the machine, so a failing script cannot take the caller down. Because `describe_pixels` tells the compiled core where the pixels are, they never pass through Python. A script that returns pixels as an array instead would pay a round trip for every read. Without an installed Python, only scripted drivers are unavailable.
 
 ### 15.2 A tiled, compressed vendor format
 
@@ -1081,3 +1120,5 @@ Version 1 of this document found these gaps in the calling interface. Version 58
 | Writing several components | 12.1 | `write_slice(window, slice, component)` and `write_geo_model` | 11 |
 
 **Settled since, in version 59.** A writer writes the geo model without being asked (R30). A live stream has one position for all Readers, and a frame no longer held is `Missing` (R34).
+
+**Added since, in versions 62 to 65.** Every position can carry its accuracy, with `relative_accuracy`, `circular_error`, `linear_error` and `error_ellipse` (examples 11.11 to 11.14). Scripted drivers run in a helper process for Rust, C and C++ callers (example 15.1). External decoding through the mapped format needs no change to the caller's code, so it has no example of its own.
