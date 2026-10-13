@@ -35,6 +35,7 @@ use super::{
     phase_from, polar0, present_one, reflect, weight_present, Func, Image, Reduce, Samples, Slice,
     Window,
 };
+use crate::pool::Pool;
 use crate::simd::Isa;
 
 /// The grid of a request: for each Level that makes anything, the rows and columns it outputs
@@ -362,10 +363,7 @@ impl Pass {
             self.plan.levels() <= MAX_LEVELS,
             "more Levels than a read can hold"
         );
-        assert!(
-            isa == Isa::Scalar || Isa::available().contains(&isa),
-            "{isa:?} is not available"
-        );
+        assert!(isa.is_available(), "{isa:?} is not available");
         assert!(
             img.rows == self.rows && img.cols == self.cols && img.valid.is_some() == self.masked,
             "the Image differs from the one planned for"
@@ -805,6 +803,18 @@ impl Pass {
 /// The most bands a read is split into.
 const MAX_BANDS: usize = 16;
 
+/// The fewest pixels worth a band of their own. Waking a thread costs about as much as reading
+/// some tens of thousands of pixels, so smaller Windows are read on fewer threads (experiment 1b,
+/// section 8). A tuning value, to be measured again on larger machines.
+pub const MIN_BAND_PIXELS: usize = 32_768;
+
+/// How many threads are worth using for `window`: at most `threads`, and no more than one for
+/// each `MIN_BAND_PIXELS` pixels of the Window.
+pub fn band_threads(window: Window, threads: usize) -> usize {
+    let worth = (window.row_count * window.col_count / MIN_BAND_PIXELS).max(1);
+    threads.clamp(1, MAX_BANDS).min(worth)
+}
+
 /// A read split across threads by bands of rows (section 12, rule 7).
 ///
 /// Each band is a Window of whole rows of the request's Window, and every band but the first
@@ -814,13 +824,22 @@ const MAX_BANDS: usize = 16;
 /// halvings, are made by both neighbors. Window independence makes every value the one a single
 /// `Pass` makes, and the checks confirm it bit for bit.
 ///
-/// The working rows of every band are planned once. Starting the threads allocates for each read;
-/// a pool kept between reads would remove that. The views of every band are held on the calling
-/// thread's stack, about 48 KB.
+/// The working rows of every band, and the threads that run them, are made once, when the read
+/// is planned, so a read starts no thread and allocates nothing. The views of every band are held
+/// on the calling thread's stack, about 48 KB.
 pub struct BandedPass {
     whole: Pass,
     bands: Vec<Pass>,
+    pool: Pool,
 }
+
+/// The first of a run of values, each reached by one thread only, by index: a band's `Pass` and
+/// its views.
+struct Each<T>(*mut T);
+
+// Each index is run by exactly one thread, once a round, so no two threads reach the same value,
+// and `Pool::run` returns only when every part has ended.
+unsafe impl<T: Send> Sync for Each<T> {}
 
 impl BandedPass {
     /// Plans a read as `Pass::for_method` does, split into at most `threads` bands, never more
@@ -833,14 +852,27 @@ impl BandedPass {
         method: LevelMethod,
         threads: usize,
     ) -> BandedPass {
-        let whole = Pass::for_method(img, func, window, top, method);
-        let first = window.row_start;
+        BandedPass::for_levels(img, func, window, 0, top, method, threads)
+    }
+
+    /// As `new`, for Levels `first` to `top` alone, as `Pass::for_levels` reads them.
+    pub fn for_levels(
+        img: &Image,
+        func: Func,
+        window: Window,
+        first: u32,
+        top: u32,
+        method: LevelMethod,
+        threads: usize,
+    ) -> BandedPass {
+        let whole = Pass::for_levels(img, func, window, first, top, method);
+        let row0 = window.row_start;
         let end = window.row_start + window.row_count;
         // `Pass::for_method` has checked that `top` is below `MAX_LEVELS`, so the shift is sound.
         let step = 1usize << top;
-        let mut starts = vec![first];
+        let mut starts = vec![row0];
         for j in 1..threads.clamp(1, MAX_BANDS) {
-            let target = first + window.row_count * j / threads.clamp(1, MAX_BANDS);
+            let target = row0 + window.row_count * j / threads.clamp(1, MAX_BANDS);
             let start = target.div_ceil(step).saturating_mul(step);
             if start > *starts.last().unwrap() && start < end {
                 starts.push(start);
@@ -855,15 +887,22 @@ impl BandedPass {
                     row_count: b[1] - b[0],
                     ..window
                 };
-                Pass::for_method(img, func, band, top, method)
+                Pass::for_levels(img, func, band, first, top, method)
             })
-            .collect();
-        BandedPass { whole, bands }
+            .collect::<Vec<_>>();
+        let pool = Pool::new(bands.len() - 1);
+        BandedPass { whole, bands, pool }
     }
 
     /// How many bands, and so threads, a read uses.
     pub fn band_count(&self) -> usize {
         self.bands.len()
+    }
+
+    /// Image pixels whose samples the last run converted, over every band. Rows a band needs
+    /// beyond its edges are counted once for each band that reads them.
+    pub fn pixels_read(&self) -> usize {
+        self.whole.read
     }
 
     /// Allocates the Slices this read makes, as `Pass::outputs` does for the whole Window.
@@ -872,7 +911,8 @@ impl BandedPass {
     }
 
     /// Runs every band on its own thread, the first on the calling thread, into `out`, which must
-    /// have the shape `outputs` gives.
+    /// have the shape `outputs` gives. The bands' threads are the pool's, started when the read
+    /// was planned.
     pub fn run(&mut self, img: &Image, isa: Isa, options: ReadOptions, out: &mut [Vec<Slice>]) {
         self.whole.check_shape(out);
         let mut views: [Views; MAX_BANDS] = std::array::from_fn(|_| empty_views());
@@ -893,14 +933,16 @@ impl BandedPass {
                 assert!(rest.is_empty(), "the bands do not cover Level {k}");
             }
         }
-        std::thread::scope(|scope| {
-            let mut work = self.bands.iter_mut().zip(views.iter_mut());
-            let (first, first_views) = work.next().expect("a read has at least one band");
-            for (pass, view) in work {
-                scope.spawn(move || pass.run_views(img, isa, options, view));
-            }
-            first.run_views(img, isa, options, first_views);
+        let (bands, views) = (Each(self.bands.as_mut_ptr()), Each(views.as_mut_ptr()));
+        let (bands, views) = (&bands, &views);
+        let count = self.bands.len();
+        self.pool.run(count, &|i| {
+            assert!(i < count);
+            // Band i and its views are reached by this part alone, and both outlive the round.
+            unsafe { (*bands.0.add(i)).run_views(img, isa, options, &mut *views.0.add(i)) }
         });
+        // The pixels read, over every band.
+        self.whole.read = self.bands.iter().map(|b| b.read).sum();
     }
 }
 

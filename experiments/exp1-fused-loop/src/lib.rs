@@ -24,8 +24,12 @@ pub use bil::{kernels, simd};
 /// Experiment 1b: the same pass on a rolling buffer of a few rows, into the caller's buffers.
 pub mod rolling;
 pub use rolling::{
-    plan_outputs, read_levels_into, BandedPass, LevelMethod, MissingWeights, Pass, ReadOptions,
+    band_threads, plan_outputs, read_levels_into, BandedPass, LevelMethod, MissingWeights, Pass,
+    ReadOptions, MIN_BAND_PIXELS,
 };
+
+/// Threads kept between reads, for reads split into bands.
+pub mod pool;
 
 /// Test images and comparisons for the experiment programs.
 pub mod testing;
@@ -437,10 +441,7 @@ fn convert_row(img: &Image, r: usize, c0: usize, c1: usize, bufs: &mut [Vec<f32>
 /// Makes every Slice of `func` for `window` at Levels 0 to `top`, in one pass over the native
 /// samples the Window and its margins need.
 pub fn read_levels(img: &Image, func: Func, isa: Isa, window: Window, top: u32) -> Vec<Vec<Slice>> {
-    assert!(
-        isa == Isa::Scalar || Isa::available().contains(&isa),
-        "{isa:?} is not available"
-    );
+    assert!(isa.is_available(), "{isa:?} is not available");
     assert!(
         matches!(func, Func::Raw | Func::Polar | Func::Hsv),
         "experiment 1's whole planes make only pixel.raw, complex.polar and color.hsv"

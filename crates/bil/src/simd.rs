@@ -517,6 +517,20 @@ impl Isa {
         v
     }
 
+    /// Whether this processor can run `self`. Allocates nothing, so a read can ask it.
+    pub fn is_available(self) -> bool {
+        match self {
+            Isa::Scalar => true,
+            #[cfg(target_arch = "x86_64")]
+            Isa::Avx2 => is_x86_feature_detected!("avx2"),
+            #[cfg(target_arch = "x86_64")]
+            Isa::Avx512 => is_x86_feature_detected!("avx512f"),
+            #[cfg(target_arch = "aarch64")]
+            Isa::Neon => std::arch::is_aarch64_feature_detected!("neon"),
+            _ => false,
+        }
+    }
+
     /// The fastest available, chosen once.
     pub fn best() -> Isa {
         *Isa::available().last().unwrap()

@@ -2124,9 +2124,9 @@ level2.at(10, 20);                                        // the value at grid r
 <td>The plan is an object the caller keeps</td>
 </tr>
 <tr>
-<td><code>BandedPass::new(..., threads)</code>, <code>outputs</code>, <code>run</code></td>
+<td><code>BandedPass::new(..., threads)</code>, <code>for_levels</code>, <code>outputs</code>, <code>run</code>, <code>pixels_read</code></td>
 <td>A read split across threads (section 12, rule 7)</td>
-<td>Bands of rows, each its own <code>Pass</code> on its own thread; starting the threads allocates for each read</td>
+<td>Bands of rows, each its own <code>Pass</code>, on a pool of threads kept between reads; <code>band_threads</code> says how many are worth it for a Window</td>
 </tr>
 <tr>
 <td><code>ReadOptions { level_method, missing_value, missing_weights }</code></td>
@@ -2156,18 +2156,19 @@ level2.at(10, 20);                                        // the value at grid r
 <li><strong>Missing data as the specification states it,</strong> with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.</li>
 <li><strong>Each kind of Slice</strong> reduced by its own rule, and <code>decimate</code> for every kind.</li>
 <li><strong>Coarse Levels alone.</strong> <code>decimate</code> at Level 4 alone reads 1 pixel in 256 and takes 0.017 times a copy; every value equals the same Level of a full read.</li>
-<li><strong>Threads by bands of rows,</strong> with every value equal to one thread's, bit for bit; 1.65 to 1.84 times as fast on two threads, over two runs.</li>
+<li><strong>Nothing allocated per read,</strong> on one thread or on bands, counted by the check program's own allocator.</li>
+<li><strong>Threads by bands of rows,</strong> with every value equal to one thread's, bit for bit; 1.65 to 2.1 times as fast on two threads, over three runs, on threads kept between reads.</li>
 <li><strong><code>binomial5</code>,</strong> bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against <code>bilinear</code>'s half, as the specification states. It cost 0.9 to 1.3 times <code>bilinear</code>.</li>
 <li><strong>Speed.</strong> On the fastest instruction set, <code>pixel.raw</code> takes 1.7 times a copy into warm memory at Level 0, and <code>complex.polar</code> and <code>color.hsv</code> 1.4 to 1.7 times their own arithmetic alone. Missing data costs 1.2 to 1.8 times an unmasked read, and nothing at all where no mask exists.</li>
 </ul>
 <p><strong>Running it</strong></p>
 <pre><code class="language-sh">cd experiments/exp1-fused-loop
-cargo run --release --bin exp1b -- --check   # every correctness check, under a minute
+cargo run --release --bin exp1b -- --check   # every correctness check, about two minutes on two cores
 cargo run --release --bin exp1b              # the checks and the speed tables
 cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </code></pre>
 <p>CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. <code>RESULTS-1b.md</code> beside the code has the full results.</p>
-<p><strong>What comes next</strong> in code: a thread pool for the bands; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p><strong>What comes next</strong> in code: experiment 5, borrowed NumPy arrays, through a first Python build of the core; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
 <p><strong>What specification versions 68 and 69 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
 <p>Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>

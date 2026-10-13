@@ -1157,7 +1157,7 @@ level2.at(10, 20);                                        // the value at grid r
 | `Func`: `Raw`, `Polar`, `Hsv`, `Mask`, `Labels`, `Range` | `pixel.raw`, `complex.polar`, `color.hsv`, `pixel.mask`, `class.labels`, `depth.sensor` (its range) | Six functions, by enum rather than by name |
 | `Window { row_start, col_start, row_count, col_count }` | `Window` | No `step` and no `frame` |
 | `Pass::new`, `Pass::outputs`, `Pass::run` | `plan`, `read` with `IntoBuffers` | The plan is an object the caller keeps |
-| `BandedPass::new(..., threads)`, `outputs`, `run` | A read split across threads (section 12, rule 7) | Bands of rows, each its own `Pass` on its own thread; starting the threads allocates for each read |
+| `BandedPass::new(..., threads)`, `for_levels`, `outputs`, `run`, `pixels_read` | A read split across threads (section 12, rule 7) | Bands of rows, each its own `Pass`, on a pool of threads kept between reads; `band_threads` says how many are worth it for a Window |
 | `ReadOptions { level_method, missing_value, missing_weights }` | `SliceOptions` | No `level_source` or `decimate_first`; `LevelMethod` is `Bilinear`, `Binomial5` or `Decimate`. A `Pass` is planned for its method, since `binomial5` reaches further. |
 | `Slice { name, level, rows, cols, data }` | `Slice` | `rows` and `cols` are the Level's grid indices covered, not an `origin` and `scale` |
 | `Vec<Vec<Slice>>`, by Level then Slice | `read_slice_levels` | Levels 0 to `top`, or `first` to `top` with `Pass::for_levels`, not chosen by name |
@@ -1169,7 +1169,8 @@ level2.at(10, 20);                                        // the value at grid r
 - **Missing data as the specification states it,** with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.
 - **Each kind of Slice** reduced by its own rule, and `decimate` for every kind.
 - **Coarse Levels alone.** `decimate` at Level 4 alone reads 1 pixel in 256 and takes 0.017 times a copy; every value equals the same Level of a full read.
-- **Threads by bands of rows,** with every value equal to one thread's, bit for bit; 1.65 to 1.84 times as fast on two threads, over two runs.
+- **Nothing allocated per read,** on one thread or on bands, counted by the check program's own allocator.
+- **Threads by bands of rows,** with every value equal to one thread's, bit for bit; 1.65 to 2.1 times as fast on two threads, over three runs, on threads kept between reads.
 - **`binomial5`,** bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against `bilinear`'s half, as the specification states. It cost 0.9 to 1.3 times `bilinear`.
 - **Speed.** On the fastest instruction set, `pixel.raw` takes 1.7 times a copy into warm memory at Level 0, and `complex.polar` and `color.hsv` 1.4 to 1.7 times their own arithmetic alone. Missing data costs 1.2 to 1.8 times an unmasked read, and nothing at all where no mask exists.
 
@@ -1177,14 +1178,14 @@ level2.at(10, 20);                                        // the value at grid r
 
 ```sh
 cd experiments/exp1-fused-loop
-cargo run --release --bin exp1b -- --check   # every correctness check, under a minute
+cargo run --release --bin exp1b -- --check   # every correctness check, about two minutes on two cores
 cargo run --release --bin exp1b              # the checks and the speed tables
 cargo run --release --bin exp1 -- --check    # experiment 1's own check
 ```
 
 CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. `RESULTS-1b.md` beside the code has the full results.
 
-**What comes next** in code: a thread pool for the bands; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
+**What comes next** in code: experiment 5, borrowed NumPy arrays, through a first Python build of the core; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
 **What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 

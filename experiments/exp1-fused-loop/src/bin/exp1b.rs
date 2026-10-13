@@ -10,10 +10,40 @@ use bil_exp1::testing::{
     bit_diffs, full, make, masked_reference, random_window, reference, with_holes, Rng,
 };
 use bil_exp1::{
-    hsv0, plan_outputs, polar0, read_levels, read_levels_into, BandedPass, Func, Image,
-    LevelMethod, MissingWeights, Pass, ReadOptions, Slice, Window,
+    band_threads, hsv0, plan_outputs, polar0, read_levels, read_levels_into, BandedPass, Func,
+    Image, LevelMethod, MissingWeights, Pass, ReadOptions, Slice, Window, MIN_BAND_PIXELS,
 };
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
+
+/// Counts every allocation the program makes, so that a check can hold a read to allocating
+/// nothing.
+struct Counting;
+
+static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+
+// Every call goes straight to the system allocator; only the count is added.
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(ptr, layout) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc_zeroed(layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.realloc(ptr, layout, new_size) }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: Counting = Counting;
 
 const TOP: u32 = 4;
 
@@ -1196,6 +1226,141 @@ fn bands(isas: &[Isa], cases: &[(Func, &str)], rows: usize, cols: usize) -> bool
     let small_ok = diffs == 0;
     ok &= small_ok;
     println!("\nSmall Images of 1 to 17 rows by 1, 3 and 9 columns, with masks, every Window by its rows and first column, Levels 0 to 0 up to 0 to 4, with 2 and 5 threads: {reads} reads, {diffs} values differing from one thread. Passed: **{small_ok}**\n");
+    // One banded read planned once and run again and again, its pool's threads kept between
+    // runs, into the same Slices filled with NaN each time; and coarse Levels alone through bands.
+    let mut again = 0usize;
+    let img = with_holes(make("U16x3", rows, cols, 501), 502);
+    let win = Window {
+        row_start: 13,
+        col_start: 7,
+        row_count: 1000,
+        col_count: 1200,
+    };
+    let one = rolling_with(
+        &img,
+        Func::Hsv,
+        Isa::best(),
+        win,
+        TOP,
+        ReadOptions::default(),
+    );
+    let mut pass = BandedPass::new(&img, Func::Hsv, win, TOP, LevelMethod::Bilinear, 4);
+    let mut out = pass.outputs();
+    for _ in 0..50 {
+        for s in out.iter_mut().flatten() {
+            s.data.fill(f32::NAN);
+        }
+        pass.run(&img, Isa::best(), ReadOptions::default(), &mut out);
+        again += differ(&out, &one);
+    }
+    let mut coarse_diffs = 0usize;
+    let labels = with_holes(make("U16", rows, cols, 503), 504);
+    for (func, image, method) in [
+        (Func::Raw, &labels, LevelMethod::Decimate),
+        (Func::Labels, &labels, LevelMethod::Bilinear),
+        (Func::Hsv, &img, LevelMethod::Binomial5),
+    ] {
+        let options = ReadOptions {
+            level_method: method,
+            ..ReadOptions::default()
+        };
+        for first in 1..=TOP {
+            let mut single = Pass::for_levels(image, func, win, first, TOP, method);
+            let mut a = single.outputs();
+            single.run(image, Isa::best(), options, &mut a);
+            let mut banded = BandedPass::for_levels(image, func, win, first, TOP, method, 3);
+            let mut b = banded.outputs();
+            for s in b.iter_mut().flatten() {
+                s.data.fill(f32::NAN);
+            }
+            banded.run(image, Isa::best(), options, &mut b);
+            coarse_diffs += differ(&a, &b);
+            if method == LevelMethod::Decimate || func == Func::Labels {
+                coarse_diffs += usize::from(single.pixels_read() != banded.pixels_read());
+            }
+        }
+    }
+    let pool_ok = again == 0 && coarse_diffs == 0;
+    ok &= pool_ok;
+    println!("One banded read of `color.hsv`, planned once with 4 threads and run 50 times on the threads its pool keeps, into the same Slices filled with NaN each time: {again} values differing from one thread. Coarse Levels alone through bands, Levels 1 to 4 up to 4 alone, for `decimate`, labels and `binomial5`: {coarse_diffs} values or counts of pixels read differing from one `Pass`. Passed: **{pool_ok}**\n");
+    // Nothing allocated by a read, on one thread or on bands, once the read is planned and has
+    // run once.
+    let mut allocated = 0;
+    let isa = Isa::best();
+    let methods = [
+        LevelMethod::Bilinear,
+        LevelMethod::Binomial5,
+        LevelMethod::Decimate,
+    ];
+    for (func, image, method) in methods
+        .iter()
+        .flat_map(|&m| [(Func::Hsv, &img, m), (Func::Raw, &labels, m)])
+    {
+        let options = ReadOptions {
+            level_method: method,
+            missing_value: Some(0.0),
+            ..ReadOptions::default()
+        };
+        let mut single = Pass::for_method(image, func, win, TOP, method);
+        let mut a = single.outputs();
+        single.run(image, isa, options, &mut a);
+        let mut banded = BandedPass::new(image, func, win, TOP, method, 3);
+        let mut b = banded.outputs();
+        banded.run(image, isa, options, &mut b);
+        let before = ALLOCATIONS.load(Ordering::Relaxed);
+        for _ in 0..10 {
+            single.run(image, isa, options, &mut a);
+            banded.run(image, isa, options, &mut b);
+        }
+        allocated += ALLOCATIONS.load(Ordering::Relaxed) - before;
+    }
+    let alloc_ok = allocated == 0;
+    ok &= alloc_ok;
+    println!("Allocations counted by the program's allocator over 10 more reads each of `color.hsv` and `pixel.raw` with missing data and a `missing_value`, under `bilinear`, `binomial5` and `decimate`, on one thread and on three bands, after a first read of each: {allocated}. Passed: **{alloc_ok}**\n");
+    // The pool itself: rounds of every size, each index run once; a panic in a part, raised by
+    // the round once every part has ended, with the pool usable after it.
+    let mut pool = bil_exp1::pool::Pool::new(3);
+    let mut misses = 0usize;
+    for round in 0..300 {
+        let count = round % (pool.width() + 1);
+        let hits: [AtomicUsize; 4] = std::array::from_fn(|_| AtomicUsize::new(0));
+        pool.run(count, &|i| {
+            hits[i].fetch_add(1, Ordering::Relaxed);
+        });
+        for (i, h) in hits.iter().enumerate() {
+            misses += usize::from(h.load(Ordering::Relaxed) != usize::from(i < count));
+        }
+    }
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut raised = 0;
+    for bad in [0, 2] {
+        let ended = AtomicUsize::new(0);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            pool.run(4, &|i| {
+                if i == bad {
+                    panic!("part {i}");
+                }
+                ended.fetch_add(1, Ordering::Relaxed);
+            })
+        }));
+        let message = result
+            .err()
+            .and_then(|e| e.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        raised +=
+            usize::from(message == format!("part {bad}") && ended.load(Ordering::Relaxed) == 3);
+        let after = AtomicUsize::new(0);
+        pool.run(4, &|_| {
+            after.fetch_add(1, Ordering::Relaxed);
+        });
+        misses += usize::from(after.load(Ordering::Relaxed) != 4);
+    }
+    std::panic::set_hook(hook);
+    drop(pool);
+    let rounds_ok = misses == 0 && raised == 2;
+    ok &= rounds_ok;
+    println!("The pool: 300 rounds of 0 to 4 parts, every part run exactly once: {misses} misses. A panic in the caller's part and in a pool thread's part, each raised by the round with its own message after the other parts ended, and the pool used again after each: {raised} of 2. Passed: **{rounds_ok}**\n");
     println!("All checks of threads by bands passed: **{ok}**\n");
     ok
 }
@@ -1204,7 +1369,7 @@ fn bands(isas: &[Isa], cases: &[(Func, &str)], rows: usize, cols: usize) -> bool
 fn bands_speed(isas: &[Isa]) {
     let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
     println!("### Threads by bands of rows\n");
-    println!("The whole Image, Levels 0 to 4, best of five, on the fastest instruction set. This machine offers {cores} threads. Each read starts its threads afresh.\n");
+    println!("The whole Image, Levels 0 to 4, best of five, on the fastest instruction set. This machine offers {cores} threads. The bands run on threads kept between reads.\n");
     println!("| Function | Sample type | Image | Threads | Time | Speed-up | Times a copy |");
     println!("| --- | --- | --- | --- | --- | --- | --- |");
     let isa = *isas.last().unwrap();
@@ -1238,6 +1403,42 @@ fn bands_speed(isas: &[Isa]) {
                 pass.band_count(),
                 one / t,
                 t / copy
+            );
+        }
+    }
+    println!();
+    // Small reads, where waking the pool's threads is a larger share of the work.
+    println!("Smaller Windows of the 8,192 × 8,192 `pixel.raw` Image, Levels 0 to 4, the mean of 200 reads, best of five. The pool's threads are kept between reads, so a read only wakes them. `band_threads` gives one thread for each {MIN_BAND_PIXELS} pixels of the Window, at most.\n");
+    println!("| Window | Threads | Time a read | Speed-up | Threads `band_threads` chooses |");
+    println!("| --- | --- | --- | --- | --- |");
+    let img = make("U16", 8192, 8192, 11);
+    for size in [64usize, 256, 1024] {
+        let win = Window {
+            row_start: 1000,
+            col_start: 2000,
+            row_count: size,
+            col_count: size,
+        };
+        let mut one = 0.0;
+        for threads in 1..=cores.max(2) {
+            let mut pass =
+                BandedPass::new(&img, Func::Raw, win, TOP, LevelMethod::Bilinear, threads);
+            let mut out = pass.outputs();
+            let t = time(|| {
+                for _ in 0..200 {
+                    pass.run(&img, isa, ReadOptions::default(), &mut out);
+                    std::hint::black_box(&mut out);
+                }
+            }) / 200.0;
+            if threads == 1 {
+                one = t;
+            }
+            println!(
+                "| {size} × {size} | {} | {:.1} µs | {:.2} | {} |",
+                pass.band_count(),
+                t * 1e6,
+                one / t,
+                band_threads(win, threads)
             );
         }
     }
