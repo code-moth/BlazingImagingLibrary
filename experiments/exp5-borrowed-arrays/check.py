@@ -379,7 +379,8 @@ def checks():
     before = rss()
     churn(50000)
     gc.collect()
-    grown = rss() - before
+    now = rss()
+    grown = None if now is None or before is None else now - before
     refs_back = sys.getrefcount(s) == base_refs
     del s
     left = settled(b)
@@ -409,6 +410,29 @@ def rss():
 
             # Peak, in bytes on macOS: growth past the warm-up peak still shows.
             return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if sys.platform == "win32":
+            from ctypes import wintypes
+
+            class Counters(ctypes.Structure):
+                _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD)] + [
+                    (n, ctypes.c_size_t)
+                    for n in (
+                        "PeakWorkingSetSize",
+                        "WorkingSetSize",
+                        "QuotaPeakPagedPoolUsage",
+                        "QuotaPagedPoolUsage",
+                        "QuotaPeakNonPagedPoolUsage",
+                        "QuotaNonPagedPoolUsage",
+                        "PagefileUsage",
+                        "PeakPagefileUsage",
+                    )
+                ]
+
+            c = Counters()
+            c.cb = ctypes.sizeof(c)
+            process = ctypes.windll.kernel32.GetCurrentProcess()
+            if ctypes.windll.psapi.GetProcessMemoryInfo(process, ctypes.byref(c), c.cb):
+                return c.WorkingSetSize
     except OSError:
         pass
     return None
