@@ -16,13 +16,15 @@
  * - OpenJPEG reports through callbacks, which here copy the message and never print.
  * - Before any pixel memory is taken, the size the header claims is checked against the
  *   caller's limits (section 10.3 of the specification), and libjpeg's own working memory is
- *   capped too. OpenJPEG is told not to expand JP2 palettes, which would add components after
- *   the check; a palette is BIL's to apply, as the slice function palette.lookup.
+ *   capped too, a choice for the experiment. OpenJPEG is told not to expand JP2 palettes, which
+ *   would add components after the check; that also leaves a JP2 file's component mapping and
+ *   channel definitions unapplied, which is proposed to the author as the driver's work.
  *
  * Nothing here writes to stdout or stderr, changes the locale, signal handlers or floating-point
  * environment, or keeps state between calls.
  */
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -177,8 +179,10 @@ int bil_jpeg_decode(const uint8_t *data, size_t len, const BilLimits *limits, ui
     s->created = 1;
     /* libjpeg's working memory, such as a progressive file's whole-image coefficients, beside
      * the output: capped at twice the output's limit, a figure for the experiment. */
-    if (limits->max_decoded_bytes)
-        s->cinfo.mem->max_memory_to_use = (long)(limits->max_decoded_bytes * 2);
+    if (limits->max_decoded_bytes) {
+        uint64_t cap = product(limits->max_decoded_bytes, 2, 1, 1);
+        s->cinfo.mem->max_memory_to_use = cap > (uint64_t)LONG_MAX ? LONG_MAX : (long)cap;
+    }
     s->progress.pub.progress_monitor = bil_jpeg_progress;
     s->progress.err = &s->err;
     s->cinfo.progress = &s->progress.pub;

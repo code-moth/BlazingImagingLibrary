@@ -2368,13 +2368,19 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 <td>M16</td>
 <td><strong>Corrupt data a library recovers from.</strong> libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default.</td>
 <td>3.3, 10.3</td>
-<td>A warning is an error by default; under <code>corrupt_as_missing</code>, the Fragment is <code>Partial</code>, though libjpeg does not say which rows it filled, so the whole Window is marked missing</td>
+<td>A warning is an error by default; under <code>corrupt_as_missing</code>, the block (Fragment) is marked missing and the read is <code>Partial</code>, since libjpeg does not say which rows it filled</td>
 </tr>
 <tr>
 <td>M17</td>
-<td><strong>A limit on progressive scans,</strong> and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image.</td>
+<td><strong>A limit on progressive scans, a cap on a library's working memory,</strong> and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image, and keeps whole-image coefficients beside its output.</td>
 <td>10.3</td>
-<td>A fourth limit, <code>max_scans</code>, 500 by default for untrusted Sources and none otherwise, like the others; a refusal is an error, as section 3.3 says</td>
+<td>A fourth limit, <code>max_scans</code>, 500 by default for untrusted Sources and none otherwise, like the others; a library's working memory capped at a multiple of <code>max_decoded_bytes</code>, twice in experiment 3; a refusal is an error, as section 3.3 says</td>
+</tr>
+<tr>
+<td>M18</td>
+<td><strong>JPEG 2000 palettes and channel definitions.</strong> OpenJPEG expands a JP2 palette after the header's size is checked, against section 10.3; turning that off also leaves the component mapping (<code>cmap</code>) and channel definitions (<code>cdef</code>, such as which component is alpha) unapplied.</td>
+<td>5, 9.3, 10.3</td>
+<td>The driver delivers indices for <code>palette.lookup</code>, and applies or reports <code>cmap</code> and <code>cdef</code> itself, as experiment 3's layer leaves them</td>
 </tr>
 </tbody>
 </table></div>
