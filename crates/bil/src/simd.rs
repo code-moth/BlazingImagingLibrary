@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-//! A small vector abstraction with one scalar and two x86 back ends.
+//! A small vector abstraction with one scalar back end, two for x86 and one for ARM.
 //!
 //! Every operation is an IEEE operation that is correctly rounded (add, sub, mul, div, sqrt),
 //! exact (min, max, abs, floor, compare, select), or a bit operation. There is no fused
 //! multiply-add and no approximate reciprocal, so a lane computes the same bits whichever back
 //! end runs it. That is the property experiment 1 tests.
 
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
@@ -363,21 +365,139 @@ unsafe impl Vf for Avx512 {
     }
 }
 
+/// Four lanes, NEON, on 64-bit ARM.
+///
+/// Minimum and maximum are made from a comparison and a select, because NEON's own instructions
+/// treat NaN and signed zeros differently from the x86 ones that `min` and `max` follow. A load of
+/// even and odd values is NEON's deinterleaving load, which only moves values.
+#[cfg(target_arch = "aarch64")]
+#[derive(Clone, Copy)]
+pub struct Neon(pub float32x4_t);
+
+#[cfg(target_arch = "aarch64")]
+unsafe impl Vf for Neon {
+    const LANES: usize = 4;
+    type M = uint32x4_t;
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn splat(x: f32) -> Self {
+        Neon(vdupq_n_f32(x))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn load(p: *const f32) -> Self {
+        Neon(vld1q_f32(p))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn store(self, p: *mut f32) {
+        vst1q_f32(p, self.0)
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn add(self, o: Self) -> Self {
+        Neon(vaddq_f32(self.0, o.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn sub(self, o: Self) -> Self {
+        Neon(vsubq_f32(self.0, o.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn mul(self, o: Self) -> Self {
+        Neon(vmulq_f32(self.0, o.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn div(self, o: Self) -> Self {
+        Neon(vdivq_f32(self.0, o.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn sqrt(self) -> Self {
+        Neon(vsqrtq_f32(self.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn min(self, o: Self) -> Self {
+        Neon(vbslq_f32(vcltq_f32(self.0, o.0), self.0, o.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn max(self, o: Self) -> Self {
+        Neon(vbslq_f32(vcgtq_f32(self.0, o.0), self.0, o.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn abs(self) -> Self {
+        // The sign bit cleared as a bit operation, as the other back ends do.
+        Neon(vreinterpretq_f32_u32(vandq_u32(
+            vreinterpretq_u32_f32(self.0),
+            vdupq_n_u32(0x7fff_ffff),
+        )))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn floor(self) -> Self {
+        Neon(vrndmq_f32(self.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn lt(self, o: Self) -> uint32x4_t {
+        vcltq_f32(self.0, o.0)
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn gt(self, o: Self) -> uint32x4_t {
+        vcgtq_f32(self.0, o.0)
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn eq(self, o: Self) -> uint32x4_t {
+        vceqq_f32(self.0, o.0)
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn select(m: uint32x4_t, a: Self, b: Self) -> Self {
+        Neon(vbslq_f32(m, a.0, b.0))
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn and(a: uint32x4_t, b: uint32x4_t) -> uint32x4_t {
+        vandq_u32(a, b)
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn not(a: uint32x4_t) -> uint32x4_t {
+        vmvnq_u32(a)
+    }
+    #[inline]
+    #[target_feature(enable = "neon")]
+    unsafe fn load_even_odd(p: *const f32) -> (Self, Self) {
+        let v = vld2q_f32(p);
+        (Neon(v.0), Neon(v.1))
+    }
+}
+
 /// The instruction set a pass runs on.
+/// Each processor makes only `Scalar` and its own instruction sets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// On processors other than x86 only `Scalar` is ever made.
-#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub enum Isa {
     Scalar,
     Avx2,
     Avx512,
+    Neon,
 }
 
 impl Isa {
     /// Every instruction set this processor can run, scalar first.
     pub fn available() -> Vec<Isa> {
-        // Only x86 adds to the list.
-        #[cfg_attr(not(target_arch = "x86_64"), allow(unused_mut))]
+        // x86 and 64-bit ARM add to the list.
+        #[cfg_attr(
+            not(any(target_arch = "x86_64", target_arch = "aarch64")),
+            allow(unused_mut)
+        )]
         let mut v = vec![Isa::Scalar];
         #[cfg(target_arch = "x86_64")]
         {
@@ -386,6 +506,12 @@ impl Isa {
             }
             if is_x86_feature_detected!("avx512f") {
                 v.push(Isa::Avx512);
+            }
+        }
+        #[cfg(target_arch = "aarch64")]
+        {
+            if std::arch::is_aarch64_feature_detected!("neon") {
+                v.push(Isa::Neon);
             }
         }
         v

@@ -28,6 +28,8 @@ pub use rolling::{plan_outputs, read_levels_into, LevelMethod, MissingWeights, P
 /// Test images and comparisons for the experiment programs.
 pub mod testing;
 
+#[cfg(target_arch = "aarch64")]
+use simd::Neon;
 #[cfg(target_arch = "x86_64")]
 use simd::{Avx2, Avx512};
 use simd::{Isa, Scalar};
@@ -184,8 +186,16 @@ macro_rules! dispatch {
                         unsafe fn run($($arg: $ty),*) { kernels::$name::<Avx512>($($arg),*) }
                         run($($arg),*)
                     }
+                    #[cfg(target_arch = "aarch64")]
+                    Isa::Neon => {
+                        #[target_feature(enable = "neon")]
+                        unsafe fn run($($arg: $ty),*) { kernels::$name::<Neon>($($arg),*) }
+                        run($($arg),*)
+                    }
                     #[cfg(not(target_arch = "x86_64"))]
-                    _ => unreachable!(),
+                    Isa::Avx2 | Isa::Avx512 => unreachable!("not an x86 processor"),
+                    #[cfg(not(target_arch = "aarch64"))]
+                    Isa::Neon => unreachable!("not an ARM processor"),
                 }
             }
         }

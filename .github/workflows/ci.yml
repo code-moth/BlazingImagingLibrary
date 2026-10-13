@@ -36,8 +36,22 @@ jobs:
         run: cargo run --release --bin exp1 -- --check
       - name: Experiment 1b, correctness
         # The same bitwise tests through the rolling buffer, against experiment 1's whole planes,
-        # and reused buffers.
-        run: cargo run --release --bin exp1b -- --check
+        # and reused buffers. The instruction sets tested are raised as an annotation.
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --release --bin exp1b -- --check | tee exp1b.txt
+          echo "::notice::$(grep -m1 'Instruction sets available' exp1b.txt | cut -c1-120)"
+      - name: Vector code inlined
+        # Rule 5 of the working notes: a vector intrinsic left as a call makes the vector code
+        # slower than scalar. Checked where objdump reads the binary.
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Feature detection's own calls, such as xgetbv, are not vector code.
+          n=$(objdump -d target/release/exp1b | grep -E "(call|bl)\s.*(_mm256_|_mm512_|core_arch)" | grep -vcE "xgetbv|cpuid" || true)
+          echo "::notice::calls to vector intrinsics in exp1b: $n"
+          test "$n" -eq 0
 
   latest-stable:
     # Reports lints that a newer compiler adds, without failing the build.
