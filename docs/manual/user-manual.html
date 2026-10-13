@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 2</p>
+      <p class="eyebrow">Manual · Version 3</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>2</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>3</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -975,7 +975,7 @@ filled.status      # still Partial
 <p><strong>Stored NaN.</strong> In float data, a NaN stored at a pixel the mask calls valid is treated as missing, the same as a masked pixel. The experiments do this, and it is a proposal awaiting the author (chapter 24).</p>
 <h2 id="10-fragments-the-native-pixels">10. Fragments: the native pixels</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. The experiments hold whole Images in memory as interleaved native samples, as a Fragment would.</p>
+<p><strong>Status:</strong> Specified. Borrowing from a mapped file, <code>Shared</code>, <code>Private</code> and <code>Off</code> mapping, strided views for a <code>step</code>, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would.</p>
 </blockquote>
 <p>A Fragment is the stored pixels of a Window, unaltered: not converted, scaled or reordered. Read one when you need exact values, the native sample type, or data to pass to code that expects it.</p>
 <pre><code class="language-python">fragment = image.read_fragment(window)               # level0 by default
@@ -1981,7 +1981,7 @@ bil.register_driver(VendorDriver)
 <p><strong>A failure never becomes a crash.</strong> Failures inside BIL are caught at the interface and returned as errors. A C callback must not let an exception or a <code>longjmp</code> cross into BIL.</p>
 <h2 id="22-python-rust-and-c">22. Python, Rust and C</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified.</p>
+<p><strong>Status:</strong> Specified. Borrowed NumPy arrays and the release of the interpreter lock are prototyped in experiment 5 (chapter 23).</p>
 </blockquote>
 <p>The same calls exist in every language, with each language's own conventions.</p>
 <p><strong>Python</strong></p>
@@ -2061,9 +2061,9 @@ bil_close_source(source);
 <p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
 <h2 id="23-what-runs-today">23. What runs today</h2>
 <blockquote>
-<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer and kernels) and Prototyped (experiments 1 and 1b).</p>
+<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer and kernels) and Prototyped (experiments 1, 1b and 5).</p>
 </blockquote>
-<p>Two pieces of code exist. Neither reads a file: they work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds.</p>
+<p>Three pieces of code exist. The <code>bil</code> crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. Experiment 5 maps files and hands their bytes to NumPy without a copy.</p>
 <p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer and the kernels.</p>
 <ul>
 <li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code>, <code>Avx512</code> and <code>Neon</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. NEON is tested only in CI, on Linux and macOS on ARM, where it agrees bitwise with scalar code; its speed has not yet been measured.</li>
@@ -2168,7 +2168,58 @@ cargo run --release --bin exp1b              # the checks and the speed tables
 cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </code></pre>
 <p>CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. <code>RESULTS-1b.md</code> beside the code has the full results.</p>
-<p><strong>What comes next</strong> in code: experiment 5, borrowed NumPy arrays, through a first Python build of the core; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p><strong>Experiment 5</strong> (<code>experiments/exp5-borrowed-arrays</code>) is a Python extension module, <code>bil_exp5</code>, built against Python's stable interface, so one build loads in Python 3.11 on.</p>
+<pre><code class="language-python">import numpy as np, bil_exp5
+
+source = bil_exp5.open_source(&quot;image.raw&quot;, 1000, 1200, &quot;U16&quot;, mapping=&quot;Shared&quot;)
+fragment = source.read_fragment(100, 200, 300, 400, step=1)   # row_start, col_start, row_count, col_count
+array = np.asarray(fragment)        # over the mapped file: no copy, read-only
+fragment.is_borrowed                # True
+values = np.asarray(source.read_slice(0, 0, 10, 10))    # pixel.raw.intensity as float32
+source.close()                      # the arrays stay valid; the mapping goes with the last of them
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Experiment call</th>
+<th>Specification counterpart</th>
+<th>Difference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>open_source(path, row_count, col_count, sample_type, offset, mapping)</code></td>
+<td><code>open_source</code> with <code>OpenOptions</code></td>
+<td>A raw file of native samples, described by the caller; <code>sample_type</code> (<code>U8</code>, <code>U16</code> or <code>F32</code>) and <code>mapping</code> (<code>Shared</code>, <code>Private</code> or <code>Off</code>) passed as text</td>
+</tr>
+<tr>
+<td><code>read_fragment(row_start, col_start, row_count, col_count, step)</code></td>
+<td><code>read_fragment(window, level)</code></td>
+<td>The Window as numbers, with no frame and no Level</td>
+</tr>
+<tr>
+<td><code>read_slice(...)</code></td>
+<td><code>read_slice(slice_name, window)</code></td>
+<td>Makes <code>pixel.raw.intensity</code> only, so takes no name</td>
+</tr>
+<tr>
+<td><code>close()</code></td>
+<td>Not yet specified for Python (M3)</td>
+<td>Frees the Source; borrowed arrays keep only the file's memory</td>
+</tr>
+<tr>
+<td><code>Fragment</code>, <code>Slice</code></td>
+<td><code>Fragment</code>, <code>Slice</code></td>
+<td>Buffer-protocol objects with <code>is_borrowed</code>, for <code>numpy.asarray</code> and <code>memoryview</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>It shows that a borrowed array stays valid after its Source is closed and dropped, under eight threads; is read-only under <code>Shared</code> and the caller's own under <code>Private</code>; that a <code>step</code> is a strided view, and misaligned samples a copy; that the interpreter lock is released during every read; and that nothing leaks over 50,000 reads. It passes in CI on all four systems, with Python 3.12, and with Python 3.11 on Linux.</p>
+<pre><code class="language-sh">cargo build --release -p bil-exp5
+python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
+</code></pre>
+<p><code>RESULTS.md</code> beside it has the full results.</p>
+<p><strong>What comes next</strong> in code: the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
 <p><strong>What specification versions 68 and 69 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
 <p>Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>
@@ -2238,9 +2289,9 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </tr>
 <tr>
 <td>M3</td>
-<td><strong>How a Source is closed</strong> is stated for C (<code>bil_close_source</code>) but not for Rust or Python. This manual says a Source closes when the last reference goes.</td>
+<td><strong>How a Source is closed</strong> is stated for C (<code>bil_close_source</code>) but not for Rust or Python. This manual says a Source closes when the last reference goes. Section 4 says a borrowed array "keeps its Source open".</td>
 <td>2, 4</td>
-<td>State that, and add <code>close()</code> in Python for callers who want to free memory at a known point</td>
+<td>State that, and add <code>close()</code> in Python, which frees what the Source holds and refuses further reads, while arrays borrowed from it keep only the file's memory. Experiment 5 does this.</td>
 </tr>
 <tr>
 <td>M4</td>
@@ -2289,6 +2340,24 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 <td><strong>Labels at coarse Levels alone.</strong> A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window</td>
 <td>5</td>
 <td>Labels read only their grid points under any method, as the experiment does; state it in section 5</td>
+</tr>
+<tr>
+<td>M13</td>
+<td><strong>Writes under <code>Private</code>.</strong> Every array borrowed from one Source shares its copy-on-write pages, so a write through one is seen by the others, and a write while another thread reads the same pages is a data race in the caller's code. Section 4 says only that changes stay in the caller's memory.</td>
+<td>4</td>
+<td>State both, as experiment 5 finds</td>
+</tr>
+<tr>
+<td>M14</td>
+<td><strong>Two statements differ.</strong> Section 12, rule 9 says borrowed arrays are read-only; section 4 allows writes under <code>Private</code></td>
+<td>4, 12</td>
+<td>Rule 9: "read-only under <code>Shared</code> mapping"</td>
+</tr>
+<tr>
+<td>M15</td>
+<td><strong>How the Python interface is built.</strong> The implementability assessment assumes PyO3. Experiment 5 declares the stable interface itself, about 190 lines, because this workspace cannot fetch PyO3.</td>
+<td>10.5, 12</td>
+<td>PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check</td>
 </tr>
 </tbody>
 </table></div>
@@ -2393,7 +2462,7 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 2, written beside the code against version 69 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 3, written beside the code against version 69 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

@@ -443,7 +443,7 @@ filled.status      # still Partial
 **Stored NaN.** In float data, a NaN stored at a pixel the mask calls valid is treated as missing, the same as a masked pixel. The experiments do this, and it is a proposal awaiting the author (chapter 24).
 ## 10. Fragments: the native pixels
 
-> **Status:** Specified. The experiments hold whole Images in memory as interleaved native samples, as a Fragment would.
+> **Status:** Specified. Borrowing from a mapped file, `Shared`, `Private` and `Off` mapping, strided views for a `step`, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would.
 
 A Fragment is the stored pixels of a Window, unaltered: not converted, scaled or reordered. Read one when you need exact values, the native sample type, or data to pass to code that expects it.
 
@@ -1052,7 +1052,7 @@ A profile report uses the same three statuses as accuracy, counted over its requ
 
 ## 22. Python, Rust and C
 
-> **Status:** Specified.
+> **Status:** Specified. Borrowed NumPy arrays and the release of the interpreter lock are prototyped in experiment 5 (chapter 23).
 
 The same calls exist in every language, with each language's own conventions.
 
@@ -1117,9 +1117,9 @@ bil_close_source(source);
 **Stability.** The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.
 ## 23. What runs today
 
-> **Status:** Built (the `bil` crate's vector layer and kernels) and Prototyped (experiments 1 and 1b).
+> **Status:** Built (the `bil` crate's vector layer and kernels) and Prototyped (experiments 1, 1b and 5).
 
-Two pieces of code exist. Neither reads a file: they work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds.
+Three pieces of code exist. The `bil` crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. Experiment 5 maps files and hands their bytes to NumPy without a copy.
 
 **The `bil` crate** (`crates/bil`, version 0.0.1) holds the vector layer and the kernels.
 
@@ -1185,7 +1185,37 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 
 CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. `RESULTS-1b.md` beside the code has the full results.
 
-**What comes next** in code: experiment 5, borrowed NumPy arrays, through a first Python build of the core; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
+**Experiment 5** (`experiments/exp5-borrowed-arrays`) is a Python extension module, `bil_exp5`, built against Python's stable interface, so one build loads in Python 3.11 on.
+
+```python
+import numpy as np, bil_exp5
+
+source = bil_exp5.open_source("image.raw", 1000, 1200, "U16", mapping="Shared")
+fragment = source.read_fragment(100, 200, 300, 400, step=1)   # row_start, col_start, row_count, col_count
+array = np.asarray(fragment)        # over the mapped file: no copy, read-only
+fragment.is_borrowed                # True
+values = np.asarray(source.read_slice(0, 0, 10, 10))    # pixel.raw.intensity as float32
+source.close()                      # the arrays stay valid; the mapping goes with the last of them
+```
+
+| Experiment call | Specification counterpart | Difference |
+| --- | --- | --- |
+| `open_source(path, row_count, col_count, sample_type, offset, mapping)` | `open_source` with `OpenOptions` | A raw file of native samples, described by the caller; `sample_type` (`U8`, `U16` or `F32`) and `mapping` (`Shared`, `Private` or `Off`) passed as text |
+| `read_fragment(row_start, col_start, row_count, col_count, step)` | `read_fragment(window, level)` | The Window as numbers, with no frame and no Level |
+| `read_slice(...)` | `read_slice(slice_name, window)` | Makes `pixel.raw.intensity` only, so takes no name |
+| `close()` | Not yet specified for Python (M3) | Frees the Source; borrowed arrays keep only the file's memory |
+| `Fragment`, `Slice` | `Fragment`, `Slice` | Buffer-protocol objects with `is_borrowed`, for `numpy.asarray` and `memoryview` |
+
+It shows that a borrowed array stays valid after its Source is closed and dropped, under eight threads; is read-only under `Shared` and the caller's own under `Private`; that a `step` is a strided view, and misaligned samples a copy; that the interpreter lock is released during every read; and that nothing leaks over 50,000 reads. It passes in CI on all four systems, with Python 3.12, and with Python 3.11 on Linux.
+
+```sh
+cargo build --release -p bil-exp5
+python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
+```
+
+`RESULTS.md` beside it has the full results.
+
+**What comes next** in code: the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
 **What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 
@@ -1210,7 +1240,7 @@ Writing this manual against specification versions 68 and 69 found the points be
 | | Gap or inconsistency | Where | Proposal |
 | --- | --- | --- | --- |
 | M2 | **Whether an Image can have missing pixels** is something "a driver states" (section 5), but `ImageInfo` has no field for it, so a caller cannot see whether the fast path applies | 3, 5 | Add `may_have_missing` to `ImageInfo` |
-| M3 | **How a Source is closed** is stated for C (`bil_close_source`) but not for Rust or Python. This manual says a Source closes when the last reference goes. | 2, 4 | State that, and add `close()` in Python for callers who want to free memory at a known point |
+| M3 | **How a Source is closed** is stated for C (`bil_close_source`) but not for Rust or Python. This manual says a Source closes when the last reference goes. Section 4 says a borrowed array "keeps its Source open". | 2, 4 | State that, and add `close()` in Python, which frees what the Source holds and refuses further reads, while arrays borrowed from it keep only the file's memory. Experiment 5 does this. |
 | M4 | **The configuration** names plugin locations, the decoder's place, `isolation` and the driver order, but its form and where it lives are not specified | 10.2, 10.3 | A file in a stated place, with an environment variable to point elsewhere and a call to read it, settled when Tier 2 starts |
 | M5 | **Python forms not stated:** how a `SliceRequest` is built, how a returned set of Slices is indexed by Slice and Level, how a time is passed to `find_index`, and the fields of a world position | 3.1, 5, 13.4 | Constructors with keywords, indexing by `(slice_name, level_name)`, `datetime` for times, and positions with `lat`, `lon`, `height`, `status` and `accuracy`, as this manual assumes |
 | M6 | **`level_count()`** is "how many resolution levels this Image offers", but computed Levels have no natural limit | 5 | The number of halvings until the Image is one pixel along its shorter side |
@@ -1219,6 +1249,9 @@ Writing this manual against specification versions 68 and 69 found the points be
 | M9 | **Access patterns on a live stream.** A live stream has one position for every Reader, so neither pattern can change how it is read | 3.2, 4 | State that a live stream ignores the pattern, and `plan` reports it |
 | M11 | **The four proposals of experiment 1b:** one 2D average rather than rescaling after each pass; stored NaN counted as missing; `valid_fraction` weighted by the filter; and `valid` following the averaged mask beside kinds that are not averaged | 5 | As the experiment does, set out in `RESULTS-1b.md` |
 | M12 | **Labels at coarse Levels alone.** A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window | 5 | Labels read only their grid points under any method, as the experiment does; state it in section 5 |
+| M13 | **Writes under `Private`.** Every array borrowed from one Source shares its copy-on-write pages, so a write through one is seen by the others, and a write while another thread reads the same pages is a data race in the caller's code. Section 4 says only that changes stay in the caller's memory. | 4 | State both, as experiment 5 finds |
+| M14 | **Two statements differ.** Section 12, rule 9 says borrowed arrays are read-only; section 4 allows writes under `Private` | 4, 12 | Rule 9: "read-only under `Shared` mapping" |
+| M15 | **How the Python interface is built.** The implementability assessment assumes PyO3. Experiment 5 declares the stable interface itself, about 190 lines, because this workspace cannot fetch PyO3. | 10.5, 12 | PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check |
 
 **How this list is kept.** Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.
 

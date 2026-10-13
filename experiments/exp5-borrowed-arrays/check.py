@@ -6,9 +6,11 @@
 
 Copies the built library into a fresh folder under the name Python imports, then checks that a
 NumPy array borrowed from a mapped file stays valid after its Source is closed and dropped, under
-several threads; is read-only under Shared mapping and the caller's own under Private; is a
-strided view for a decimation step; is copied when the zero-copy rule fails; that reads release
-the interpreter lock; and that nothing leaks. Prints one line for each check, and exits 1 if any
+several threads; is read-only under Shared mapping and the caller's own under Private, and a
+copy under Off; is a strided view for a decimation step, granted and refused by the buffer
+protocol as each request asks; is copied when the zero-copy rule fails; that bad calls raise
+errors and the types cannot be changed from Python; that reads release the interpreter lock;
+and that nothing leaks. Prints one line for each check, and exits 1 if any
 fails.
 """
 
@@ -430,8 +432,12 @@ def rss():
 
             c = Counters()
             c.cb = ctypes.sizeof(c)
-            process = ctypes.windll.kernel32.GetCurrentProcess()
-            if ctypes.windll.psapi.GetProcessMemoryInfo(process, ctypes.byref(c), c.cb):
+            current = ctypes.windll.kernel32.GetCurrentProcess
+            current.restype = wintypes.HANDLE
+            info = ctypes.windll.psapi.GetProcessMemoryInfo
+            info.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
+            info.restype = wintypes.BOOL
+            if info(current(), ctypes.byref(c), c.cb):
                 return c.WorkingSetSize
     except OSError:
         pass

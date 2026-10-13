@@ -6,3 +6,4 @@
 /python/LICENSE
 /python/LINKING-EXCEPTION.md
 *.egg-info/
+__pycache__/

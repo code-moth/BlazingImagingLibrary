@@ -1,4 +1,4 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 6 bring the document in step with specification version 69: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. The rest of the judgment stands as written for version 56.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 6 bring the document in step with specification version 69: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays. The rest of the judgment stands as written for version 56.
 
 **What has changed between versions 56 and 69**
 
@@ -25,7 +25,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 
 **The main danger is breadth, not any single part.** Section 8 and Appendix A name roughly 60 kinds of data and about 40 libraries. With one implementer, an attempt to keep all of them working would spend almost all its time on builds and packaging, not on the core. The tier plan is the right defense, and this document argues for holding to it strictly.
 
-**Five problems should be tried in small experiments before Tier 1 is coded.** They are listed in section 8: the fused loop and its window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python. The first, the fused loop, is done, in experiments 1 and 1b.
+**Five problems should be tried in small experiments before Tier 1 is coded.** They are listed in section 8: the fused loop and its window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python. The first, the fused loop, is done, in experiments 1 and 1b, and the fifth, borrowed arrays, in experiment 5.
 
 ## 2. What makes BIL easier to build than it looks
 
@@ -72,7 +72,7 @@ The difficulty ratings are judgments: Low is routine work, Medium needs care, Hi
 | Writers | Low | Four simple formats | Geocoding and markings in writers (pass 2, R28 and R30) |
 | Rust interface | Medium | Lifetimes of borrowed Slices and Fragments | Ergonomics of `Cow` and lifetimes for callers |
 | C interface over all of Rust | High, and large | Every type and call needs a C form, with ownership rules | Size of the surface, and keeping it stable (pass 2, R39) |
-| Python interface | Medium | PyO3 and NumPy are mature | Borrowed arrays keeping Sources alive; the interpreter lock in callbacks |
+| Python interface | Medium | PyO3 and NumPy are mature. Experiment 5 found the stable interface small enough to declare by hand, about 190 lines for what it needs. | The interpreter lock in callbacks. Borrowed arrays keeping their memory alive passed in experiment 5. |
 | Python for scripted drivers | Medium | A helper process for Rust, C and C++ callers; the caller's own Python inside Python | The round trip's cost, which is benchmarked (H5) |
 | Scripted drivers | Medium | The `PixelLayout` path is simple; the array fallback is not | Keeping the interpreter off the pixel path in every case |
 | External decoding, mapped format, isolation | Very high | Processes, shared memory and sandboxing on three systems | Passing unnamed shared memory and marking slots on three systems; sandbox limits on macOS and Windows (H8) |
@@ -308,7 +308,7 @@ Each is small, answers one question, and can change the design while change is c
 2. **JPEG 2000 on real NITF (H3).** Time region and reduced-resolution reads on large files with OpenJPEG and, if possible, Kakadu. Pass when a small Window's cost does not grow with the file, or the shortfall is known and a route around it is chosen.
 3. **Containing C errors (H2).** One libjpeg-family library and GDAL behind BIL's C layer, with corrupt files from a fuzzer. Pass when no corrupt file crashes the process or leaves global state changed.
 4. **Packaging (H2).** BIL as a Python wheel and a conda package, with private GDAL and PROJ, loaded beside rasterio and pyproj. Pass when both read correctly in one process on Linux, macOS and Windows.
-5. **Borrowed arrays in Python.** A borrowed NumPy array that outlives the Python object for its Source, under several threads. Pass when the mapping stays valid, the array is read-only under `Shared` mapping, and nothing leaks.
+5. **Borrowed arrays in Python. Done, in experiment 5: valid after the Source is closed and dropped, under eight threads, read-only under `Shared`, nothing leaked, on all four systems.** A borrowed NumPy array that outlives the Python object for its Source, under several threads. Pass when the mapping stays valid, the array is read-only under `Shared` mapping, and nothing leaks.
 
 A sixth, for video (H4), should run before Tier 2 is planned, not before Tier 1.
 

@@ -122,11 +122,11 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 | Document | What it is |
 | --- | --- |
 | [Specification](docs/specification/specification.md), version 69 | The source of truth for the design |
-| [User Manual](docs/manual/user-manual.md), version 2 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
+| [User Manual](docs/manual/user-manual.md), version 3 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 8 | Calls for every use case, in Python, Rust and C |
-| [Implementability](docs/assessments/implementability.md), version 6 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
+| [Implementability](docs/assessments/implementability.md), version 7 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |
-| [Experiment 1](experiments/exp1-fused-loop/RESULTS.md) and [1b](experiments/exp1-fused-loop/RESULTS-1b.md) | The fused loop and the rolling buffer |
+| [Experiment 1](experiments/exp1-fused-loop/RESULTS.md), [1b](experiments/exp1-fused-loop/RESULTS-1b.md) and [5](experiments/exp5-borrowed-arrays/RESULTS.md) | The fused loop, the rolling buffer, and borrowed NumPy arrays |
 
 Each document has a rendered `.html` page beside its Markdown source.
 
@@ -134,7 +134,7 @@ Each document has a rendered `.html` page beside its Markdown source.
 
 **Experiment 1, the fused loop.** One pass makes a slice function's Slices at Levels 0 to 4. Over 2,400 random Windows and about 580 million values, no value differed in a single bit between a Window and the whole Image, or between scalar, AVX2 and AVX-512 code.
 
-**Experiment 1b, the rolling buffer.** The same arithmetic, streamed through every Level on a ring of a few rows, into buffers the caller owns, with nothing allocated per read. The same tests pass with the same bits, as do every Window of 25 small Images, and the pass is 3 to 5 times faster than experiment 1 on the fastest instruction set. `pixel.raw` takes 1.7 times a memory copy at Level 0. `complex.polar` and `color.hsv` are limited by their arithmetic, and take 1.4 to 1.7 times that arithmetic alone at Level 0. Missing data follows section 5 of the specification, with both of its weightings, checked bitwise against an independent reference, and costs nothing where no pixel can be missing. Labels, range, the mask Slices and `decimate` are each checked against their definitions, and `binomial5`, the level method with less aliasing, agrees bitwise with an independent reference at 0.9 to 1.3 times the cost of `bilinear`. Split across threads by bands of rows, a read gives the same bits and runs 1.65 to 1.84 times as fast on two threads, over two runs. Asked for a coarse Level alone, `decimate` reads only the pixels kept: 1 in 256 at Level 4.
+**Experiment 1b, the rolling buffer.** The same arithmetic, streamed through every Level on a ring of a few rows, into buffers the caller owns, with nothing allocated per read. The same tests pass with the same bits, as do every Window of 25 small Images, and the pass is 3 to 5 times faster than experiment 1 on the fastest instruction set. `pixel.raw` takes 1.7 times a memory copy at Level 0. `complex.polar` and `color.hsv` are limited by their arithmetic, and take 1.4 to 1.7 times that arithmetic alone at Level 0. Missing data follows section 5 of the specification, with both of its weightings, checked bitwise against an independent reference, and costs nothing where no pixel can be missing. Labels, range, the mask Slices and `decimate` are each checked against their definitions, and `binomial5`, the level method with less aliasing, agrees bitwise with an independent reference at 0.9 to 1.3 times the cost of `bilinear`. Split across threads by bands of rows, a read gives the same bits and runs 1.65 to 2.1 times as fast on two threads, over three runs, on threads kept between reads. Asked for a coarse Level alone, `decimate` reads only the pixels kept: 1 in 256 at Level 4.
 
 ```sh
 cargo run --release --bin exp1b             # the full report, including speed
@@ -142,7 +142,14 @@ cargo run --release --bin exp1b -- --check  # correctness only, as CI runs it
 cargo run --release --bin exp1 -- --check   # experiment 1's own check
 ```
 
-CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the vector code is NEON.
+**Experiment 5, borrowed NumPy arrays.** A Python extension module maps a file and hands its bytes to NumPy with no copy. The arrays stay valid after their Source is closed and dropped, under eight threads, are read-only under `Shared` mapping and the caller's own under `Private`, and leak nothing over 50,000 reads. Every read releases the interpreter lock.
+
+```sh
+cargo build --release -p bil-exp5
+python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
+```
+
+CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the vector code is NEON, and experiment 5 with Python 3.12 everywhere and Python 3.11 on Linux.
 
 ## What is here
 
@@ -153,6 +160,7 @@ CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the
 | `crates/bil/` | The `bil` crate: so far, the vector layer and kernels from experiment 1 |
 | `crates/bil-sys/`, `python/` | The native bindings and Python packages: early releases that hold the names |
 | `experiments/exp1-fused-loop/` | Experiments 1 and 1b |
+| `experiments/exp5-borrowed-arrays/` | Experiment 5 |
 | `testdata/` | The manifest of real test files, pinned by checksum, and the script that fetches them |
 | `deny.toml`, `deny-tests.toml` | License and source checks for what ships, and for test-only code |
 | `CLAUDE.md` | Working notes: the state of the work and the next step |

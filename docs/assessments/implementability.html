@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Assessment · Version 6</p>
+      <p class="eyebrow">Assessment · Version 7</p>
       <h1>BIL Implementability</h1>
       <p class="lede">Whether the Blazing Imaging Library can be built as specified, where it is likely to go wrong, and what to try first.</p>
     </div>
     <svg class="motif" viewBox="0 0 90 33" role="img" aria-label="Ten hard problems"><rect class="px in" x="0" y="0" width="14" height="14" rx="2"/><rect class="px in" x="19" y="0" width="14" height="14" rx="2"/><rect class="px in" x="38" y="0" width="14" height="14" rx="2"/><rect class="px in" x="57" y="0" width="14" height="14" rx="2"/><rect class="px in" x="76" y="0" width="14" height="14" rx="2"/><rect class="px in" x="0" y="19" width="14" height="14" rx="2"/><rect class="px in" x="19" y="19" width="14" height="14" rx="2"/><rect class="px in" x="38" y="19" width="14" height="14" rx="2"/><rect class="px in" x="57" y="19" width="14" height="14" rx="2"/><rect class="px in" x="76" y="19" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>6</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Blocking items</dt><dd>None left; all settled</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>7</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Blocking items</dt><dd>None left; all settled</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#10-what-version-68-means-for-the-code-already-written">10. What version 68 means for the code already written</a></li><li><a href="#sources">Sources</a></li></ol>
       </details>
       <main>
-<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 6 bring the document in step with specification version 69: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. The rest of the judgment stands as written for version 56.</p>
+<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 6 bring the document in step with specification version 69: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays. The rest of the judgment stands as written for version 56.</p>
 <p><strong>What has changed between versions 56 and 69</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -224,7 +224,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Isolation and the mapped format.</strong> Process isolation that is safe on Linux, macOS and Windows is a project of its own.</li>
 </ul>
 <p><strong>The main danger is breadth, not any single part.</strong> Section 8 and Appendix A name roughly 60 kinds of data and about 40 libraries. With one implementer, an attempt to keep all of them working would spend almost all its time on builds and packaging, not on the core. The tier plan is the right defense, and this document argues for holding to it strictly.</p>
-<p><strong>Five problems should be tried in small experiments before Tier 1 is coded.</strong> They are listed in section 8: the fused loop and its window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python. The first, the fused loop, is done, in experiments 1 and 1b.</p>
+<p><strong>Five problems should be tried in small experiments before Tier 1 is coded.</strong> They are listed in section 8: the fused loop and its window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python. The first, the fused loop, is done, in experiments 1 and 1b, and the fifth, borrowed arrays, in experiment 5.</p>
 <h2 id="2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</h2>
 <p>Several decisions already taken reduce the work and the risk.</p>
 <div class="table-wrap"><table>
@@ -424,8 +424,8 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <tr>
 <td>Python interface</td>
 <td>Medium</td>
-<td>PyO3 and NumPy are mature</td>
-<td>Borrowed arrays keeping Sources alive; the interpreter lock in callbacks</td>
+<td>PyO3 and NumPy are mature. Experiment 5 found the stable interface small enough to declare by hand, about 190 lines for what it needs.</td>
+<td>The interpreter lock in callbacks. Borrowed arrays keeping their memory alive passed in experiment 5.</td>
 </tr>
 <tr>
 <td>Python for scripted drivers</td>
@@ -840,7 +840,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>JPEG 2000 on real NITF (H3).</strong> Time region and reduced-resolution reads on large files with OpenJPEG and, if possible, Kakadu. Pass when a small Window's cost does not grow with the file, or the shortfall is known and a route around it is chosen.</li>
 <li><strong>Containing C errors (H2).</strong> One libjpeg-family library and GDAL behind BIL's C layer, with corrupt files from a fuzzer. Pass when no corrupt file crashes the process or leaves global state changed.</li>
 <li><strong>Packaging (H2).</strong> BIL as a Python wheel and a conda package, with private GDAL and PROJ, loaded beside rasterio and pyproj. Pass when both read correctly in one process on Linux, macOS and Windows.</li>
-<li><strong>Borrowed arrays in Python.</strong> A borrowed NumPy array that outlives the Python object for its Source, under several threads. Pass when the mapping stays valid, the array is read-only under <code>Shared</code> mapping, and nothing leaks.</li>
+<li><strong>Borrowed arrays in Python. Done, in experiment 5: valid after the Source is closed and dropped, under eight threads, read-only under <code>Shared</code>, nothing leaked, on all four systems.</strong> A borrowed NumPy array that outlives the Python object for its Source, under several threads. Pass when the mapping stays valid, the array is read-only under <code>Shared</code> mapping, and nothing leaks.</li>
 </ol>
 <p>A sixth, for video (H4), should run before Tier 2 is planned, not before Tier 1.</p>
 <h2 id="9-if-it-has-to-be-cut">9. If it has to be cut</h2>
@@ -948,7 +948,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><a href="https://github.com/uclouvain/openjpeg">OpenJPEG on GitHub</a>, on its maintenance status.</li>
 </ul>
       </main>
-      <footer>BIL Implementability, version 6, an assessment of the Blazing Imaging Library (BIL) specification, first made against version 56 and brought in step with version 69, as of 13 October 2026.</footer>
+      <footer>BIL Implementability, version 7, an assessment of the Blazing Imaging Library (BIL) specification, first made against version 56 and brought in step with version 69, as of 13 October 2026.</footer>
     </div>
   </div>
 </div>
