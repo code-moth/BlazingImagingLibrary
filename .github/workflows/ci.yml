@@ -102,9 +102,21 @@ jobs:
       - name: Format
         run: cargo fmt --check
       - name: Lint
-        run: cargo clippy --release --all-targets -- -D warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --release --all-targets --message-format=short -- -D warnings 2>&1 | tee clippy.txt || {
+            grep -E "error|warning|panicked" clippy.txt | head -20 | sed 's/^/::error::/'
+            exit 1
+          }
       - name: Experiment 3, corrupt files
-        run: cargo run --release -- --check
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --release -- --check 2>&1 | tee exp3.txt || {
+            grep -E "error|panicked|Passed: \*\*false" exp3.txt | head -20 | cut -c1-900 | sed 's/^/::error::/'
+            exit 1
+          }
 
   latest-stable:
     # Reports lints that a newer compiler adds, without failing the build.
