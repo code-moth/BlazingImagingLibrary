@@ -226,10 +226,10 @@ fn decode_with(codec: Codec, data: &[u8], limits: &Limits, keep: bool) -> (Outco
 }
 
 fn state() -> String {
-    let mut buf = vec![0 as c_char; 16384];
-    let n = unsafe { bil_state_describe(buf.as_mut_ptr(), buf.len()) };
-    let bytes: Vec<u8> = buf[..n].iter().map(|&c| c as u8).collect();
-    String::from_utf8_lossy(&bytes).into_owned()
+    // Bytes, passed as C chars, whose signedness differs between processors.
+    let mut buf = vec![0u8; 16384];
+    let n = unsafe { bil_state_describe(buf.as_mut_ptr().cast::<c_char>(), buf.len()) };
+    String::from_utf8_lossy(&buf[..n]).into_owned()
 }
 
 // ---------------------------------------------------------------- seed files
@@ -314,7 +314,7 @@ fn encode(codec: Codec, pixels: &[u8], w: u32, h: u32, comps: u32, variant: u32)
     v
 }
 
-/// The valid files the corrupt ones are made from: for each codec, grey and color, small and
+/// The valid files the corrupt ones are made from: for each codec, gray and color, small and
 /// odd sizes, and for JPEG a progressive file, for JPEG 2000 a tiled one.
 fn seeds(codec: Codec) -> Vec<Seed> {
     let shapes = [
@@ -464,6 +464,12 @@ fn worker(codec: Codec, start: u64, count: u64) {
         }
     }
     writeln!(out, "kinds of error={}", messages.len()).unwrap();
+    let scans: u64 = messages
+        .iter()
+        .filter(|(m, _)| m.contains("progressive scans"))
+        .map(|(_, n)| n)
+        .sum();
+    writeln!(out, "scan limit={scans}").unwrap();
     writeln!(out, "done").unwrap();
 }
 
