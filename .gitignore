@@ -7,3 +7,4 @@
 /python/LINKING-EXCEPTION.md
 *.egg-info/
 __pycache__/
+/experiments/exp3-c-errors/target

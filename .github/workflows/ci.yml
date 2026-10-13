@@ -77,6 +77,35 @@ jobs:
           echo "::notice::calls to vector intrinsics in exp1b: $n"
           test "$n" -eq 0
 
+  c-errors:
+    # Experiment 3: libjpeg-turbo and OpenJPEG behind BIL's C layer, fed millions of corrupt
+    # files. It links the system's own libraries, so it runs where Ubuntu provides the versions
+    # its headers in vendor/ describe: libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0.
+    name: c errors (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    defaults:
+      run:
+        working-directory: experiments/exp3-c-errors
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libjpeg-turbo8 libopenjp2-7
+          dpkg-query -W libjpeg-turbo8 libopenjp2-7
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --release --all-targets -- -D warnings
+      - name: Experiment 3, corrupt files
+        run: cargo run --release -- --check
+
   latest-stable:
     # Reports lints that a newer compiler adds, without failing the build.
     name: lints on latest stable
