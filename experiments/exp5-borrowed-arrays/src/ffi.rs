@@ -118,6 +118,7 @@ pub const Py_tp_free: c_int = 74;
 // From object.h, methodobject.h, pybuffer.h and modsupport.h.
 pub const Py_TPFLAGS_DEFAULT: c_uint = 0;
 pub const Py_TPFLAGS_DISALLOW_INSTANTIATION: c_uint = 1 << 7;
+pub const Py_TPFLAGS_IMMUTABLETYPE: c_uint = 1 << 8;
 pub const METH_VARARGS: c_int = 0x0001;
 pub const METH_KEYWORDS: c_int = 0x0002;
 pub const METH_NOARGS: c_int = 0x0004;
@@ -125,6 +126,9 @@ pub const PyBUF_WRITABLE: c_int = 0x0001;
 pub const PyBUF_FORMAT: c_int = 0x0004;
 pub const PyBUF_ND: c_int = 0x0008;
 pub const PyBUF_STRIDES: c_int = 0x0010 | PyBUF_ND;
+pub const PyBUF_C_CONTIGUOUS: c_int = 0x0020 | PyBUF_STRIDES;
+pub const PyBUF_F_CONTIGUOUS: c_int = 0x0040 | PyBUF_STRIDES;
+pub const PyBUF_ANY_CONTIGUOUS: c_int = 0x0080 | PyBUF_STRIDES;
 pub const PYTHON_ABI_VERSION: c_int = 3;
 
 // On Windows the data symbols are reached through the import library, which needs the block to
@@ -135,6 +139,7 @@ extern "C" {
     pub static mut PyExc_ValueError: *mut PyObject;
     pub static mut PyExc_OSError: *mut PyObject;
     pub static mut PyExc_BufferError: *mut PyObject;
+    pub static mut PyExc_ImportError: *mut PyObject;
 
     pub fn Py_IncRef(o: *mut PyObject);
     pub fn Py_DecRef(o: *mut PyObject);

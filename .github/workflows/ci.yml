@@ -54,6 +54,18 @@ jobs:
         run: |
           python -m pip install --quiet numpy
           python -I experiments/exp5-borrowed-arrays/check.py target/release
+      # The module is built once against the stable interface, and must load in the oldest
+      # Python it allows as well.
+      - name: Python 3.11
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Experiment 5 on Python 3.11
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m pip install --quiet numpy
+          python -I experiments/exp5-borrowed-arrays/check.py target/release
       - name: Vector code inlined
         # Rule 5 of the working notes: a vector intrinsic left as a call makes the vector code
         # slower than scalar. Checked where objdump reads the binary.

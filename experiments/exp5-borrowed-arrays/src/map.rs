@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-//! A file mapped into memory, as `mapping` in `OpenOptions` chooses (section 4 of the
-//! specification): `Shared`, read-only, or `Private`, copy-on-write, so that a caller can change
-//! the array without touching the file.
+//! A file in memory, as `mapping` in `OpenOptions` chooses (section 4 of the specification):
+//! mapped `Shared`, read-only; mapped `Private`, copy-on-write, so that a caller can change an
+//! array without touching the file; or `Off`, read into memory of BIL's own, for file systems
+//! where mapping is unreliable.
 //!
-//! The mapping lives as long as anything holds it. Every borrowed array holds it through an
-//! `Arc`, so it is unmapped only when the Source and every array borrowed from it are gone.
+//! It lives as long as anything holds it. Every borrowed array holds it through an `Arc`, so it
+//! is unmapped only when the Source and every array borrowed from it are gone.
 
 use std::fs::File;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Mappings not yet unmapped, for the checks.
+/// Files held in memory, mapped or read, and not yet released, for the checks.
 pub static LIVE: AtomicUsize = AtomicUsize::new(0);
 
 /// How a file is mapped.
@@ -18,18 +19,23 @@ pub static LIVE: AtomicUsize = AtomicUsize::new(0);
 pub enum Mapping {
     Shared,
     Private,
+    Off,
 }
 
 pub struct Mapped {
     ptr: *mut u8,
     len: usize,
     mapping: Mapping,
+    /// Under `Off`, the file's bytes, in 8-byte words so that any sample is aligned.
+    _heap: Vec<u64>,
     #[cfg(windows)]
     section: isize,
 }
 
-// The mapping is plain memory: under `Shared` no one writes it, and under `Private` writes go
-// through arrays the caller owns, as for any memory shared between threads.
+// The memory is plain memory. Under `Shared` and `Off` no one writes it. Under `Private`, a
+// caller may write through a borrowed array while another thread reads the same pages, which is
+// a data race in the caller's code, as for any memory a caller shares between threads; BIL
+// itself never writes it.
 unsafe impl Send for Mapped {}
 unsafe impl Sync for Mapped {}
 
@@ -41,7 +47,23 @@ impl Mapped {
         if len == 0 {
             return Err(io::Error::other("an empty file cannot be mapped"));
         }
-        let mapped = sys::map(file, len, mapping)?;
+        let mapped = match mapping {
+            Mapping::Off => {
+                let mut heap = vec![0u64; len.div_ceil(8)];
+                let bytes =
+                    unsafe { std::slice::from_raw_parts_mut(heap.as_mut_ptr().cast(), len) };
+                std::io::Read::read_exact(&mut &*file, bytes)?;
+                Mapped {
+                    ptr: heap.as_mut_ptr().cast(),
+                    len,
+                    mapping,
+                    _heap: heap,
+                    #[cfg(windows)]
+                    section: 0,
+                }
+            }
+            _ => sys::map(file, len, mapping)?,
+        };
         LIVE.fetch_add(1, Ordering::Relaxed);
         Ok(mapped)
     }
@@ -61,7 +83,10 @@ impl Mapped {
 
 impl Drop for Mapped {
     fn drop(&mut self) {
-        sys::unmap(self);
+        // Under `Off` the words are freed with the struct.
+        if self.mapping != Mapping::Off {
+            sys::unmap(self);
+        }
         LIVE.fetch_sub(1, Ordering::Relaxed);
     }
 }
@@ -96,6 +121,7 @@ mod sys {
         let (prot, flags) = match mapping {
             Mapping::Shared => (PROT_READ, MAP_SHARED),
             Mapping::Private => (PROT_READ | PROT_WRITE, MAP_PRIVATE),
+            Mapping::Off => unreachable!("under Off the file is read, not mapped"),
         };
         let p = unsafe { mmap(std::ptr::null_mut(), len, prot, flags, file.as_raw_fd(), 0) };
         // MAP_FAILED is all bits set.
@@ -106,6 +132,7 @@ mod sys {
             ptr: p.cast(),
             len,
             mapping,
+            _heap: Vec::new(),
         })
     }
 
@@ -152,6 +179,7 @@ mod sys {
         let (protect, access) = match mapping {
             Mapping::Shared => (PAGE_READONLY, FILE_MAP_READ),
             Mapping::Private => (PAGE_WRITECOPY, FILE_MAP_COPY),
+            Mapping::Off => unreachable!("under Off the file is read, not mapped"),
         };
         let handle = file.as_raw_handle() as isize;
         let section = unsafe {
@@ -177,6 +205,7 @@ mod sys {
             ptr: p.cast(),
             len,
             mapping,
+            _heap: Vec::new(),
             section,
         })
     }

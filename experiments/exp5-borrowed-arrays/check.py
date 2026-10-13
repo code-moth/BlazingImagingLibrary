@@ -12,6 +12,7 @@ the interpreter lock; and that nothing leaks. Prints one line for each check, an
 fails.
 """
 
+import ctypes
 import gc
 import os
 import pathlib
@@ -29,6 +30,40 @@ RESULTS = []
 def report(name, ok, detail):
     RESULTS.append(ok)
     print(f"{name}: {detail}. Passed: **{ok}**\n")
+    if not ok and os.environ.get("GITHUB_ACTIONS"):
+        # Raised as an annotation, which can be read without the job's log.
+        print(f"::error::exp5 {name}: {detail}"[:900])
+
+
+class PyBuffer(ctypes.Structure):
+    _fields_ = [
+        ("buf", ctypes.c_void_p),
+        ("obj", ctypes.py_object),
+        ("len", ctypes.c_ssize_t),
+        ("itemsize", ctypes.c_ssize_t),
+        ("readonly", ctypes.c_int),
+        ("ndim", ctypes.c_int),
+        ("format", ctypes.c_char_p),
+        ("shape", ctypes.POINTER(ctypes.c_ssize_t)),
+        ("strides", ctypes.POINTER(ctypes.c_ssize_t)),
+        ("suboffsets", ctypes.POINTER(ctypes.c_ssize_t)),
+        ("internal", ctypes.c_void_p),
+    ]
+
+
+def accepts(obj, flags):
+    """Whether the object's buffer protocol grants a request with these flags."""
+    view = PyBuffer()
+    get = ctypes.pythonapi.PyObject_GetBuffer
+    get.argtypes = [ctypes.py_object, ctypes.POINTER(PyBuffer), ctypes.c_int]
+    try:
+        get(obj, ctypes.byref(view), flags)
+    except BufferError:
+        return False
+    release = ctypes.pythonapi.PyBuffer_Release
+    release.argtypes = [ctypes.POINTER(PyBuffer)]
+    release(ctypes.byref(view))
+    return True
 
 
 def load(build):
@@ -49,6 +84,17 @@ def settled(b):
 
 
 def main():
+    try:
+        return checks()
+    except Exception as e:
+        if os.environ.get("GITHUB_ACTIONS"):
+            import traceback
+
+            print("::error::exp5 failed: " + " | ".join(traceback.format_exception(e))[-900:])
+        raise
+
+
+def checks():
     b = load(sys.argv[1] if len(sys.argv) > 1 else "target/release")
     work = pathlib.Path(tempfile.mkdtemp(prefix="bil_exp5_data_"))
     rows, cols = 1000, 1200
@@ -90,7 +136,33 @@ def main():
         and np.array_equal(sa, u16[1:1000:3, 2:1200:3])
         and sa.strides == (cols * 2 * 3, 2 * 3)
     )
-    report("A step of 3 as strides", strided, f"borrowed, equal and strided: {strided}")
+    # The buffer protocol's requests: strided views refused where contiguity is asked for, and a
+    # whole-width Window granted as C-contiguous.
+    strides, c_cont, f_cont, any_cont, writable = 0x18, 0x38, 0x58, 0x98, 0x1
+    whole = s.read_fragment(10, 0, 5, cols)
+    row = s.read_fragment(0, 7, 1, 20)
+    column = s.read_fragment(0, 7, 20, 1)
+    requests = (
+        accepts(st, strides)
+        and not accepts(st, 0)
+        and not any(accepts(st, f) for f in (c_cont, f_cont, any_cont))
+        and accepts(whole, 0)
+        and accepts(whole, c_cont)
+        and accepts(whole, any_cont)
+        and not accepts(whole, f_cont)
+        and accepts(row, c_cont)
+        and accepts(row, f_cont)
+        and accepts(column, strides)
+        and not accepts(column, any_cont)
+        and not accepts(whole, strides | writable)
+    )
+    del whole, row, column
+    report(
+        "A step of 3 as strides",
+        strided and requests,
+        f"borrowed, equal and strided: {strided}; requests for contiguity and writing granted "
+        f"and refused as the protocol says: {requests}",
+    )
 
     # 3. The array outlives its Source: closed, then dropped.
     s.close()
@@ -134,6 +206,20 @@ def main():
         f"unchanged: {private}",
     )
 
+    # 4b. Off: read into memory of BIL's own, never borrowed, values equal.
+    off = b.open_source(str(u16_path), rows, cols, "U16", mapping="Off")
+    of = off.read_fragment(3, 4, 50, 60, step=2)
+    oa = np.asarray(of)
+    off_ok = not of.is_borrowed and oa.flags.writeable and np.array_equal(oa, u16[3:53:2, 4:64:2])
+    fo = b.open_source(str(f32_path), rows, cols, "F32", mapping="Off").read_slice(0, 0, 4, 4)
+    off_ok &= not fo.is_borrowed and np.array_equal(np.asarray(fo), f32[:4, :4])
+    del off, of, oa, fo
+    report(
+        "Mapping Off",
+        off_ok and settled(b) == (0, 0, 0),
+        f"copied from memory of its own, never borrowed, values equal: {off_ok}",
+    )
+
     # 5. Float32 Slices borrow; others are converted once into arrays of their own.
     fs = b.open_source(str(f32_path), rows, cols, "F32")
     sl = fs.read_slice(5, 6, 70, 80)
@@ -171,7 +257,7 @@ def main():
     for call in (
         lambda: b.open_source(str(u16_path), rows + 1, cols, "U16"),
         lambda: b.open_source(str(u16_path), rows, cols, "U32"),
-        lambda: b.open_source(str(u16_path), rows, cols, mapping="Off"),
+        lambda: b.open_source(str(u16_path), rows, cols, mapping="Copy"),
         lambda: b.open_source(str(work / "absent.raw"), 1, 1),
         lambda: b.open_source(str(u16_path), rows, cols).read_fragment(0, 0, rows + 1, 1),
         lambda: b.open_source(str(u16_path), rows, cols).read_fragment(0, 0, 0, 1),
@@ -187,11 +273,16 @@ def main():
         constructed = True
     except TypeError:
         constructed = False
+    try:
+        b.Fragment.is_borrowed = None
+        changed = True
+    except TypeError:
+        changed = False
     report(
         "Errors",
-        errors == 8 and not constructed and settled(b) == (0, 0, 0),
+        errors == 8 and not constructed and not changed and settled(b) == (0, 0, 0),
         f"{errors} of 8 bad calls raised an error; a Fragment cannot be made from Python: "
-        f"{not constructed}",
+        f"{not constructed}; the types cannot be changed from Python: {not changed}",
     )
 
     # 8. Threads: arrays made on many threads while their Sources are closed and dropped under
@@ -220,11 +311,12 @@ def main():
         t.start()
     for t in threads:
         t.join()
-    wrong = 0
+    wrong, arr = 0, None
     for r0, c0, arr in kept:
         step = (arr.strides[1]) // 2
         wrong += not np.array_equal(arr, u16[r0 : r0 + 50 : step, c0 : c0 + 50 : step])
     survivors = len(kept)
+    # The loop's last array too, so that every array is gone.
     del kept, arr
     left = settled(b)
     report(

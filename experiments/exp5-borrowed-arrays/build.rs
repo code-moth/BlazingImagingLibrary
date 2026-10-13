@@ -4,7 +4,8 @@
 //! On Linux the interpreter's symbols are found when Python loads the module, so nothing is
 //! needed. macOS needs to be told to leave them for then. Windows links against the stable
 //! interface's import library, `python3.lib`, found beside the Python named by `PYTHON` or found
-//! on the path.
+//! on the path. That library is the MSVC toolchain's, so the GNU toolchain on Windows is not
+//! supported.
 
 use std::env;
 use std::process::Command;

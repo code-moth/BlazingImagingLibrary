@@ -151,7 +151,13 @@ impl Source {
                 .is_some_and(|e| e <= self.rows)
             && w.col_start
                 .checked_add(w.col_count)
-                .is_some_and(|e| e <= self.cols);
+                .is_some_and(|e| e <= self.cols)
+            // The row stride of a stepped view must fit in a stride.
+            && self
+                .cols
+                .checked_mul(self.sample.size())
+                .and_then(|b| b.checked_mul(w.step))
+                .is_some_and(|b| b <= isize::MAX as usize);
         if fits {
             Ok(())
         } else {
@@ -168,11 +174,13 @@ impl Source {
         unsafe { self.map.ptr().add(byte) }
     }
 
-    /// Whether a view of this Source can borrow: rules 2 to 5 of the zero-copy rule hold by
-    /// construction (uncompressed, native order, byte-aligned, mapped, evenly spaced rows), so
-    /// what remains is rule 5, each sample on a multiple of its own size.
+    /// Whether a view of this Source can borrow. Rules 1 to 3 of the zero-copy rule hold by
+    /// construction (uncompressed, native byte order, byte-aligned samples), and the rows of a
+    /// Window are always evenly spaced, so what remains is that the file is mapped (rule 4) and
+    /// that each sample starts on a multiple of its own size (rule 5).
     fn borrowable(&self) -> bool {
-        (self.at(0, 0) as usize).is_multiple_of(self.sample.size())
+        self.map.mapping() != Mapping::Off
+            && (self.at(0, 0) as usize).is_multiple_of(self.sample.size())
     }
 
     fn out_shape(w: Window) -> [usize; 2] {
@@ -321,8 +329,11 @@ unsafe fn free_object(o: *mut PyObject) {
 fn wrap_array(type_: &AtomicPtr<PyObject>, a: Result<Array, String>) -> *mut PyObject {
     match a {
         Ok(a) => unsafe {
-            let o = new_object(type_, Box::into_raw(Box::new(a)).cast());
-            if !o.is_null() {
+            let payload = Box::into_raw(Box::new(a));
+            let o = new_object(type_, payload.cast());
+            if o.is_null() {
+                drop(Box::from_raw(payload));
+            } else {
                 LIVE_ARRAYS.fetch_add(1, Ordering::Relaxed);
             }
             o
@@ -355,13 +366,28 @@ unsafe extern "C" fn array_getbuffer(
         );
         return -1;
     }
-    let contiguous = a.strides[1] == a.itemsize && a.strides[0] == a.shape[1] * a.itemsize;
-    if flags & PyBUF_STRIDES != PyBUF_STRIDES && !contiguous {
+    // Contiguity, ignoring the stride of a dimension of length 1, which is never used.
+    let [h, w] = a.shape;
+    let c_contiguous =
+        (w <= 1 || a.strides[1] == a.itemsize) && (h <= 1 || a.strides[0] == w * a.itemsize);
+    let f_contiguous =
+        (h <= 1 || a.strides[0] == a.itemsize) && (w <= 1 || a.strides[1] == h * a.itemsize);
+    let refused = if flags & PyBUF_STRIDES != PyBUF_STRIDES && !c_contiguous {
+        Some("this array is strided, and the request cannot take strides")
+    } else if flags & PyBUF_C_CONTIGUOUS == PyBUF_C_CONTIGUOUS && !c_contiguous {
+        Some("this array is not C-contiguous")
+    } else if flags & PyBUF_F_CONTIGUOUS == PyBUF_F_CONTIGUOUS && !f_contiguous {
+        Some("this array is not Fortran-contiguous")
+    } else if flags & PyBUF_ANY_CONTIGUOUS == PyBUF_ANY_CONTIGUOUS
+        && !(c_contiguous || f_contiguous)
+    {
+        Some("this array is not contiguous")
+    } else {
+        None
+    };
+    if let Some(message) = refused {
         (*view).obj = null_mut();
-        raise(
-            PyExc_BufferError,
-            "this array is strided, and the request cannot take strides",
-        );
+        raise(PyExc_BufferError, message);
         return -1;
     }
     Py_IncRef(o);
@@ -453,7 +479,10 @@ unsafe fn parse_window(args: *mut PyObject, kwargs: *mut PyObject) -> Option<Win
     }
     let all = [r0, c0, rc, cc, step];
     if all.iter().any(|&v| v < 0) {
-        raise(PyExc_ValueError, "a Window has no negative parts");
+        raise(
+            PyExc_ValueError,
+            "the parts of a Window must not be negative",
+        );
         return None;
     }
     Some(Window {
@@ -480,9 +509,8 @@ unsafe fn source_read(
     if s.is_null() {
         return raise(PyExc_ValueError, "the Source is closed");
     }
-    // The Source is not freed while the lock is released: only `close` and the Source's own
-    // deallocation free it, and both need the lock, which this call holds again before return.
-    // Another thread could close it meanwhile, so the read works on an Arc of its own.
+    // Another thread may close or drop the Source while the lock is released, so the read works
+    // on a copy that holds its own Arc of the file's memory.
     let source = Source {
         map: Arc::clone(&(*s).map),
         ..*s
@@ -552,15 +580,16 @@ unsafe extern "C" fn module_open_source(
         let mapping = match mapping.as_str() {
             "Shared" => Mapping::Shared,
             "Private" => Mapping::Private,
+            "Off" => Mapping::Off,
             other => {
                 return raise(
                     PyExc_ValueError,
-                    &format!("unknown mapping {other}: Shared or Private"),
+                    &format!("unknown mapping {other}: Shared, Private or Off"),
                 )
             }
         };
         if rows < 0 || cols < 0 || offset < 0 {
-            return raise(PyExc_ValueError, "sizes and offsets are not negative");
+            return raise(PyExc_ValueError, "sizes and offsets must not be negative");
         }
         let opened = without_lock(|| {
             Source::open(
@@ -573,7 +602,14 @@ unsafe extern "C" fn module_open_source(
             )
         });
         match opened {
-            Ok(s) => new_object(&SOURCE_TYPE, Box::into_raw(Box::new(s)).cast()),
+            Ok(s) => {
+                let payload = Box::into_raw(Box::new(s));
+                let o = new_object(&SOURCE_TYPE, payload.cast());
+                if o.is_null() {
+                    drop(Box::from_raw(payload));
+                }
+                o
+            }
             Err(e) => raise(PyExc_OSError, &e),
         }
     })
@@ -653,7 +689,7 @@ unsafe fn make_type(
         name: name.as_ptr(),
         basicsize: basicsize as c_int,
         itemsize: 0,
-        flags: Py_TPFLAGS_DEFAULT | Py_TPFLAGS_DISALLOW_INSTANTIATION,
+        flags: Py_TPFLAGS_DEFAULT | Py_TPFLAGS_DISALLOW_INSTANTIATION | Py_TPFLAGS_IMMUTABLETYPE,
         slots: Box::leak(slots.into_boxed_slice()).as_mut_ptr(),
     }));
     PyType_FromSpec(spec)
@@ -781,6 +817,14 @@ pub unsafe extern "C" fn PyInit_bil_exp5() -> *mut PyObject {
         m_clear: null_mut(),
         m_free: null_mut(),
     }));
+    // The types live in statics, so the module is made once in a process; Python keeps a
+    // module made this way and does not call this function again for it.
+    if !SOURCE_TYPE.load(Ordering::Acquire).is_null() {
+        return raise(
+            PyExc_ImportError,
+            "bil_exp5 can be initialized once in a process",
+        );
+    }
     let m = PyModule_Create2(def, PYTHON_ABI_VERSION);
     if m.is_null() {
         return m;
@@ -801,12 +845,25 @@ pub unsafe extern "C" fn PyInit_bil_exp5() -> *mut PyObject {
             ),
         ),
     ];
-    for (slot, name, t) in types {
-        if t.is_null() || PyModule_AddObjectRef(m, name.as_ptr(), t) < 0 {
+    if types.iter().any(|(_, _, t)| t.is_null()) {
+        for (_, _, t) in &types {
+            Py_DecRef(*t);
+        }
+        Py_DecRef(m);
+        return null_mut();
+    }
+    for (_, name, t) in &types {
+        if PyModule_AddObjectRef(m, name.as_ptr(), *t) < 0 {
+            for (_, _, t) in &types {
+                Py_DecRef(*t);
+            }
             Py_DecRef(m);
             return null_mut();
         }
-        // The module keeps one reference and this static another, for the interpreter's life.
+    }
+    // The module keeps one reference to each type and these statics another, for the
+    // interpreter's life.
+    for (slot, _, t) in types {
         slot.store(t, Ordering::Release);
     }
     m
