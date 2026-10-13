@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v5
       # Experiment 5 is a Python extension module. On Windows its build script links against
       # this Python's stable interface, so it is set up before anything is built.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       # rustup installs the toolchain pinned in rust-toolchain.toml.
@@ -58,7 +58,7 @@ jobs:
       # Python it allows as well.
       - name: Python 3.11
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Experiment 5 on Python 3.11

@@ -32,7 +32,7 @@ def report(name, ok, detail):
     print(f"{name}: {detail}. Passed: **{ok}**\n")
     if not ok and os.environ.get("GITHUB_ACTIONS"):
         # Raised as an annotation, which can be read without the job's log.
-        print(f"::error::exp5 {name}: {detail}"[:900])
+        print(f"::error::exp5 {name}: {detail}"[:1500].replace("\n", " / "))
 
 
 class PyBuffer(ctypes.Structure):
@@ -90,7 +90,8 @@ def main():
         if os.environ.get("GITHUB_ACTIONS"):
             import traceback
 
-            print("::error::exp5 failed: " + " | ".join(traceback.format_exception(e))[-900:])
+            text = "".join(traceback.format_exception(e)).replace("\n", " / ")
+            print("::error::exp5 failed: " + text[-1500:])
         raise
 
 
