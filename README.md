@@ -13,7 +13,7 @@ BIL is written in Rust, with a C-callable interface over it delivered as one sha
 
 The two-page flyer is [`flyer.pdf`](flyer.pdf), with its source in [`flyer.html`](flyer.html).
 
-> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 67, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
+> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 68, with three decisions left open: the libraries for the medical, security screening and sonar cases, the full contents of the metadata dictionary and its domain profiles, and the details of read-ahead. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
 
 ## Why BIL is needed
 
@@ -50,7 +50,7 @@ The sizes are plain arithmetic at 4 bytes a value. The ARGUS-IS figures are as r
 | Time | Frame | Take one frame |
 | Sample precision | float32 | One type for every sensor |
 
-**Cost follows the request, not the collection.** A small Window of an enormous file costs about what it costs from a small one. Nothing is decoded until a region is asked for, data is borrowed rather than copied where it can be, every Slice and every Level a request names is made in one pass, and the memory a read needs is bounded and known in advance.
+**Cost follows the request, not the collection.** A small Window of an enormous file costs about what it costs from a small one. Nothing is decoded until a region is asked for, data is borrowed rather than copied where it can be, every Slice and every Level a request names is made in one pass, and the memory a read needs is bounded and known in advance. A caller that works through a file in order says so, and BIL reads and decodes the next blocks ahead, in the order the file stores them.
 
 **A Window gives the same answer as the whole.** A Slice of any Window equals the same region cut from the Slice of the whole Image, to a stated tolerance, so an algorithm can work through an image of any size in pieces.
 
@@ -110,7 +110,7 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 **What else it does**
 
 - **Geocoding as a chain.** Map grids, RPC, camera, SAR and per-frame video models are chains of the same steps, run in both directions, each tested against an established implementation. Every position can carry a full record of its accuracy, by source and by kind, carried through the chain.
-- **Metadata on demand.** Fields under their native names, decoded only when read, and a dictionary of essential items that every format offers as far as it can.
+- **Metadata on demand.** Fields under their native names, decoded only when read, and a dictionary of essential items that every format offers as far as it can. Domain profiles name the items each kind of work needs, such as SAR calibration or optical reflectance, whatever the sensor or format, and check a file against them before a pixel is read.
 - **Built for untrusted files.** Resource limits, plugins only from configured places, fuzz testing of BIL's own readers, and drivers that can run in a separate process.
 - **Markings travel.** Security markings are carried into everything BIL writes.
 - **Extensible.** Drivers in Rust, C or C++, or scripted in Python while the compiled core reads the pixels.
@@ -121,9 +121,10 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 
 | Document | What it is |
 | --- | --- |
-| [Specification](docs/specification/specification.md), version 67 | The source of truth for the design |
-| [BIL by Example](docs/assessments/bil-by-example.md), version 6 | Calls for every use case, in Python, Rust and C |
-| [Implementability](docs/assessments/implementability.md), version 4 | Whether BIL can be built, where it may go wrong, and what to try first |
+| [Specification](docs/specification/specification.md), version 68 | The source of truth for the design |
+| [User Manual](docs/manual/user-manual.md), version 1 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
+| [BIL by Example](docs/assessments/bil-by-example.md), version 7 | Calls for every use case, in Python, Rust and C |
+| [Implementability](docs/assessments/implementability.md), version 5 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |
 | [Experiment 1](experiments/exp1-fused-loop/RESULTS.md) and [1b](experiments/exp1-fused-loop/RESULTS-1b.md) | The fused loop and the rolling buffer |
 
@@ -148,7 +149,7 @@ CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM.
 | Path | Contents |
 | --- | --- |
 | `flyer.pdf`, `flyer.html` | The two-page flyer, and the page it is printed from |
-| `docs/` | The specification, reviews and assessments, the flyer's page images, and the scripts that render them |
+| `docs/` | The specification, the user manual, reviews and assessments, the flyer's page images, and the scripts that render them |
 | `crates/bil/` | The `bil` crate: so far, the vector layer and kernels from experiment 1 |
 | `crates/bil-sys/`, `python/` | The native bindings and Python packages: early releases that hold the names |
 | `experiments/exp1-fused-loop/` | Experiments 1 and 1b |

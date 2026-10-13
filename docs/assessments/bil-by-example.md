@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 67: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 68: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 67. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 68. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -85,9 +85,11 @@ print(plan)   # size 4096 × 4096, access class SinglePass, 16 blocks to decode
 
 ### 2.2 Work through an image too large for memory
 
-Window independence (section 5) means processing tile by tile gives the same result as processing the whole image at once.
+Window independence (section 5) means processing tile by tile gives the same result as processing the whole image at once. Saying the work moves forward through the file lets BIL read and decode the next blocks while this one is processed (section 4).
 
 ```python
+source     = bil.open_source("scene.ntf", access_pattern=bil.AccessPattern.SequentialAccess)
+image      = source.image(0)
 info       = image.info()
 rows, cols = info.row_count, info.col_count
 tile_size  = 4096
@@ -589,7 +591,7 @@ frame  = live.read_slice("video.planes.luma", bil.Window(0, 0, 720, 1280, frame=
                          timeout=2.0, cancel=stop)
 ```
 
-A read that waits longer than its `timeout`, or is cancelled, returns an error.
+A read that waits longer than its `timeout`, or is canceled, returns an error.
 
 ## 9. Metadata
 
@@ -664,6 +666,46 @@ source.release_metadata("nitf.RPC00B")   # extracted again if asked for
 source.list_auxiliary()                    # e.g. ["calibration_table", "line_times"]
 table = source.read_auxiliary("calibration_table")
 ```
+
+### 9.10 Does this file hold what my work needs?
+
+A domain profile names the metadata a kind of work needs, whatever the sensor or format (section 14.2).
+
+```python
+bil.list_profiles()                  # ["provenance", "geolocation", "optical_radiometry", "sar", ...]
+bil.describe_profile("sar")          # requires provenance and geolocation, and its own items
+
+report = image.check_profile("sar")
+report.status                        # Complete, Partial or Missing, from the required items only
+for item in report.items:
+    print(item.name, item.need, item.status, item.origin)
+# common.radar_wavelength  Required     Complete  Specified
+# common.look_side         Required     Complete  Derived    from the sensor's velocity
+# common.calibration_constant Recommended Missing   -
+```
+
+### 9.11 Fill a gap, then check again
+
+```python
+image.add_field("common.calibration_constant", [61.2])   # or a line in the companion file
+image.check_profile("sar").status                        # unchanged: the item is recommended
+```
+
+### 9.12 A profile of your own
+
+A layer above BIL states its needs once and checks every Source before reading a pixel.
+
+```python
+bil.add_profile({
+    "name": "change_detection",
+    "description": "Two collections of one place, compared",
+    "required": ["provenance", "geolocation", "common.ground_sample_distance", "common.view_elevation"],
+    "recommended": ["common.sun_elevation"],
+})
+ok = [s for s in sources if s.image(0).check_profile("change_detection").status == bil.Status.Complete]
+```
+
+Per-frame items, such as those of `motion_imagery`, are checked at one frame: `luma.check_profile("motion_imagery", 1200)`.
 
 ## 10. Markings and identity
 
@@ -861,16 +903,36 @@ bil.list_writers()   # ["ENVI", "GeoTIFF", "TIFF", "NumPy"]
 
 ## 13. Performance
 
-### 13.1 Size the cache to the access pattern
+### 13.1 Size the cache to how blocks are reused
 
 ```python
 source.set_cache_size(64)    # keep 64 decoded Fragments, for overlapping Windows
-source.describe_cache()      # Fragments held, bytes held, reads served
+source.describe_cache()      # Fragments held, bytes held, reads served, reads served from read-ahead
 source.clear_cache()
-source.set_cache_size(0)     # no cache, for a single pass over each block
+source.set_cache_size(0)     # no cache and no read-ahead, for random reads that never repeat
 ```
 
-### 13.2 Read from several threads
+### 13.2 Say how you will move through the file
+
+```python
+viewer = bil.open_source("mosaic.tif")    # RandomAccess, the default: nothing read that was not asked for
+
+batch  = bil.open_source("mosaic.tif",
+                         access_pattern=bil.AccessPattern.SequentialAccess,
+                         read_ahead_bytes=256 * 2**20)
+image  = batch.image(0)
+image.info().storage                      # block size, interleave and order: here tiles, row by row
+
+plan = image.plan_slice("pixel.raw.intensity", window)   # blocks found read ahead, and blocks read by this call
+batch.describe_held()                     # includes the bytes read ahead
+
+# One Reader can differ from its Source: a sequential sweep beside random lookups.
+sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)
+```
+
+The pattern changes only speed and memory, never a value or a status.
+
+### 13.3 Read from several threads
 
 A Source and an Image may be shared between threads. Each thread gets its own Reader.
 
@@ -884,7 +946,7 @@ with ThreadPoolExecutor(8) as pool:
     means = list(pool.map(work, tiles))   # the interpreter lock is released during each read
 ```
 
-### 13.3 Two places in one video
+### 13.4 Two places in one video
 
 ```python
 ahead = luma.open_reader()   # a second Reader, holding its own place in the stream
@@ -894,7 +956,7 @@ later = ahead.read_slice("video.planes.luma", bil.Window(0, 0, 1080, 1920, frame
 
 A Reader offers every read call its Image offers.
 
-### 13.4 Know which reads are borrowed
+### 13.5 Know which reads are borrowed
 
 ```python
 plan = image.plan_slice("pixel.raw.intensity", window)
@@ -944,7 +1006,7 @@ class VendorDriver(bil.ScriptedDriver):
                               bil.PixelType(bil.SampleType.U16, 1, 12), ["intensity"])]
 
     def describe_pixels(self, source, image_index):
-        return bil.PixelLayout(offset=512, byte_order="big", interleave="pixel")
+        return bil.PixelLayout(offset=512, byte_order="big", interleave=bil.Interleave.Pixel)
 
 bil.register_driver(VendorDriver)
 ```
@@ -955,7 +1017,7 @@ The same driver serves Rust, C and C++ callers. For them, BIL runs it in a helpe
 
 ```python
 def describe_pixels(self, source, image_index):
-    return bil.PixelLayout(offset=self.header.data_offset, byte_order="little", interleave="band",
+    return bil.PixelLayout(offset=self.header.data_offset, byte_order="little", interleave=bil.Interleave.Band,
                            blocks=self.header.tile_table, codec="deflate",
                            validity=self.header.missing_regions)
 ```
@@ -1124,7 +1186,7 @@ Version 1 of this document found these gaps in the calling interface. Version 58
 | Geo model names | 11.1 | Named for the step that does the main work, with the format's name as label | 13.3 |
 | Making steps | 11.6 | `make_step(step_name, parameters)` | 13.4 |
 | Surfaces that are not needed | 11.10 | `surface` may be left out | 13.4 |
-| Readers | 13.3 | A Reader offers every read call of its Image | 4 |
+| Readers | 13.4 | A Reader offers every read call of its Image | 4 |
 | Live streams | 8.5 | `latest_frame`, and `timeout` and `cancel` in `SliceOptions` | 3.2, 3.4 |
 | Registering functions and methods | 15.3 | The descriptions a slice function and a level method give, and how a registered kernel runs | 10 |
 | Field definitions | 15.4 | The parts of a definition, kept as JSON, and `load_field_definitions` | 14.1, 14.4 |
@@ -1134,4 +1196,4 @@ Version 1 of this document found these gaps in the calling interface. Version 58
 
 **Settled since, in version 59.** A writer writes the geo model without being asked (R30). A live stream has one position for all Readers, and a frame no longer held is `Missing` (R34).
 
-**Added since, in versions 62 to 67.** Every position can carry its accuracy, with `relative_accuracy`, `circular_error`, `linear_error` and `error_ellipse` (examples 11.11 to 11.14). Scripted drivers run in a helper process for Rust, C and C++ callers (example 15.1). `missing_weights` chooses how coarse Levels weight missing data (example 6.4). External decoding through the mapped format needs no change to the caller's code, so it has no example of its own.
+**Added since, in versions 62 to 68.** Every position can carry its accuracy, with `relative_accuracy`, `circular_error`, `linear_error` and `error_ellipse` (examples 11.11 to 11.14). Scripted drivers run in a helper process for Rust, C and C++ callers (example 15.1). `missing_weights` chooses how coarse Levels weight missing data (example 6.4). `access_pattern` tells BIL how the caller moves through a Source (examples 2.2 and 13.2). Domain profiles check a Source for the metadata a kind of work needs (examples 9.10 to 9.12). External decoding through the mapped format needs no change to the caller's code, so it has no example of its own.

@@ -1,0 +1,2380 @@
+<title>BIL User Manual</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: a sticky contents rail beside one reading column; tables and code may run wider than prose and scroll in their own boxes. */
+:root {
+  --bg: #f6f8f9;
+  --surface: #ffffff;
+  --fg: #17222b;
+  --muted: #586773;
+  --rule: #d8e0e5;
+  --rule-strong: #9fadb8;
+  --code-bg: #ebf0f3;
+  --accent: #0a6a8a;
+  --accent-soft: #d9ecf2;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151a;
+    --surface: #151d24;
+    --fg: #e2e9ee;
+    --muted: #93a2ae;
+    --rule: #26323b;
+    --rule-strong: #4c5b67;
+    --code-bg: #1a252d;
+    --accent: #62c1dc;
+    --accent-soft: #143642;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151a;
+  --surface: #151d24;
+  --fg: #e2e9ee;
+  --muted: #93a2ae;
+  --rule: #26323b;
+  --rule-strong: #4c5b67;
+  --code-bg: #1a252d;
+  --accent: #62c1dc;
+  --accent-soft: #143642;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.shell { max-width: 1200px; margin-inline: auto; padding-inline: 20px; padding-block: 32px 80px; }
+
+/* ---- header ---- */
+.masthead { display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: flex-end; justify-content: space-between; padding-bottom: 28px; border-bottom: 2px solid var(--fg); }
+.masthead-text { min-width: 0; flex: 1 1 420px; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.lede { margin: 14px 0 0; max-width: 62ch; color: var(--muted); font-size: 1.05rem; }
+.motif { width: 168px; max-width: 100%; height: auto; flex: 0 0 auto; }
+.motif .px { fill: var(--rule); }
+.motif .px.in { fill: var(--accent); }
+
+.control { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; margin: 0; border-bottom: 1px solid var(--rule); }
+.control div { padding: 14px 16px 14px 0; min-width: 0; }
+.control dt { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.control dd { margin: 2px 0 0; font-weight: 500; }
+
+/* ---- layout ---- */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 32px; }
+.rail { display: none; }
+.toc-inline { border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); padding: 12px 16px; margin-bottom: 28px; }
+.toc-inline summary { cursor: pointer; font-weight: 600; }
+@media (min-width: 1040px) {
+  .layout { grid-template-columns: 250px minmax(0, 1fr); gap: 56px; }
+  .rail { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: 8px; }
+  .toc-inline { display: none; }
+}
+.toc-title { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.toc ol ol { margin: 2px 0 6px 12px; padding-left: 10px; border-left: 1px solid var(--rule); }
+.toc a { display: block; padding: 3px 0; color: var(--fg); text-decoration: none; font-size: 0.9rem; line-height: 1.35; }
+.toc ol ol a { color: var(--muted); font-size: 0.82rem; }
+.toc a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+.column { min-width: 0; }
+
+/* ---- content ---- */
+main { min-width: 0; max-width: 900px; }
+main > h2:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 20px); }
+h2 { font-size: 1.75rem; line-height: 1.15; margin: 56px 0 14px; padding-top: 28px; border-top: 1px solid var(--rule-strong); }
+h3 { font-size: 1.25rem; line-height: 1.2; margin: 34px 0 10px; }
+main p, main ul, main ol { max-width: 72ch; }
+main p { margin: 0 0 14px; }
+main ul, main ol { margin: 0 0 16px; padding-left: 1.4em; }
+main li { margin-bottom: 6px; }
+main li > p { margin-bottom: 6px; }
+strong { font-weight: 600; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 0.1em 0.34em; border-radius: 3px; }
+pre { background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; margin: 0 0 16px; overflow-x: auto; line-height: 1.5; }
+pre code { background: none; padding: 0; font-size: 0.82rem; }
+
+.table-wrap { overflow-x: auto; margin: 4px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 0.9rem; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 9px 14px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); background: var(--bg); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; }
+td code { white-space: nowrap; }
+
+ul.tasks { list-style: none; padding-left: 0; display: flex; flex-direction: column; gap: 10px; max-width: 78ch; }
+ul.tasks li { position: relative; margin: 0; padding-left: 32px; }
+ul.tasks li::before { content: ""; position: absolute; left: 0; top: 0.2em; width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--rule-strong); background: var(--surface); }
+ul.tasks li.done::before { background: var(--accent); border-color: var(--accent); }
+ul.tasks li.done::after { content: ""; position: absolute; left: 6px; top: calc(0.2em + 3px); width: 5px; height: 9px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+ul.tasks li.done { color: var(--muted); }
+
+.diagram { margin: 8px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.diagram-scroll { overflow-x: auto; padding: 8px; }
+.diagram svg { display: block; width: 100%; min-width: 640px; height: auto; font-family: var(--font-body); }
+.diagram figcaption { padding: 8px 14px 10px; border-top: 1px solid var(--rule); font-size: 0.82rem; color: var(--muted); }
+.d-title { font-size: 15px; font-weight: 600; fill: var(--fg); }
+.d-name { font-size: 13px; font-weight: 600; fill: var(--fg); }
+.d-line { font-size: 11.5px; }
+.d-ink { fill: var(--fg); }
+.d-quiet { fill: var(--muted); }
+.d-box { fill: none; stroke: var(--rule-strong); stroke-width: 1.25; }
+.d-box.d-main { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.d-edges path { fill: none; stroke: var(--rule-strong); stroke-width: 1.25; }
+.d-head { fill: var(--rule-strong); }
+
+footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.85rem; max-width: 72ch; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="masthead-text">
+      <p class="eyebrow">Manual · Version 1</p>
+      <h1>BIL User Manual</h1>
+      <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
+    </div>
+    <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
+  </header>
+  <dl class="control"><div><dt>Document version</dt><dd>1</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 68</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
+
+  <div class="layout">
+    <nav class="rail toc" aria-label="Contents">
+      <p class="toc-title">Contents</p>
+      <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
+    </nav>
+    <div class="column">
+      <details class="toc-inline toc">
+        <summary>Contents</summary>
+        <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
+      </details>
+      <main>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 68, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<h2 id="1-about-this-manual">1. About this manual</h2>
+<p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
+<p><strong>How it relates to the other documents</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The specification</td>
+<td>What BIL must do. It is the source of truth, and where this manual and the specification differ, the specification is right and this manual has a fault.</td>
+</tr>
+<tr>
+<td>BIL by Example</td>
+<td>Short calls for every part of the specification, with little explanation</td>
+</tr>
+<tr>
+<td>This manual</td>
+<td>How to use BIL: the concepts in order, the reasons behind them, the costs, and advice</td>
+</tr>
+<tr>
+<td>The implementability assessment</td>
+<td>Whether BIL can be built, and the risks</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>What runs today.</strong> Very little. BIL is designed, and the first experiments on its core have passed, but there is no library to install yet. Each chapter opens with its status, so a reader always knows which parts are design and which are code.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Specified</strong></td>
+<td>The specification defines it. No code exists, and the calls shown are the specification's, not yet working.</td>
+</tr>
+<tr>
+<td><strong>Prototyped</strong></td>
+<td>Experiment code does it, with tests, but not through the interface shown. Chapter 23 shows the experiment's own interface.</td>
+</tr>
+<tr>
+<td><strong>Built</strong></td>
+<td>It is in the <code>bil</code> crate and can be used as described.</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Conventions</strong></p>
+<ul>
+<li><strong>Python first.</strong> Most examples are in Python, because it is the shortest. Chapter 22 shows the same calls in Rust and C.</li>
+<li><strong>Two assumptions,</strong> shared with BIL by Example: <code>bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)</code> builds a Window, and options are passed to calls as keyword arguments.</li>
+<li><strong>Section numbers</strong> such as "(section 5)" refer to the specification.</li>
+<li><strong>Names.</strong> Types and enum values are UpperCamelCase, and every other name is snake_case, including the names passed as text, such as <code>color.hsv.hue</code> and <code>level3</code>.</li>
+</ul>
+<h2 id="2-what-bil-is">2. What BIL is</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p>BIL is one interface to imaging sensor data in any format. It reads the part of the data an algorithm needs, as the native pixels or as 2D float32 arrays, leaves the rest unread, and locates every pixel in the world.</p>
+<p><strong>Why it exists.</strong> Sensor data grows faster than memory: one band of 100,000 × 100,000 pixels is 40 GB as float32, and one 1.8-gigapixel frame of a wide area sensor is 7.2 GB. No one processes such data whole. Each format solves the problem of reading a part differently, through tiles, strips, chunks, key frames or pyramids, and without a common layer every algorithm has to learn each one. BIL is that layer.</p>
+<p><strong>What it does</strong></p>
+<ul>
+<li><strong>Reads a part of the data.</strong> A Window takes a rectangle, a Level a coarser resolution, a Slice one 2D view of the components, and a frame one moment in time.</li>
+<li><strong>Delivers native pixels or float32.</strong> A Fragment is the stored samples, unaltered. A Slice is a named float32 array, such as <code>complex.polar.magnitude</code> or <code>color.hsv.hue</code>.</li>
+<li><strong>Locates pixels.</strong> Every format's geocoding is a chain of the same steps, run in both directions, with a full record of its accuracy.</li>
+<li><strong>Reads metadata on demand.</strong> Fields under their native names, decoded when first read, and a dictionary of essential items with the same names in every format.</li>
+<li><strong>Writes a few simple formats:</strong> TIFF and GeoTIFF, ENVI and NumPy <code>.npy</code>.</li>
+</ul>
+<p><strong>What it does not do.</strong> Registration, orthorectification and analysis are layers above BIL. BIL prepares the data they start from. BIL reads medical data for research and processing; it is not for diagnostic use.</p>
+<p><strong>Seven rules.</strong> Every part of BIL follows them, and they explain most of its behavior.</p>
+<ol>
+<li><strong>Proportional:</strong> the cost of a read follows the data it covers, not the size of the file.</li>
+<li><strong>Lazy:</strong> nothing is decoded until a region is asked for.</li>
+<li><strong>Faithful:</strong> a Fragment delivers the stored samples unaltered.</li>
+<li><strong>Composable:</strong> choosing an Image, a frame, a Window, a Level and a slice function are separate steps that stack.</li>
+<li><strong>Transparent:</strong> the original metadata is always reachable, under its native names.</li>
+<li><strong>Contained:</strong> BIL reaches the network only for a location the caller gave, and writes only where the caller named a place.</li>
+<li><strong>Uniform:</strong> every format and sensor passes through the same calls. A difference between sources is a property the caller can read, never a different call.</li>
+</ol>
+<h2 id="3-installing">3. Installing</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified. The package names are held by early releases with no reading in them yet.</p>
+</blockquote>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Language</th>
+<th>Package</th>
+<th>Install</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td><code>bil</code> on PyPI</td>
+<td><code>pip install bil</code></td>
+</tr>
+<tr>
+<td>Rust</td>
+<td><code>bil</code> on crates.io</td>
+<td><code>cargo add bil</code></td>
+</tr>
+<tr>
+<td>C and C++</td>
+<td>The <code>bil</code> shared library, with its header</td>
+<td>From the same build as the Rust crate, or a package manager</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>One shared library.</strong> The C interface covers the whole Rust library and is delivered with it as one shared library. C++ uses the C interface.</li>
+<li><strong>Libraries from the package manager.</strong> BIL takes each library it needs from an existing crate or from the installing package manager, and carries a private copy only as a last resort (section 10.5). FFmpeg, for video, always comes from conda or the system's package manager, at version 6 or later.</li>
+<li><strong>Python only for scripted drivers.</strong> Rust, C and C++ callers need no Python, unless they use drivers written in Python. Those run in the Python installed on the machine, in a helper process (chapter 20).</li>
+<li><strong>Optional plugins are separate.</strong> Plugins under a license stricter than BIL's, such as the Grok JPEG 2000 codec, and the <code>bil-extras</code> analysis functions, are separate packages. Installing one records its location in BIL's configuration.</li>
+<li><strong>Not every format at first.</strong> BIL is built in tiers. Tier 1 reads GeoTIFF and NITF. Tier 2 adds ENVI, video with KLV metadata, and SICD and SIDD. Tier 3 adds the rest, case by case.</li>
+</ul>
+<p><strong>License.</strong> The GNU Lesser General Public License, version 2.1 or later, with a static-linking exception: a program may link BIL statically, as Rust programs normally do, without the duty to let its users relink it. BIL's own packages contain only builds compatible with LGPL 2.1, with Apache-2.0 components accepted. Libraries under LGPL 3 are used only as test references or as optional plugins packaged separately.</p>
+<p><strong>What can be run today.</strong> The experiments on BIL's core, from a clone of the repository (chapter 23).</p>
+<pre><code class="language-sh">cd experiments/exp1-fused-loop
+cargo run --release --bin exp1b -- --check   # correctness, as CI runs it
+cargo run --release --bin exp1b              # with the speed tables
+</code></pre>
+<h2 id="4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p><strong>From file to array in three steps</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>You get</th>
+<th>It is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Open</td>
+<td>A <code>Source</code></td>
+<td>One file, a set of files or a stream, holding one or more Images</td>
+</tr>
+<tr>
+<td>Read</td>
+<td>A <code>Fragment</code></td>
+<td>The native pixels of a Window, unaltered, borrowed without a copy where the storage allows</td>
+</tr>
+<tr>
+<td>Process</td>
+<td>A <code>Slice</code></td>
+<td>A named 2D float32 array made from a Fragment, such as <code>color.hsv.hue</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>The vocabulary</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Concept</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source</td>
+<td>What <code>open_source</code> opens: one file, a set of files or a stream</td>
+</tr>
+<tr>
+<td>Image</td>
+<td>One 2D pixel grid in a Source, with one pixel type and named components. It may repeat along frames, as video does.</td>
+</tr>
+<tr>
+<td>Window</td>
+<td>A rectangle of an Image, in full-resolution rows and columns, with a frame and an optional <code>step</code></td>
+</tr>
+<tr>
+<td>Fragment</td>
+<td>The stored pixels of a Window</td>
+</tr>
+<tr>
+<td>Slice</td>
+<td>One named 2D float32 array for a Window</td>
+</tr>
+<tr>
+<td>Slice function</td>
+<td>What makes Slices from a Fragment: <code>color.hsv</code> makes <code>hue</code>, <code>saturation</code> and <code>value</code></td>
+</tr>
+<tr>
+<td>Level</td>
+<td>A coarser resolution. Level n holds the pixels whose row and column are multiples of 2ⁿ.</td>
+</tr>
+<tr>
+<td>Frame</td>
+<td>The nth 2D array of an Image, counted from 0</td>
+</tr>
+<tr>
+<td>Index and coordinate</td>
+<td>An index says where data is packed, such as a frame number. A coordinate says what it physically is, such as a time. Reads use indexes.</td>
+</tr>
+<tr>
+<td>Field</td>
+<td>One named item of metadata</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>How a result turned out: <code>Complete</code>, <code>Partial</code>, <code>Missing</code>, <code>NotConverged</code> or <code>Ambiguous</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Why a Source has several Images.</strong> All the components of a pixel share one grid and one sample type. Data on another grid, or of another type, is another Image: a panchromatic band beside coarser multispectral bands, the segments of a NITF file, or the luma and half-size chroma of video. A driver says how Images relate, so a slice function can use them together.</p>
+<p><strong>The five cuts.</strong> Each concept cuts the data along one dimension, and they stack.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Too much</th>
+<th>Cut with</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Spatial extent</td>
+<td>Window</td>
+<td>Take a rectangle</td>
+</tr>
+<tr>
+<td>Resolution</td>
+<td>Level</td>
+<td>Take a coarser version, filtered or decimated</td>
+</tr>
+<tr>
+<td>Bands or components</td>
+<td>Slice</td>
+<td>Take one 2D view</td>
+</tr>
+<tr>
+<td>Time</td>
+<td>Frame</td>
+<td>Take one frame</td>
+</tr>
+<tr>
+<td>Sample precision</td>
+<td>float32</td>
+<td>One type for every sensor</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Two promises to rely on</strong></p>
+<ul>
+<li><strong>A Window gives the same answer as the whole.</strong> A Slice of any Window equals the same region cut from the Slice of the whole Image, to within one unit in the last place, or the stated bound of a transcendental function. An algorithm can therefore work through an image of any size in pieces.</li>
+<li><strong>Every Slice at one Level shares one grid.</strong> Whatever slice function made it, a Slice at Level n has the same size and position as every other Slice of the Image at Level n.</li>
+</ul>
+<p><strong>Everything beyond 2D is selected, never ranged.</strong> Rows and columns are read as a range, through a Window. A frame and a component are chosen one at a time. A read across frames is therefore outside BIL: a caller reads frame by frame.</p>
+<h2 id="5-opening-a-source">5. Opening a Source</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<pre><code class="language-python">import bil
+
+source = bil.open_source(&quot;scene.ntf&quot;)
+image  = source.image(0)
+</code></pre>
+<p><strong>What opening does.</strong> It finds a driver, reads what describes the Images (size, pixel type, component names and frame count) and nothing else. No pixel is read, no metadata group is extracted beyond those descriptions, and a video's frames are not counted.</p>
+<p><strong>How the driver is chosen.</strong> In two stages, because many formats share a container: DNG, GeoTIFF and most whole-slide formats are TIFF underneath.</p>
+<ol>
+<li><strong>The container,</strong> from the file name and its first bytes.</li>
+<li><strong>The content.</strong> The drivers for that container look inside and each returns a confidence. The highest wins, and ties follow the installation's configured order, never the order plugins were loaded.</li>
+</ol>
+<p>To choose the driver yourself, call <code>open_source_with</code>. <code>describe_decoding()</code> on a Source reports the driver and codec chosen, with their versions. They are kept for the life of the Source, so an Image is never decoded partly by one codec and partly by another.</p>
+<p><strong>Options.</strong> <code>open_source</code> takes <code>OpenOptions</code>. Every option has a default, and most callers set none.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Use it to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mapping</code></td>
+<td><code>Shared</code></td>
+<td>Choose how files are mapped into memory: <code>Shared</code>, <code>Private</code> (copy-on-write, so a borrowed array can be changed) or <code>Off</code> (for network file systems where mapping is unreliable). Chapter 10.</td>
+</tr>
+<tr>
+<td><code>access_pattern</code></td>
+<td><code>RandomAccess</code></td>
+<td>Say how you will move through the Source: <code>RandomAccess</code> or <code>SequentialAccess</code>. Chapter 12.</td>
+</tr>
+<tr>
+<td><code>read_ahead_bytes</code></td>
+<td>64 MB</td>
+<td>Bound what <code>SequentialAccess</code> reads ahead</td>
+</tr>
+<tr>
+<td><code>untrusted</code></td>
+<td>False</td>
+<td>Open a file from outside with default limits, and isolate it where the installation says so. Chapter 19.</td>
+</tr>
+<tr>
+<td><code>max_image_pixels</code>, <code>max_decoded_bytes</code>, <code>max_field_group_bytes</code></td>
+<td>None</td>
+<td>Refuse an Image, a compressed block or a metadata group larger than this</td>
+</tr>
+<tr>
+<td><code>corrupt_as_missing</code></td>
+<td>False</td>
+<td>Deliver a corrupt block as missing pixels, with status <code>Partial</code>, instead of an error</td>
+</tr>
+<tr>
+<td><code>companion</code></td>
+<td>The file's name with <code>.metadata</code> added</td>
+<td>Name a companion file of metadata (chapter 16)</td>
+</tr>
+<tr>
+<td><code>trust_companion</code></td>
+<td>True, or False when <code>untrusted</code> is set</td>
+<td>Use the companion file's values</td>
+</tr>
+<tr>
+<td><code>frame_index</code></td>
+<td>None</td>
+<td>Use a saved frame index instead of scanning a video (chapter 11)</td>
+</tr>
+<tr>
+<td><code>max_held_positions</code></td>
+<td>1,000</td>
+<td>Bound the frames for which metadata is held</td>
+</tr>
+<tr>
+<td><code>max_held_group_bytes</code></td>
+<td>None</td>
+<td>Bound the bytes of extracted metadata held</td>
+</tr>
+<tr>
+<td><code>remote_timeout</code></td>
+<td>30 seconds</td>
+<td>Bound each request to a remote Source</td>
+</tr>
+<tr>
+<td><code>remote_retries</code></td>
+<td>3</td>
+<td>Retry a failed remote request</td>
+</tr>
+<tr>
+<td><code>remote_merge_gap</code></td>
+<td>1 MB</td>
+<td>Read byte ranges closer than this in one request</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-python">source = bil.open_source(
+    &quot;s3://bucket/scene.tif&quot;,
+    access_pattern=bil.AccessPattern.SequentialAccess,
+    remote_timeout=60,
+)
+</code></pre>
+<p><strong>Remote Sources</strong> are read through the same calls. BIL runs its network code on a small runtime of its own, so a caller's own asynchronous runtime is never touched. Requests are counted and merged, because over a network the number of requests costs more than the bytes, and <code>plan</code> reports both.</p>
+<p><strong>Closing.</strong> In C, <code>bil_close_source</code> closes a Source. For Rust and Python the specification does not yet say; this manual assumes a Source closes when the last reference to it goes (chapter 24, M3). A borrowed Fragment or Slice holds a reference, so the Source stays open while any of its borrowed arrays lives. Closing frees the cache, the held metadata and anything read ahead.</p>
+<h2 id="6-looking-at-an-image">6. Looking at an Image</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<pre><code class="language-python">source.image_count()            # how many Images
+for info in source.list_images():
+    print(info.row_count, info.col_count, info.pixel_type, info.component_names)
+
+image = source.image(0)
+info  = image.info()
+</code></pre>
+<p><strong><code>ImageInfo</code></strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>row_count</code>, <code>col_count</code></td>
+<td>The size, in pixels</td>
+</tr>
+<tr>
+<td><code>frame_count</code></td>
+<td>The number of frames, with whether it is <code>Known</code>, <code>AtLeast</code> or <code>Unknown</code></td>
+</tr>
+<tr>
+<td><code>pixel_type</code></td>
+<td>The sample type, the component count, the significant bits and the bit shift (chapter 10)</td>
+</tr>
+<tr>
+<td><code>representation</code></td>
+<td>What the samples are, with its parameters: intensity, color, a mosaic and its pattern, complex, spectral with its band coordinates, and so on. It decides which slice functions apply.</td>
+</tr>
+<tr>
+<td><code>component_names</code></td>
+<td>The name of each component</td>
+</tr>
+<tr>
+<td><code>relations</code></td>
+<td>Each related Image, how it relates, and for a scaled grid the reduction and where its samples sit</td>
+</tr>
+<tr>
+<td><code>storage</code></td>
+<td>How the pixels lie in the file: block size, interleave, and whether the order of the blocks is known (chapter 12)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>What else to ask an Image</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list_slice_functions()</code></td>
+<td>Which slice functions this Image can use, given its representation and the metadata available</td>
+</tr>
+<tr>
+<td><code>list_slice_names(function_name)</code></td>
+<td>The Slices a function makes for this Image, in order</td>
+</tr>
+<tr>
+<td><code>default_slice()</code></td>
+<td>The Slice BIL reads when you do not choose</td>
+</tr>
+<tr>
+<td><code>list_stored_levels()</code></td>
+<td>The reduced-resolution data the file holds</td>
+</tr>
+<tr>
+<td><code>list_level_methods()</code></td>
+<td>The downsampling methods available</td>
+</tr>
+<tr>
+<td><code>list_coordinates()</code></td>
+<td>The coordinates, such as time or wavelength, and the index each attaches to</td>
+</tr>
+<tr>
+<td><code>list_geo_models()</code></td>
+<td>The geocoding models, most rigorous first</td>
+</tr>
+<tr>
+<td><code>list_field_groups()</code></td>
+<td>The groups of metadata present, extracting none</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Relations.</strong> A Source declares how its Images relate. "Same grid" Images line up pixel for pixel, such as float range beside 16-bit intensity. A "scaled grid" Image covers the same scene at a whole-number reduction, such as video chroma at half size. A slice function that reads several Images, such as <code>video.rgb</code>, is called on the first, and is offered only when the others are present.</p>
+<h2 id="7-reading-slices">7. Reading Slices</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified. The arithmetic of <code>pixel.raw</code>, <code>complex.polar</code> and <code>color.hsv</code>, and the requests for several Slices and Levels, are prototyped (chapter 23).</p>
+</blockquote>
+<p><strong>One Slice</strong></p>
+<pre><code class="language-python">window    = bil.Window(0, 0, 2048, 2048)
+magnitude = image.read_slice(&quot;complex.polar.magnitude&quot;, window)
+
+magnitude.data          # a NumPy float32 array, over BIL's memory where it can be
+magnitude.status        # Complete, Partial or Missing
+magnitude.origin, magnitude.scale   # where it sits in the Image, in pixels
+</code></pre>
+<p><strong>Names have three parts.</strong> Family, function and Slice: <code>complex.polar.magnitude</code>, <code>color.hsv.hue</code>, <code>pixel.raw.intensity</code>. There are no short forms and no aliases, even where a function makes one Slice. A function alone is named with two parts, <code>color.hsv</code>.</p>
+<p><strong>Parameters go in a selector,</strong> never in the name.</p>
+<pre><code class="language-python">green = bil.SliceSelector(&quot;spectral.integrate.value&quot;, from_nm=500, to_nm=600)
+band  = image.read_slice(green, window)
+
+hv    = bil.SliceSelector(&quot;complex.polar.magnitude&quot;, component=&quot;hv&quot;)
+</code></pre>
+<p>A plain string is a selector with no parameters. A function that works on one component takes the component's name as <code>component</code>.</p>
+<p><strong>Names from the file.</strong> Some functions name their Slices from metadata, such as <code>spectral.bands</code>. A name the file gives is made snake_case ("Near Infrared (B8)" becomes <code>near_infrared_b8</code>), repeats are numbered from 1 (<code>red_1</code>, <code>red_2</code>), and the name as the file wrote it is kept as the Slice's <code>label</code>. A Slice can also be chosen by its position in <code>list_slice_names</code>, counted from 0.</p>
+<p><strong>Several Slices, one pass</strong></p>
+<pre><code class="language-python">hsv = image.read_slices(&quot;color.hsv&quot;, [&quot;hue&quot;, &quot;value&quot;], window)
+hue = hsv[&quot;hue&quot;]
+</code></pre>
+<p>The Fragment is decoded once, every requested Slice is made in the same pass, and work they share, here the one color conversion, is done once. A Slice you do not ask for costs nothing.</p>
+<p><strong>The general form: one request.</strong> Every read call is a short form of <code>read(request)</code>.</p>
+<pre><code class="language-python">request = bil.SliceRequest(
+    slices=[&quot;complex.polar.magnitude&quot;, &quot;complex.polar.phase&quot;, &quot;pixel.mask.valid&quot;],
+    window=window,
+    levels=[&quot;level0&quot;, &quot;level2&quot;, &quot;level4&quot;],
+    options=bil.SliceOptions(missing_value=0.0),
+    delivery=bil.Delivery.Returned,
+)
+plan   = image.plan(request)     # sizes, access class, blocks to decode, before any pixel is read
+result = image.read(request)
+result[&quot;complex.polar.phase&quot;, &quot;level2&quot;]   # indexing by Slice and Level is assumed (chapter 24, M5)
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slices</code></td>
+<td>One or more Slices, from one function or several</td>
+</tr>
+<tr>
+<td><code>window</code></td>
+<td>The Window, in full-resolution rows and columns</td>
+</tr>
+<tr>
+<td><code>levels</code></td>
+<td>One or more Levels by name: <code>level3</code>, <code>stored2</code>, <code>stored2.level1</code>. A number n means <code>leveln</code>.</td>
+</tr>
+<tr>
+<td><code>options</code></td>
+<td>The <code>SliceOptions</code> below</td>
+</tr>
+<tr>
+<td><code>delivery</code></td>
+<td><code>Returned</code> as arrays, <code>IntoBuffers</code> you own, or <code>Streamed</code> as row blocks to a callback</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong><code>SliceOptions</code></strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>level_method</code></td>
+<td><code>bilinear</code></td>
+<td>How Levels are made: <code>bilinear</code>, <code>binomial5</code>, <code>decimate</code>, or one a plugin adds (chapter 8)</td>
+</tr>
+<tr>
+<td><code>level_source</code></td>
+<td><code>Computed</code></td>
+<td><code>Stored</code> lets BIL start from a stored level it chooses</td>
+</tr>
+<tr>
+<td><code>decimate_first</code></td>
+<td>0</td>
+<td>Halvings taken by striding before the level method</td>
+</tr>
+<tr>
+<td><code>missing_value</code></td>
+<td>None</td>
+<td>A number for missing positions instead of NaN (chapter 9)</td>
+</tr>
+<tr>
+<td><code>missing_weights</code></td>
+<td><code>Equal</code></td>
+<td>How a Level weights the values below it where some are missing: <code>Equal</code> or <code>PixelCount</code></td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>None</td>
+<td>The longest a read may wait, as for the next frame of a live stream</td>
+</tr>
+<tr>
+<td><code>cancel</code></td>
+<td>None</td>
+<td>A handle another thread can trigger to stop the read</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Delivery.</strong> Choose by where the values are going.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Delivery</th>
+<th>Short form</th>
+<th>Use it when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Returned</code></td>
+<td><code>read_slice</code>, <code>read_slices</code>, <code>read_slice_levels</code></td>
+<td>The result fits in memory and you want arrays</td>
+</tr>
+<tr>
+<td><code>IntoBuffers</code></td>
+<td><code>read_slice_into</code></td>
+<td>You read many Windows of one shape: allocate once, read into the same buffers every time</td>
+</tr>
+<tr>
+<td><code>Streamed</code></td>
+<td><code>stream_slice</code></td>
+<td>You process rows as they come, so the float32 form never fills memory</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-python">import numpy as np
+
+buffer = np.empty((2048, 2048), dtype=np.float32)
+for window in windows:
+    image.read_slice_into(&quot;pixel.raw.intensity&quot;, window, buffer)   # allocates nothing
+    process(buffer)
+
+def take(block):            # block.slice_name, block.level_name, block.rows, block.values
+    accumulate(block)
+image.stream_slice(&quot;pixel.raw.intensity&quot;, window, take)
+</code></pre>
+<p>Streamed blocks of one Slice and Level arrive in row order. Blocks of different Slices and Levels may interleave.</p>
+<p><strong>Know the cost first.</strong> <code>plan_slice(slice_name, window)</code> and <code>plan(request)</code> report, before any pixel is read, the output sizes, the access class (<code>Borrowed</code>, <code>Converted</code> or <code>Decoded</code>), any stored level used, the blocks or frames to be decoded, the blocks already read ahead, and, for a remote Source, the requests and bytes. A conformance test holds every driver to its plan.</p>
+<p><strong>Where a Slice sits.</strong> Every Slice carries its <code>origin</code>, the Image position of its first value, and its <code>scale</code>, the spacing of its values, both in pixels and 64-bit. Geocoding reads them, so a Slice from any Window, Level or stored level is located without adjustment (chapter 17).</p>
+<h2 id="8-levels">8. Levels</h2>
+<blockquote>
+<p><strong>Status:</strong> Prototyped for <code>bilinear</code> and the values of <code>decimate</code>, every kind of Slice, and Levels 0 to 4 in one pass. A <code>decimate</code> that reads only the pixels kept, <code>binomial5</code>, <code>decimate_first</code> and stored levels are specified.</p>
+</blockquote>
+<p><strong>What a Level is.</strong> Level 0 is full resolution. Level n holds the Image pixels whose row and column are multiples of 2ⁿ, each made from the Level below by the level method. The grid is anchored to the Image origin, not to the Window, which is why a Window gives the same values as the whole.</p>
+<pre><code class="language-python">overview = image.read_slice(&quot;pixel.raw.intensity&quot;, window, level=3)
+pyramid  = image.read_slice_levels(&quot;pixel.raw.intensity&quot;, window, 4)   # level0 to level4, one pass
+pyramid[&quot;level2&quot;]
+</code></pre>
+<p><strong>Size.</strong> A Slice at Level n holds the grid points that fall inside the Window. A Window of rows 100 to 199 at Level 2 holds the grid rows at 100, 104, … 196: 25 rows. <code>plan_slice</code> reports the size.</p>
+<p><strong>How many Levels.</strong> <code>level_count()</code> gives the number of resolution levels the Image offers (chapter 24, M6).</p>
+<p><strong>All Levels in one pass.</strong> Each halving makes the Level above it, so every Level from 0 to n costs about a third more than Level 0 alone. Ask for them together rather than one at a time.</p>
+<p><strong>Methods</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Weights at each halving</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bilinear</code>, the default</td>
+<td>1 2 1, divided by 4, along rows then columns</td>
+<td>Most work. Cheap, and every Level in one pass. It passes half the amplitude at the highest frequency the halved grid can hold, so fine detail aliases.</td>
+</tr>
+<tr>
+<td><code>binomial5</code></td>
+<td>1 4 6 4 1, divided by 16</td>
+<td>Where aliasing matters. It passes a quarter at that frequency, for about twice the arithmetic.</td>
+</tr>
+<tr>
+<td><code>decimate</code></td>
+<td>None: the pixel at each grid point</td>
+<td>A quick look. It reads only the pixels kept, where the storage allows.</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Kinds of Slice.</strong> Averaging suits most Slices, but not all, so each Slice declares how it is reduced.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Examples</th>
+<th>Reduced by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linear</td>
+<td><code>intensity</code>, <code>power</code>, <code>red</code>, band values</td>
+<td>The level method</td>
+</tr>
+<tr>
+<td>Angle</td>
+<td><code>phase</code>, <code>hue</code></td>
+<td>The level method on unit vectors, so 359° and 1° average to 0°, not 180°</td>
+</tr>
+<tr>
+<td>Label</td>
+<td><code>class.labels.value</code>, <code>palette.lookup.index</code></td>
+<td>Keeping every second value. A label is never averaged.</td>
+</tr>
+<tr>
+<td>Mask</td>
+<td><code>pixel.mask.valid</code></td>
+<td>1.0 where the reduced value exists, else 0.0</td>
+</tr>
+<tr>
+<td>Range</td>
+<td><code>depth.sensor.range</code></td>
+<td>The least present value of the 3 × 3 block centered on each grid point, which favors the nearest surface</td>
+</tr>
+</tbody>
+</table></div>
+<p>Levels are made after the slice function, so reduced <code>power_db</code> is not the decibels of reduced <code>power</code>. Reduce <code>power</code>, which is the physical quantity, and convert afterwards if you need decibels.</p>
+<p><strong>What a coarse view costs.</strong> A value that summarizes an area must read that area. A computed Level reads every full-resolution pixel under its Window, so an averaged overview of a whole Image means processing the whole Image. Two routes cost less.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Reads</th>
+<th>Gives up</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Computed, filtered (<code>bilinear</code>, <code>binomial5</code>)</td>
+<td>Everything under the Window</td>
+<td>Nothing. The same values for every file and machine.</td>
+</tr>
+<tr>
+<td>Computed, <code>decimate</code></td>
+<td>Only the pixels kept, where the storage can be strided. Compressed blocks are skipped only once the spacing exceeds the block size.</td>
+<td>Filtering, so detail aliases</td>
+</tr>
+<tr>
+<td>Stored</td>
+<td>Reduced data the file already holds</td>
+<td>Control of the method: values depend on how the file was made</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-python">quick = image.read_slice(&quot;pixel.raw.intensity&quot;, window, level=8, level_method=&quot;decimate&quot;)
+
+# Level 8: every 32nd pixel by striding, then three bilinear halvings: about a thousandth of the work
+fast  = image.read_slice(&quot;pixel.raw.intensity&quot;, window, level=8, decimate_first=5)
+</code></pre>
+<p>A <code>decimate</code> Level n holds the same values as a Window <code>step</code> of 2ⁿ that starts on the grid. <code>step</code> remains for spacings that are not powers of two. A <code>step</code> above 1 and a Level above 0 cannot be combined; asking for both is an error.</p>
+<p><strong>Stored levels.</strong> Many files hold their own reduced data: TIFF overviews, NITF reduced-resolution sets, whole-slide pyramids, and the resolution levels of JPEG 2000. BIL names them <code>stored1</code>, <code>stored2</code> and so on, finest first, and keeps them apart from the Levels it computes.</p>
+<pre><code class="language-python">image.list_stored_levels()     # each with its name, size, scale, method and whether it is aligned
+as_stored = image.read_slice(&quot;color.rgb.green&quot;, window, level=&quot;stored2&quot;)
+one_more  = image.read_slice(&quot;color.rgb.green&quot;, window, level=&quot;stored2.level1&quot;)
+</code></pre>
+<ul>
+<li><strong>Aligned or not.</strong> A stored level is aligned when its samples sit exactly on the Level grid. Many do not: a typical TIFF overview averages pixels 2i and 2i + 1, so its samples sit half a pixel off.</li>
+<li><strong>Only an aligned one makes a Level.</strong> <code>stored2.level1</code> is an error if <code>stored2</code> is not aligned. A misaligned level can still be read as it stands, as <code>stored2</code>, and its Slices carry their true <code>origin</code> and <code>scale</code>.</li>
+<li><strong>Never used unasked.</strong> BIL substitutes stored data for computed data only when <code>level_source</code> is <code>Stored</code>, and then <code>plan</code> says which it used.</li>
+</ul>
+<p><strong>Every Slice reports its Level name,</strong> <code>level3</code>, <code>stored2</code> or <code>stored2.level1</code>, so a stored value is never mistaken for a computed one.</p>
+<h2 id="9-missing-data">9. Missing data</h2>
+<blockquote>
+<p><strong>Status:</strong> Prototyped: NaN, both weightings, <code>missing_value</code>, stored NaN, and <code>pixel.mask</code>, checked against an independent reference. Fill values and corrupt blocks are specified.</p>
+</blockquote>
+<p><strong>NaN marks a value with no data behind it.</strong> That covers pixels never recorded, pixels never imaged, pixels a format marks with a fill value, pixels a bad-pixel map marks, and, with <code>corrupt_as_missing</code>, corrupt blocks. Every Slice is NaN there, whichever function made it, and the read's status is <code>Partial</code>, or <code>Missing</code> if every pixel is.</p>
+<p><strong>In a Fragment</strong> a missing pixel is marked in the Fragment's validity mask. A Fragment is still a full array, and the stored values at missing positions mean nothing.</p>
+<p><strong>The mask as a Slice</strong></p>
+<pre><code class="language-python">read  = image.read_slices(&quot;pixel.mask&quot;, [&quot;valid&quot;, &quot;valid_fraction&quot;], window, level=2)
+read[&quot;valid&quot;]            # 1.0 where a value exists, else 0.0
+read[&quot;valid_fraction&quot;]   # at coarser Levels, the share of contributing pixels that were valid
+</code></pre>
+<p><strong>Levels leave missing values out.</strong> Each halving skips NaN and rescales the remaining weights, so a value is NaN only when every value that would contribute is missing. <code>missing_weights</code> chooses how the values below are weighted.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th><code>missing_weights</code></th>
+<th>Each present value below counts with</th>
+<th>A Level is then</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Equal</code>, the default</td>
+<td>Its filter weight alone</td>
+<td>The average of the present values of the Level below</td>
+</tr>
+<tr>
+<td><code>PixelCount</code></td>
+<td>Its filter weight times the share of present full-resolution pixels behind it</td>
+<td>The average of the present full-resolution pixels under the whole filter, as if made in one step</td>
+</tr>
+</tbody>
+</table></div>
+<p>With every pixel present, both give exactly the values of an Image with no missing data. They differ next to gaps.</p>
+<p><strong>A worked example,</strong> along one row for clarity. Nine pixels, of which the first five are missing.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Position</th>
+<th>0 to 4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+<th>8</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Level 0</td>
+<td>missing</td>
+<td>0</td>
+<td>12</td>
+<td>12</td>
+<td>12</td>
+</tr>
+</tbody>
+</table></div>
+<p>Level 1 at position 4 sees positions 3, 4 and 5, and only position 5 is present, so it is 0, with a quarter of its filter's pixels behind it. Level 1 at position 6 sees 5, 6 and 7, all present: (0 + 2 × 12 + 12) / 4 = 9. Level 2 at position 4 combines Level 1 at positions 2 (missing), 4 (weight 2) and 6 (weight 1).</p>
+<ul>
+<li><strong><code>Equal</code>:</strong> (2 × 0 + 1 × 9) / 3 = <strong>3</strong>. The value at position 4 counts double, though only one pixel lies behind it.</li>
+<li><strong><code>PixelCount</code>:</strong> (2 × ¼ × 0 + 1 × 1 × 9) / (2 × ¼ + 1) = <strong>6</strong>, which is exactly the average of the present pixels under the combined filter.</li>
+</ul>
+<p>Use <code>PixelCount</code> where a Level must not be pulled toward the few pixels that happen to survive beside a gap, as in statistics over a coarse Level. <code>Equal</code> is the common case and the default.</p>
+<p><strong>A number instead of NaN.</strong> One NaN spreads through a Fourier transform or a convolution, so <code>missing_value</code> fills missing positions with a number.</p>
+<pre><code class="language-python">filled = image.read_slice(&quot;pixel.raw.intensity&quot;, window, missing_value=0.0)
+filled.status      # still Partial
+</code></pre>
+<ul>
+<li><strong>Filled last,</strong> after the slice function and the Levels, so averaging still leaves missing values out.</li>
+<li><strong>Still reported.</strong> The status stays <code>Partial</code>. Ask for <code>pixel.mask.valid</code> in the same request to know which positions were filled.</li>
+<li><strong>Not borrowed.</strong> Filling writes new values.</li>
+</ul>
+<p><strong>No cost where nothing is missing.</strong> A driver says whether an Image can have missing pixels. Where it cannot, no checks are made at all, and the fast paths are unchanged. The experiments confirm it: an Image with no mask runs the same code as before missing data was added.</p>
+<p><strong>Stored NaN.</strong> In float data, a NaN stored at a pixel the mask calls valid is treated as missing, the same as a masked pixel. The experiments do this, and it is a proposal awaiting the author (chapter 24).</p>
+<h2 id="10-fragments-the-native-pixels">10. Fragments: the native pixels</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified. The experiments hold whole Images in memory as interleaved native samples, as a Fragment would.</p>
+</blockquote>
+<p>A Fragment is the stored pixels of a Window, unaltered: not converted, scaled or reordered. Read one when you need exact values, the native sample type, or data to pass to code that expects it.</p>
+<pre><code class="language-python">fragment = image.read_fragment(window)               # level0 by default
+fragment.pixel_type     # sample type, component count, significant bits, bit shift
+fragment.is_borrowed    # True if these are the stored bytes themselves
+fragment.data           # a NumPy array of the native type, read-only when borrowed
+coarse = image.read_fragment(window, &quot;stored2&quot;)      # a stored level, as it stands
+</code></pre>
+<p>A computed Level is not a Fragment, because it holds new values, so <code>read_fragment(window, "level2")</code> is an error.</p>
+<p><strong>Pixel types.</strong> A pixel is <code>component_count</code> samples of one <code>SampleType</code>: <code>U8</code>, <code>I8</code>, <code>U16</code>, <code>I16</code>, <code>U32</code>, <code>I32</code>, <code>U64</code>, <code>I64</code>, <code>F16</code>, <code>F32</code>, <code>F64</code>, <code>ComplexI8</code>, <code>ComplexI16</code>, <code>ComplexF32</code> or <code>ComplexF64</code>.</p>
+<ul>
+<li><strong>Complex is a sample type, not two components,</strong> so the component axis stays free for polarization channels: quad-pol SAR is 4 × <code>ComplexF32</code>.</li>
+<li><strong>Significant bits are recorded separately.</strong> A 12-bit sensor is <code>U16</code> with <code>significant_bits</code> 12.</li>
+<li><strong>Samples stay where they are stored.</strong> Where the value sits in the high bits of its word, as some hardware video decoders deliver it, <code>bit_shift</code> says how many low bits are unused. Every Slice works from the value: the stored word shifted right by <code>bit_shift</code>. Ten-bit video is 0 to 1023 in <code>pixel.raw</code>, whichever decoder made it.</li>
+<li><strong>One-bit data is unpacked</strong> to <code>U8</code> with <code>significant_bits</code> 1, so it is never borrowed.</li>
+</ul>
+<p><strong>Layout.</strong> A Fragment is a strided view, with a row, a column and a component stride in bytes. Pixel-interleaved, line-interleaved and band-sequential storage are all described this way without moving any data.</p>
+<p><strong>Borrowed, without a copy.</strong> A Fragment borrows the stored bytes when all five hold:</p>
+<ol>
+<li>The pixel data is uncompressed.</li>
+<li>The byte order matches the machine.</li>
+<li>Samples are byte-aligned, not bit-packed.</li>
+<li>The storage is memory-mapped or in memory, and the Window's rows are evenly spaced in it.</li>
+<li>Each sample starts at an address that is a multiple of its size.</li>
+</ol>
+<p>Otherwise the Fragment owns a buffer decoded once. The type is the same either way.</p>
+<ul>
+<li><strong>Read-only under <code>Shared</code> mapping.</strong> In Python a borrowed array is read-only. Open with <code>mapping=Private</code> to change it in your own memory, copy-on-write.</li>
+<li><strong>It keeps its Source open,</strong> wherever it goes.</li>
+<li><strong>Do not change a file BIL has mapped.</strong> Mapping a file another process changes or shortens is not supported, and on most systems can end the reading process. Use <code>mapping=Off</code> for files that may change and for unreliable network file systems.</li>
+</ul>
+<p><strong>Deferred Fragments.</strong> For video, reading a Fragment decodes nothing: it seeks and extracts the compressed packets from the preceding key frame to the frame asked for, and <code>is_deferred</code> is true. The frame is decoded when a Slice is made from it, or when you ask the Fragment for its pixels. A deferred Fragment is self-contained and decoded once, by its own Reader where that Reader is free, and otherwise by a decoder made for the purpose. A Window does not reduce video decoding, only the conversion to float32.</p>
+<h2 id="11-frames-time-and-coordinates">11. Frames, time and coordinates</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p><strong>A frame is an index,</strong> the nth complete 2D array of an Image, counted from 0. Time is a coordinate attached to it. Reads always take indexes; to read by time, find the index first.</p>
+<pre><code class="language-python">from datetime import datetime, timezone
+
+frame = luma.find_index(&quot;time&quot;, datetime(2026, 3, 1, 12, 0, 5, tzinfo=timezone.utc))
+slice = luma.read_slice(&quot;video.planes.luma&quot;, bil.Window(0, 0, 1080, 1920, frame=frame))
+</code></pre>
+<p><strong>Why not compute the frame from the time?</strong> Frames are dropped and some sensors vary their rate, so the time of a frame is looked up, never calculated.</p>
+<p><strong>Coordinates</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Coordinates it can carry</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Row and column</td>
+<td>Ground position, through geocoding; time, for line-scan sensors and rolling shutters</td>
+</tr>
+<tr>
+<td>Component</td>
+<td>Wavelength for spectral bands, range for the bins of a waveform, polarization</td>
+</tr>
+<tr>
+<td>Frame</td>
+<td>Time; gate range for range-gated sensors</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>list_coordinates</code>, <code>read_coordinate</code> and <code>find_index</code> work on any of them. Coordinates are 64-bit, because 32 bits cannot hold an absolute time to useful precision. A coordinate is a metadata field attached to its index, and where a dictionary item means the same thing, it is that item: the wavelength coordinate is <code>common.band_center</code>.</p>
+<p><strong>Frame count and the frame index.</strong> Some streams carry no index, so the number of frames cannot be known without reading them all.</p>
+<ul>
+<li><strong>Opening never scans.</strong> <code>count_frames()</code> may say <code>AtLeast</code> or <code>Unknown</code> at first.</li>
+<li><strong>The index is built on first need:</strong> the first call that needs a <code>Known</code> count, a time coordinate, or a jump to a distant frame. Call <code>build_frame_index()</code> to choose the moment yourself.</li>
+<li><strong>Save it.</strong> <code>write_frame_index(location)</code> saves the index, and <code>frame_index</code> in <code>OpenOptions</code> uses it next time. A saved index records the stream's size and a checksum of its start, and one that no longer matches is refused.</li>
+</ul>
+<p><strong>Live streams.</strong> A live stream's count is <code>AtLeast</code>, and its frames are numbered from the first received. All Readers see the same frames, a frame older than those still held is <code>Missing</code>, and <code>latest_frame()</code> gives the newest. Give every read a <code>timeout</code>, and a <code>cancel</code> handle if another thread may need to stop it.</p>
+<p><strong>Nested cycles.</strong> A sensor that sweeps 50 range gates once a second can declare further indexes, such as <code>sweep</code> and <code>gate</code>. They resolve to a frame number through <code>resolve_frame</code>, and a Window still carries one <code>frame</code>.</p>
+<h2 id="12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified. Access patterns and read-ahead are new in specification version 68, and their details are still open in its section 16.</p>
+</blockquote>
+<p><strong>Readers hold decoder state.</strong> A thread that reads an Image gets its own Reader, made on first use. A Reader keeps its place in a stream, so reading the next frame decodes one frame, not the whole run from a key frame.</p>
+<pre><code class="language-python">second = image.open_reader()       # a further Reader, holding its own place
+here   = image.read_slice(&quot;video.planes.luma&quot;, bil.Window(0, 0, 1080, 1920, frame=1200))
+there  = second.read_slice(&quot;video.planes.luma&quot;, bil.Window(0, 0, 1080, 1920, frame=9000))
+</code></pre>
+<p>A Reader offers every read call its Image offers. A call on the Image uses the calling thread's Reader.</p>
+<p><strong>Threads</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Object</th>
+<th>Shared between threads</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source and Image</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Reader</td>
+<td>No: one thread at a time, and it may be handed to another</td>
+</tr>
+<tr>
+<td>Fragment and Slice</td>
+<td>Yes, once delivered</td>
+</tr>
+</tbody>
+</table></div>
+<p>In Python the interpreter lock is released during every read, so a thread pool reads in parallel.</p>
+<p><strong>How far decoding runs in parallel</strong> depends on the library underneath, and each driver declares it.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th><code>concurrency</code></th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Parallel</code></td>
+<td>Readers read at once, with no lock. BIL's own Rust drivers.</td>
+</tr>
+<tr>
+<td><code>OneHandlePerThread</code></td>
+<td>Each Reader opens its own library handle, then reads in parallel</td>
+</tr>
+<tr>
+<td><code>Serial</code></td>
+<td>One call at a time in the whole process, as the HDF5 library requires. Conversion and slice functions still run in parallel.</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>plan_slice</code> reports the declaration for a read.</p>
+<p><strong>The Fragment cache.</strong> Compressed data decodes in whole blocks: a tile, a strip, a chunk or a frame. BIL keeps recently decoded blocks so that a block several reads share is decoded once: adjacent Windows over one tile, the margins BIL reads around a Window, a frame read twice.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set_cache_size(fragment_count)</code></td>
+<td>Sets how many decoded Fragments the Source keeps; 16 by default, 0 to turn the cache off</td>
+</tr>
+<tr>
+<td><code>set_cache_bytes(byte_count)</code></td>
+<td>Caps the bytes held; a quarter of physical memory by default</td>
+</tr>
+<tr>
+<td><code>describe_cache()</code></td>
+<td>The Fragments and bytes held, the reads served, and those served from blocks read ahead</td>
+</tr>
+<tr>
+<td><code>clear_cache()</code></td>
+<td>Frees every cached Fragment</td>
+</tr>
+<tr>
+<td><code>describe_held()</code></td>
+<td>Every kind of data the Source holds, with counts and bytes</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>One cache for each Source,</strong> shared by its Readers, freed when the Source closes.</li>
+<li><strong>Whichever limit is reached first applies,</strong> so a wide area frame of several gigabytes cannot exhaust memory however large the count.</li>
+<li><strong>Borrowed data is never cached:</strong> there is nothing to decode.</li>
+<li><strong>Safe to hold.</strong> A Fragment you hold stays valid after its block leaves the cache.</li>
+</ul>
+<p><strong>Access patterns.</strong> Callers move through very large Images in one of two ways, and BIL reads faster when it knows which.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th><code>AccessPattern</code></th>
+<th>You</th>
+<th>BIL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RandomAccess</code>, the default</td>
+<td>Jump from place to place, as a viewer or a target search does</td>
+<td>Reads only the blocks each read needs, keeps the cache in order of last use, and tells the operating system the access is random, so it does not read ahead either</td>
+</tr>
+<tr>
+<td><code>SequentialAccess</code></td>
+<td>Move through adjacent blocks, normally forward in the order they are stored, as processing a whole Image Window by Window does</td>
+<td>Reads and decodes the next blocks ahead of you on a background thread, merges adjacent reads, drops blocks you have passed first, and tells the operating system the access is sequential</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-python">batch = bil.open_source(&quot;mosaic.tif&quot;,
+                        access_pattern=bil.AccessPattern.SequentialAccess,
+                        read_ahead_bytes=256 * 2**20)
+image = batch.image(0)
+image.info().storage        # tiles of 512 × 512, stored row by row
+
+sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)  # one Reader only
+</code></pre>
+<p><strong>What it never changes.</strong> Values, statuses, sizes and errors are the same under either pattern. Only time and the memory held between reads differ, so choosing wrongly is never a fault, only slower.</p>
+<p><strong>How read-ahead works</strong></p>
+<ul>
+<li><strong>It follows the storage.</strong> Each driver reports how its blocks lie in the file, as a <code>Storage</code>; <code>ImageInfo.storage</code> gives its block size, interleave and whether the order is known. After each read, BIL reads the blocks that follow the last one in that order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage it is proposed to read ahead along each component your last read used. Where the order is <code>Unknown</code>, BIL reads nothing ahead and gives the operating system the hint alone.</li>
+<li><strong>It is bounded.</strong> It stops at <code>read_ahead_bytes</code> and never takes the cache past its byte ceiling. As proposed, blocks read ahead also count against the cache's count, so with the cache off nothing is read ahead; that detail is still open.</li>
+<li><strong>It decodes too.</strong> Compressed blocks read ahead are decoded into the cache, so your next read finds them ready. Uncompressed blocks are only fetched, or for mapped files the operating system is asked to bring them in.</li>
+<li><strong>It respects the driver.</strong> Under <code>Serial</code> the background thread takes the library's one lock like any call, so it reads between your calls, not beside them.</li>
+<li><strong>Errors come with the read that needs them.</strong> A block that fails while read ahead is tried again when you ask for it, and any error is reported then.</li>
+<li><strong>Passed blocks go first.</strong> When the cache is full, a block wholly before your last read goes before any other. Blocks your last read shares with the next, such as the block row under two adjacent Windows, are kept.</li>
+<li><strong>It stops</strong> when the Source closes, the Reader it reads ahead for is dropped, or a read is canceled.</li>
+<li><strong>One place for each Reader.</strong> Each Reader reads ahead from its own place. The cache is shared, so a block counts as passed only when every Reader reading ahead has passed it.</li>
+</ul>
+<p><strong>Choosing</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>You are</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Processing a whole Image in Windows, top to bottom</td>
+<td><code>SequentialAccess</code>, with Windows that follow the storage: across a row of tiles, then down</td>
+</tr>
+<tr>
+<td>Playing or processing video forward</td>
+<td><code>SequentialAccess</code></td>
+</tr>
+<tr>
+<td>A viewer, a search, or random sampling for training</td>
+<td><code>RandomAccess</code></td>
+</tr>
+<tr>
+<td>Both at once on one Source</td>
+<td>A Source with <code>RandomAccess</code>, and a Reader with <code>SequentialAccess</code> for the sweep</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Work with the storage, not against it.</strong> <code>ImageInfo.storage</code> says how the file is laid out. A file stored in strips reads fastest in Windows the full width of the Image. A tiled file reads fastest in Windows that are whole tiles, or whole rows of tiles. A band-sequential file stores each band apart, so a request for every band of a Window touches as many places in the file as there are bands.</p>
+<h2 id="13-performance">13. Performance</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified. The pass is prototyped and measured (chapter 23).</p>
+</blockquote>
+<p><strong>What BIL promises</strong></p>
+<ul>
+<li><strong>Opening reads no pixels.</strong></li>
+<li><strong>Memory between reads</strong> is the cache, what is read ahead, and held metadata, each within limits you set.</li>
+<li><strong>No call needs memory in proportion to the whole Image,</strong> unless you ask for the whole Image. Where a format makes that impossible, as with one compressed block covering a whole image, <code>plan_slice</code> says so before the read.</li>
+<li><strong>A read costs one pass over its Window.</strong> Byte swapping, unpacking, component selection, normalization, conversion to float32, every Slice and every Level asked for, all happen in one fused loop on a few rows that stay in the processor cache.</li>
+</ul>
+<p><strong>How fast.</strong> BIL aims for the least cost each function's arithmetic allows. A function that only converts should run near the speed of a memory copy, and one that needs an arctangent or a square root for every pixel near the speed of that arithmetic. The experiments measure both (chapter 23).</p>
+<p><strong>Access classes,</strong> reported by <code>plan_slice</code>.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Means</th>
+<th>Copies BIL makes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Borrowed</code></td>
+<td>The Slice is the stored float32 bytes, or a strided view of them</td>
+<td>None</td>
+</tr>
+<tr>
+<td><code>Converted</code></td>
+<td>Integer or swapped data, converted once</td>
+<td>The output only, or none when streamed</td>
+</tr>
+<tr>
+<td><code>Decoded</code></td>
+<td>Compressed data, converted as it leaves the decoder</td>
+<td>The output, beyond the decoder's own buffer</td>
+</tr>
+</tbody>
+</table></div>
+<p>A local function or a filtered Level always computes new values, so it is never <code>Borrowed</code>. A <code>decimate</code> Level of borrowable data computes nothing, so it stays <code>Borrowed</code>.</p>
+<p><strong>Advice</strong></p>
+<ul>
+<li><strong>Ask for everything at once.</strong> Several Slices and several Levels in one request cost one pass.</li>
+<li><strong>Reuse buffers.</strong> <code>read_slice_into</code> allocates nothing per call.</li>
+<li><strong>Stream large outputs.</strong> <code>stream_slice</code> hands you row blocks sized for the processor cache, so the float32 form never fills main memory.</li>
+<li><strong>Use cheap relatives.</strong> <code>power</code> avoids the square root of <code>magnitude</code>, and both avoid the arctangent of <code>phase</code> and the logarithm of <code>power_db</code>.</li>
+<li><strong>Say how you move.</strong> <code>SequentialAccess</code> for sweeps, and Windows that follow the storage.</li>
+<li><strong>Look before you read.</strong> <code>plan</code> gives the sizes, the blocks, the access class and the remote requests.</li>
+<li><strong>Threads help up to a point.</strong> Large Windows are split across threads, and gains flatten after a few cores, when memory bandwidth becomes the limit.</li>
+</ul>
+<h2 id="14-the-slice-functions">14. The slice functions</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified. <code>pixel.raw</code>, <code>complex.polar</code>, <code>color.hsv</code>, <code>pixel.mask</code>, <code>class.labels</code> and the range of <code>depth.sensor</code> are prototyped.</p>
+</blockquote>
+<p>A slice function turns the stored form of a sensor's data into the form analysis starts from. Each is defined for one representation, so an Image offers only the functions that fit it: <code>list_slice_functions()</code> says which.</p>
+<p><strong>What belongs.</strong> A function is in BIL when it undoes the storage (demosaicing, chroma, palettes, unpacking), calibrates (radiance, reflectance, backscatter, temperature), re-expresses the measurement in a standard form (color spaces, complex parts, Stokes terms), or presents it for display with statistics you pass in. Analysis, such as a vegetation index, is in the separate <code>bil-extras</code> package, under the same names. Work that needs the whole scene, such as speckle filtering or atmospheric correction, is outside BIL.</p>
+<p><strong>The families,</strong> in brief. Section 9 of the specification lists every function, Slice and parameter.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Family</th>
+<th>For</th>
+<th>Functions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pixel</code></td>
+<td>Any data</td>
+<td><code>raw</code>, <code>scaled</code>, <code>reduce</code>, <code>weighted</code>, <code>pair</code>, <code>mask</code>, <code>nearest</code>, <code>integrate</code>, <code>peak</code>, <code>stretch</code></td>
+</tr>
+<tr>
+<td><code>complex</code>, <code>sar</code>, <code>pol</code>, <code>insar</code></td>
+<td>Complex and SAR data</td>
+<td><code>complex.cartesian</code>, <code>complex.polar</code>, <code>complex.power</code>, <code>sar.calibrated</code>, <code>pol.channels</code>, <code>pol.pauli</code>, <code>pol.span</code>, <code>pol.pair</code>, <code>insar.interferogram</code></td>
+</tr>
+<tr>
+<td><code>color</code>, <code>palette</code>, <code>video</code></td>
+<td>Color stills and video</td>
+<td><code>color.rgb</code>, <code>color.hsv</code>, <code>color.ycbcr</code>, <code>color.lab</code>, <code>color.luminance</code>, <code>palette.lookup</code>, <code>video.planes</code>, <code>video.rgb</code>, <code>video.fields</code></td>
+</tr>
+<tr>
+<td><code>cfa</code>, <code>polcam</code></td>
+<td>Mosaic and polarization cameras</td>
+<td><code>cfa.mosaic</code>, <code>cfa.demosaic</code>, <code>cfa.sites</code>, <code>cfa.binned</code>, <code>polcam.angles</code>, <code>polcam.stokes</code>, <code>polcam.linear</code></td>
+</tr>
+<tr>
+<td><code>spectral</code>, <code>thermal</code></td>
+<td>Multispectral, hyperspectral, thermal</td>
+<td><code>spectral.bands</code>, <code>spectral.radiance</code>, <code>spectral.toa_reflectance</code>, <code>spectral.surface_reflectance</code>, <code>spectral.brightness_temperature</code>, <code>spectral.integrate</code>, <code>spectral.response</code>, <code>thermal.calibrated</code></td>
+</tr>
+<tr>
+<td><code>elev</code>, <code>class</code>, <code>depth</code>, <code>nuclear</code></td>
+<td>Other rasters</td>
+<td><code>elev.height</code>, <code>class.labels</code>, <code>class.members</code>, <code>depth.sensor</code>, <code>depth.corrected</code>, <code>depth.points</code>, <code>depth.waveform</code>, <code>nuclear.activity</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Pointwise and local.</strong> Most functions use one pixel. A few, marked local, read a small fixed neighborhood: demosaicing, chroma upsampling, mosaic sites, polarizer angles and interlaced fields. BIL reads the margin around your Window itself and mirrors at the Image edge by whole periods of any pattern, so you never pad a Window and the result is still the same as from the whole Image.</p>
+<p><strong>Decibels sit beside linear values,</strong> as <code>power_db</code> beside <code>power</code>, in the same function.</p>
+<p><strong>Units are stated, never named:</strong> <code>temperature</code>, not <code>temperature_k</code>.</p>
+<p><strong>Color.</strong> BIL describes color by the four properties of ITU-T H.273: <code>color_primaries</code>, <code>transfer_characteristics</code>, <code>matrix_coefficients</code> and <code>video_full_range</code>. Each comes from the file where it says, and otherwise from a stated default: for stills, BT.709 primaries with a D65 white point, the sRGB curve, the BT.601 matrix and full range; for video, BT.709 throughout and the reduced video range. <code>describe_field</code> tells you which. Embedded color profiles are exposed as fields and never applied; color management is a layer above BIL.</p>
+<p><strong>When a function is not offered.</strong> A function is offered only when every input it needs is available. <code>list_required_fields(function_name)</code> tells you what is missing, and a companion file can supply it (chapter 16).</p>
+<pre><code class="language-python">image.list_required_fields(&quot;spectral.toa_reflectance&quot;)
+# [common.sun_elevation: available, Derived; common.earth_sun_distance: available, Derived; ...]
+</code></pre>
+<p><strong>Precision.</strong> Every Slice is float32. It holds every value of <code>U8</code>, <code>I8</code>, <code>U16</code>, <code>I16</code>, <code>F16</code>, <code>F32</code> and the complex types up to <code>ComplexF32</code> exactly, 32 and 64-bit integers exactly up to 16,777,216, and <code>F64</code> to about seven digits. Functions compute in float64 for the wide types and narrow once at the end. For exact wide values, read the Fragment.</p>
+<h2 id="15-normalization-and-calibration">15. Normalization and calibration</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p>Normalization turns stored values into calibrated ones, inside a slice function, by a known function whose parameters come from the file's metadata or from you. A Fragment is never normalized.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Form</th>
+<th>For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gain_offset</code></td>
+<td>a × value + b, per component</td>
+<td>Radiance, scale and offset, black level</td>
+</tr>
+<tr>
+<td><code>polynomial2d</code></td>
+<td>A polynomial in row and column</td>
+<td>SAR scale factors that vary with range</td>
+</tr>
+<tr>
+<td><code>interpolated_grid</code></td>
+<td>A coarse grid of factors, interpolated</td>
+<td>Calibration vectors, flat fields, vignetting</td>
+</tr>
+<tr>
+<td><code>lookup_table</code></td>
+<td>Value to value</td>
+<td>Palettes, amplitude tables</td>
+</tr>
+<tr>
+<td><code>matrix</code></td>
+<td>A linear combination of components</td>
+<td>Band synthesis. Color is converted only by the color functions.</td>
+</tr>
+<tr>
+<td><code>planck</code></td>
+<td>The inverse Planck law</td>
+<td>Brightness temperature</td>
+</tr>
+<tr>
+<td><code>pixel_gain_offset</code></td>
+<td>A gain and offset for every pixel, from a calibration Image</td>
+<td>Infrared non-uniformity, flat fields, dark frames</td>
+</tr>
+<tr>
+<td><code>log10</code></td>
+<td>The base-10 logarithm; zero or less becomes missing</td>
+<td>Logarithmic data</td>
+</tr>
+<tr>
+<td><code>value_polynomial</code></td>
+<td>A polynomial in the stored value</td>
+<td>Detector linearity</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Pointwise.</strong> It uses the pixel's values, its position, its frame's coordinates and the same position in a calibration Image.</li>
+<li><strong>Parameters are fields,</strong> filled like dictionary items: yours first, then the file's, then a derivation, then a companion file.</li>
+<li><strong>Bad pixels are missing data.</strong> A bad-pixel map makes them NaN in every Slice.</li>
+</ul>
+<h2 id="16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified. Domain profiles are new in specification version 68.</p>
+</blockquote>
+<p><strong>Fields.</strong> Metadata is named fields with values. A name is a namespace, then the native name, spelled as the file or its specification spells it: <code>nitf.file_header.FTITLE</code>, <code>dicom.PatientName</code>.</p>
+<pre><code class="language-python">image.list_field_groups()                          # [&quot;nitf.image_subheader&quot;, &quot;nitf.RPC00B&quot;, ...]
+image.list_fields(&quot;nitf.image_subheader&quot;)
+title = source.read_field(&quot;nitf.file_header.FTITLE&quot;)
+title.value, title.unit, title.origin              # origin Specified
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Part of a field</th>
+<th>Says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Value</td>
+<td>Text, integer, float, boolean, date and time, bytes, a list, or a group of fields</td>
+</tr>
+<tr>
+<td>Unit</td>
+<td>Where the file or its specification states one</td>
+</tr>
+<tr>
+<td>Origin</td>
+<td><code>SelfDescribed</code> (the file names it), <code>Specified</code> (the format's specification names it), <code>Derived</code>, <code>Companion</code> or <code>Caller</code></td>
+</tr>
+<tr>
+<td>Attachment</td>
+<td>A Source, an Image, or one index, such as a frame</td>
+</tr>
+<tr>
+<td>Handling</td>
+<td><code>Ordinary</code>, <code>Marking</code> or <code>Identity</code> (chapter 18)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Names in detail</strong></p>
+<ul>
+<li><strong>Repeats carry a number from 1:</strong> <code>nitf.RPC00B[2]</code>, <code>dicom.ReferencedImageSequence[1].ReferencedSOPInstanceUID</code>.</li>
+<li><strong>Dots inside a part are escaped:</strong> <code>hdf5.calibration.band\.1</code>. Every call also takes a name as a list of parts.</li>
+<li><strong>Text is Unicode,</strong> and <code>read_field</code> still carries the stored bytes.</li>
+<li><strong>A date and time says whether its zone is known.</strong> Without one it is local time, never silently taken as UTC.</li>
+<li><strong>Nothing is hidden.</strong> A value with no definition is listed under its native code, as bytes.</li>
+</ul>
+<p><strong>More ways to read</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Gives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>read_field_at(field_name, index)</code></td>
+<td>The value at one position of the index the field attaches to, such as one frame. For a field with times of its own, such as KLV, the latest value at or before that position, with its time.</td>
+</tr>
+<tr>
+<td><code>find_fields(pattern, extract)</code></td>
+<td>The names that match, among those defined and the groups already extracted; with <code>extract</code> true, every group is extracted first</td>
+</tr>
+<tr>
+<td><code>list_markings()</code></td>
+<td>The fields flagged as markings, on a Source, an Image, a Fragment or a Slice (chapter 18)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Read when asked, then held.</strong> Opening extracts only what describes the Images. A group is extracted the first time you ask for any field in it, each value is decoded the first time it is read, and extracted groups stay with the Source until it closes or you call <code>release_metadata</code>. Values that vary by frame, such as KLV, are extracted for the frames you ask about, and held for at most <code>max_held_positions</code> frames.</p>
+<p><strong>The dictionary.</strong> BIL keeps a dictionary of essential items, in the <code>common</code> namespace, that every format offers under the same names as far as it can.</p>
+<pre><code class="language-python">source.read_field(&quot;common.collection_time&quot;)        # NITF IDATIM, the KLV time, Exif, or frame 0
+image.read_field(&quot;common.ground_sample_distance&quot;)  # provided, or derived from the geo model
+image.describe_field(&quot;common.sun_elevation&quot;)       # its origin, and the formula and inputs behind it
+</code></pre>
+<p>Each item gets its value from the first of these that works.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Order</th>
+<th>How</th>
+<th>Origin</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>You add it, with <code>add_field</code></td>
+<td><code>Caller</code></td>
+<td>A value you know better than the file</td>
+</tr>
+<tr>
+<td>1</td>
+<td><strong>Provided:</strong> a native field that is plainly the same thing, one to one, at most a change of unit</td>
+<td>As the native field</td>
+<td>NITF <code>IDATIM</code> is <code>common.collection_time</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Derived</strong> by a stated formula, the same for every format</td>
+<td><code>Derived</code></td>
+<td><code>common.sun_elevation</code> from the time and the center position</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>From a companion file</strong> beside the Source</td>
+<td><code>Companion</code></td>
+<td>A value written for a format that cannot hold it</td>
+</tr>
+</tbody>
+</table></div>
+<p>An item with no value is delivered with status <code>Missing</code>. An unknown name is an error.</p>
+<p><strong>Domain profiles.</strong> Each kind of work needs a known set of metadata, whatever sensor or format the data came from. Calibrating SAR backscatter needs the radar wavelength, the polarization and the incidence angle; turning optical counts into reflectance needs the band centers, the calibration, the sun elevation and the Earth–Sun distance. A profile names that set as dictionary items, each, as a <code>ProfileNeed</code>, <code>Required</code> or <code>Recommended</code>.</p>
+<pre><code class="language-python">bil.list_profiles()           # provenance, geolocation, optical_radiometry, thermal, sar, ...
+bil.describe_profile(&quot;sar&quot;)
+
+report = image.check_profile(&quot;sar&quot;)
+report.status                 # Complete, Partial or Missing, from the required items only
+for item in report.items:
+    print(item.name, item.need, item.status, item.origin)
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>First profiles</th>
+<th>For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provenance</code></td>
+<td>What collected the data, when, and how it was processed</td>
+</tr>
+<tr>
+<td><code>geolocation</code></td>
+<td>Where the data is, in what reference system, and how accurately</td>
+</tr>
+<tr>
+<td><code>optical_radiometry</code></td>
+<td>Radiance and reflectance from optical bands</td>
+</tr>
+<tr>
+<td><code>thermal</code></td>
+<td>Radiance and brightness temperature</td>
+</tr>
+<tr>
+<td><code>sar</code></td>
+<td>Calibrated backscatter and SAR geometry</td>
+</tr>
+<tr>
+<td><code>motion_imagery</code></td>
+<td>Video from a moving platform: rate, sensor position and pointing</td>
+</tr>
+<tr>
+<td><code>photography</code></td>
+<td>Camera stills: exposure, aperture, focal length, color</td>
+</tr>
+<tr>
+<td><code>medical</code></td>
+<td>What the data is and where it sits in the patient, never whom it is of</td>
+</tr>
+<tr>
+<td><code>depth_sensing</code></td>
+<td>Range and depth cameras: scale, intrinsics, units</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Format-free.</strong> A profile names dictionary items only, so one profile applies to every format, and each format fills the items as it can.</li>
+<li><strong>Built from each other.</strong> A profile's required or recommended list can name another profile, whose items then count with that need: <code>sar</code> requires <code>provenance</code> and <code>geolocation</code> rather than repeating their items, and <code>thermal</code> recommends <code>geolocation</code>.</li>
+<li><strong>Checked, never enforced.</strong> <code>check_profile</code> reports. It never refuses a read or holds a function back; what a function needs is its own declaration, which <code>list_required_fields</code> reports.</li>
+<li><strong>Gaps can be filled.</strong> The report names each missing item and whether it could have been derived. Supply it with <code>add_field</code> or a companion file, and check again.</li>
+<li><strong>Yours too.</strong> A layer above BIL can state its needs once as a profile, and check every Source before reading a pixel.</li>
+</ul>
+<pre><code class="language-python">bil.add_profile({
+    &quot;name&quot;: &quot;change_detection&quot;,
+    &quot;description&quot;: &quot;Two collections of one place, compared&quot;,
+    &quot;required&quot;: [&quot;provenance&quot;, &quot;geolocation&quot;, &quot;common.ground_sample_distance&quot;, &quot;common.view_elevation&quot;],
+    &quot;recommended&quot;: [&quot;common.sun_elevation&quot;],
+})
+bil.load_profiles(&quot;profiles/our_team.json&quot;)      # the same form, from a file
+luma.check_profile(&quot;motion_imagery&quot;, 1200)        # items that vary by frame, at one frame
+</code></pre>
+<p><strong>Companion files.</strong> A companion file holds metadata a file does not, beside it, named for the file with <code>.metadata</code> added: one <code>name = value</code> line for each item, in the dictionary's units.</p>
+<pre><code class="language-text">common.sun_elevation = 41.7
+common.earth_sun_distance = 0.9934
+</code></pre>
+<p><code>write_companion(fields)</code> writes one without changing the Source. For a Source opened as untrusted, a companion's values are used only when <code>trust_companion</code> is set, since a file beside an outside file comes from outside too; markings in it are always reported.</p>
+<p><strong>Adding definitions.</strong> A coded field, such as a new NITF extension or a vendor's private DICOM tags, is named by a field definition. Add them without rebuilding BIL, with <code>add_field_definitions</code> or <code>load_field_definitions</code> (chapter 20).</p>
+<p><strong>Local times.</strong> Exif records times on the camera's clock, with no zone. BIL takes such a time as local at the place of collection, and finds the zone from a stated offset first; then, only where an optional time-zone lookup plugin is installed, from the sensor position or the footprint; and otherwise leaves it marked as having no known zone. <code>describe_field</code> says which.</p>
+<h2 id="17-geocoding-and-accuracy">17. Geocoding and accuracy</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p><strong>A geo model is a chain of steps</strong> from Image pixels to a world space. Every format's model is built from the same steps, so the calls are the same for a map-projected GeoTIFF, an RPC-carrying NITF, a SAR image and a video frame.</p>
+<pre><code class="language-python">image.list_geo_models()                       # most rigorous first: [&quot;rational_polynomial&quot;, &quot;projective&quot;]
+model = image.read_geo_model(&quot;rational_polynomial&quot;, 0)
+chain = model.for_slice(overview)             # adds BIL's image_window step for this Slice
+where = chain.image_to_world([(0.0, 0.0), (511.0, 511.0)])
+back  = chain.world_to_image([(where[0].lat, where[0].lon, where[0].height)])   # fields assumed (M5)
+</code></pre>
+<p><code>for_window(window, level)</code> builds the same chain for a computed Level before any Slice is read, and <code>list_steps()</code> lists each step of a chain with its spaces and parameters.</p>
+<p><strong>Steps.</strong> <code>affine</code>, <code>projective</code>, <code>polynomial</code>, <code>rational_polynomial</code>, <code>coordinate_grid</code>, <code>tie_points</code>, <code>camera</code>, <code>pose</code>, <code>range_doppler</code>, <code>polar</code>, <code>surface</code>, <code>reference_change</code>, <code>sphere_rotation</code>, <code>external</code> and <code>image_window</code>. A step runs both ways, by iteration where it has no direct inverse.</p>
+<p><strong>Rules worth knowing</strong></p>
+<ul>
+<li><strong>BIL adds its own first step.</strong> <code>image_window</code>, from the Slice's <code>origin</code> and <code>scale</code>, covers the Window, the Level, any stored level and any <code>step</code>. Locate a pixel of any Slice without adjusting anything.</li>
+<li><strong>Whole-number positions are pixel centers.</strong></li>
+<li><strong>Image to world needs a surface.</strong> A pixel gives a line of sight, not a point. With no surface given, BIL uses the model's reference height, or zero above the ellipsoid, and says which.</li>
+<li><strong>The first surface met wins,</strong> the point the sensor saw.</li>
+<li><strong>A position is returned only when it is sound.</strong> Each carries a status: <code>Complete</code>, <code>Missing</code> (no surface there), <code>NotConverged</code> or <code>Ambiguous</code>.</li>
+<li><strong>Positions are 64-bit,</strong> never Slices.</li>
+<li><strong>Longitude wraps,</strong> so chains work across the antimeridian and over the poles.</li>
+<li><strong>Several models.</strong> An Image can carry several, listed most rigorous first and named for their main step, such as <code>rational_polynomial_1</code> and <code>rational_polynomial_2</code>. The format's own name is kept as each model's label.</li>
+</ul>
+<p><strong>Terrain</strong></p>
+<pre><code class="language-python">dted  = bil.open_terrain(&quot;dted/&quot;)                       # a file, a folder of tiles, or a remote store
+where = chain.image_to_world(points, dted)
+flat  = bil.constant_terrain(250.0)                     # meters above the ellipsoid
+</code></pre>
+<p>A <code>Terrain</code> also answers directly: <code>height_at(positions)</code> gives heights above the ellipsoid, <code>intersect(lines_of_sight)</code> where each line first meets the surface, and <code>coverage()</code> the area and post spacing it covers. <code>caller_terrain(function)</code> makes a surface from your own function, for terrain BIL does not read.</p>
+<p>Heights come out above the ellipsoid, converted from a geoid by PROJ using local grids. Voids fall back to a coarser terrain if given, then a constant height, and otherwise the position is <code>Missing</code>. Terrain tiles are read through BIL's own drivers and cached like any Fragment. No terrain is ever fetched unless you open it.</p>
+<p><strong>Extending a chain.</strong> <code>concatenate</code> adds a step or a chain to either end, such as a <code>reference_change</code> to a map projection made with <code>make_step("reference_change", target="EPSG:32611")</code>, or a correction from a registration layer above BIL.</p>
+<p><strong>Accuracy.</strong> Every position can carry a full record of how accurate it is, carried through every step of the chain and never reduced to one number until you ask.</p>
+<pre><code class="language-python">where = chain.image_to_world(points, dted, accuracy=True)
+acc   = where[0].accuracy
+acc.status                    # Complete, or Partial with the unknown steps named
+acc.covariance                # 3 × 3, east, north and up, in meters
+bil.circular_error(acc, 0.9)  # CE90, computed exactly from the covariance
+bil.linear_error(acc, 0.9)    # LE90
+bil.error_ellipse(acc, 0.9)
+
+chain.relative_accuracy(points_a, points_b)   # shared bias cancels
+chain.list_error_sources()                    # each contribution, with its kind and provenance
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Part of the record</th>
+<th>Holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>covariance</code></td>
+<td>The full covariance of the position</td>
+</tr>
+<tr>
+<td><code>contributions</code></td>
+<td>One <code>Contribution</code> for each source of error: its <code>name</code>, such as <code>rational_polynomial.error</code> or <code>surface.height</code>; its <code>kind</code>, <code>Bias</code>, <code>Random</code> or <code>Correlated</code>; its own <code>covariance</code>; and its <code>provenance</code>, <code>Stated</code>, <code>Derived</code>, <code>Given</code> or <code>Assumed</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>Complete</code> when every step has an estimate, <code>Partial</code> when some have none, <code>Missing</code> when none has</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Kinds are kept apart</strong> because they behave differently: a bias cancels between two points of one Image, a random error does not, and a correlated error mostly cancels between nearby points.</li>
+<li><strong>Unknown is never zero.</strong> A step with no estimate is named, and the record is <code>Partial</code>.</li>
+<li><strong>First order by default.</strong> <code>accuracy_method="sampled"</code> checks the result by propagating points through the chain itself, for strongly curved geometry such as grazing lines of sight.</li>
+<li><strong>Your own error too.</strong> <code>make_step</code> takes a <code>covariance</code>, so a correction you add carries its accuracy forward.</li>
+<li><strong>Written with the model.</strong> Writers write the estimates where the format has a place, and otherwise to the companion file.</li>
+</ul>
+<h2 id="18-writing-markings-and-identity">18. Writing, markings and identity</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p>BIL writes TIFF and GeoTIFF (uncompressed or Deflate, including BigTIFF), ENVI, and NumPy <code>.npy</code>, through writers of its own.</p>
+<pre><code class="language-python">out = bil.create_source(&quot;result.tif&quot;, &quot;geotiff&quot;, info)    # info: an ImageInfo
+for window in windows:
+    out.write_slice(window, image.read_slice(&quot;pixel.raw.intensity&quot;, window), &quot;intensity&quot;)
+out.close()
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list_writers()</code></td>
+<td>The formats BIL can write</td>
+</tr>
+<tr>
+<td><code>create_source(location, format_name, image_info)</code></td>
+<td>Starts a new file; takes <code>WriteOptions</code></td>
+</tr>
+<tr>
+<td><code>write_fragment(window, fragment)</code></td>
+<td>Native pixels for a Window</td>
+</tr>
+<tr>
+<td><code>write_slice(window, slice, component)</code></td>
+<td>Float32 values for a Window, into one component</td>
+</tr>
+<tr>
+<td><code>write_geo_model(model)</code></td>
+<td>A geo model other than the one written by default</td>
+</tr>
+<tr>
+<td><code>write_metadata(fields)</code></td>
+<td>Fields the format can hold</td>
+</tr>
+<tr>
+<td><code>close()</code></td>
+<td>Completes the file</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Written by Window,</strong> so a large image never has to be held whole.</li>
+<li><strong>The geo model is written without being asked,</strong> including the <code>image_window</code> step of what was written. A Slice from a coarse Level is written on its own grid and located correctly.</li>
+<li><strong>Sample types are never converted silently.</strong> Writing a type the format cannot hold is an error: ENVI holds no <code>I8</code>, <code>F16</code>, <code>ComplexI8</code> or <code>ComplexI16</code>, and <code>.npy</code> no complex integers.</li>
+<li><strong>New files only.</strong> BIL never changes a Source it opened for reading.</li>
+<li><strong>The input is recorded:</strong> the driver and codec that read it, as <code>bil.driver</code> and <code>bil.codec</code>.</li>
+<li><strong>A file BIL writes reads back</strong> with identical pixel values.</li>
+</ul>
+<p><strong>Markings and identity</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Examples</th>
+<th>When writing</th>
+<th>You can</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Marking</code></td>
+<td>Security classification, handling caveats, releasability</td>
+<td>Always written: inside the file where it has room, and to the companion file</td>
+<td>Turn it off with <code>keep_markings=False</code></td>
+</tr>
+<tr>
+<td><code>Identity</code></td>
+<td>A patient's name, identifier and date of birth</td>
+<td>Left empty</td>
+<td>Keep it with <code>keep_identity=True</code></td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Carried without being asked.</strong> Every Fragment and Slice keeps a reference to its Source's markings, and the writers write them whether or not you call <code>write_metadata</code>.</li>
+<li><strong>A missing companion is noticed.</strong> A file BIL writes records that a companion belongs to it, and reading it without one gives <code>Partial</code> and a warning.</li>
+<li><strong>Refuse rather than lose.</strong> <code>require_internal_markings=True</code> makes writing a marked Source to a format with no place for markings an error.</li>
+<li><strong>Not interpreted.</strong> BIL does not rank or combine markings; from several Sources, all are written.</li>
+<li><strong>Classification is never a dictionary item.</strong> Schemes differ between formats and nations, and a wrong mapping does harm, so markings stay in their native form.</li>
+<li><strong>The limit.</strong> BIL empties only fields its definitions flag as identity; identity can also sit in free text and in the pixels. Once an array leaves BIL as plain data, keeping its markings is your task.</li>
+</ul>
+<h2 id="19-safety-and-containment">19. Safety and containment</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p>BIL is used on closed networks and with data that must not leak, and imagery files often come from outside. Two rules and four measures follow.</p>
+<p><strong>No network unless asked.</strong> BIL connects only to read a remote Source, a stream or a remote terrain store you named. It fetches no default terrain, grids or updates, and reports nothing about its use. A reference inside a file is reported, and followed only if you allow. PROJ's grid downloading is off, and XML parsing fetches nothing.</p>
+<p><strong>No copy unless asked.</strong> BIL writes to storage only for an output file, a companion file, a saved frame index, or the mapped data of external decoding with its lock file and control channel. It creates no temporary files and no cache files: the cache, blocks read ahead and held metadata are in memory only.</p>
+<p><strong>The limit.</strong> A plugin or a scripted driver is code you chose to load, and BIL cannot hold it to these rules. <code>list_drivers</code> reports every plugin loaded, with its license.</p>
+<p><strong>For files from outside</strong></p>
+<pre><code class="language-python">scene = bil.open_source(path, untrusted=True)             # default limits, and isolation if configured
+scene = bil.open_source(path, untrusted=True, max_image_pixels=4 * 10**10)   # raise a limit
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Measure</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Limits</td>
+<td><code>max_image_pixels</code>, <code>max_decoded_bytes</code> and <code>max_field_group_bytes</code> refuse impossible sizes before any memory is taken. None are set for a trusted Source, because very large images are BIL's purpose; an untrusted Source gets defaults scaled to the file. A header claiming more uncompressed pixels than the file can hold is always rejected.</td>
+</tr>
+<tr>
+<td>Configured plugin locations</td>
+<td>External, optional and scripted plugins load only from locations you or the installation's configuration name. BIL never searches the working directory, the library path or beside the data.</td>
+</tr>
+<tr>
+<td>Isolation</td>
+<td>C and C++ drivers and codecs can run in a separate decoder process: <code>Off</code> by default, <code>Untrusted</code> for Sources opened as untrusted, or <code>Always</code>. Set once in the installation's configuration. It needs a place for mapped data, and if none is configured the open fails rather than running the driver in your process.</td>
+</tr>
+<tr>
+<td>Fuzz testing</td>
+<td>BIL's own Rust readers, parsers, the mapped driver and the companion file reader are fuzz tested as a condition of release</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>What isolation costs.</strong> An isolated read cannot borrow from the original file, passes each decoded block through shared memory, and pays a round trip between processes. It decodes only what each read needs. It protects your process; a decoder that has been taken over can still return wrong pixels.</p>
+<p><strong>Audit.</strong> <code>list_drivers()</code> gives every library and plugin with its name and version, where it came from (BIL's package, a crate, the package manager, or a plugin you installed), and its license as built, and lists a refused plugin as not loaded, with the reason. <code>describe_decoding()</code> gives the driver and codec a Source used, and every file BIL writes records them.</p>
+<h2 id="20-extending-bil">20. Extending BIL</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p><strong>Kinds of plugin.</strong> All register through one call, <code>register_plugin</code>, with a description of the plugin and its kind. <code>bil_register_driver</code>, <code>register_slice_function</code>, <code>register_level_method</code> and the scripted <code>register_driver</code> are short forms of it.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Adds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Container driver</td>
+<td>A format: opens Sources, lists Images, produces Fragments</td>
+</tr>
+<tr>
+<td>Codec</td>
+<td>Decoding of compressed blocks, for every container that uses them</td>
+</tr>
+<tr>
+<td>Stream source</td>
+<td>Frames from video files, network streams and cameras</td>
+</tr>
+<tr>
+<td>Metadata parser</td>
+<td>Named fields from embedded metadata</td>
+</tr>
+<tr>
+<td>Geocoding step</td>
+<td>A step, such as a Community Sensor Model plugin as an <code>external</code> step</td>
+</tr>
+<tr>
+<td>Storage backend</td>
+<td>Bytes from files, memory or object stores</td>
+</tr>
+<tr>
+<td>Time-zone lookup</td>
+<td>Zones from positions, for local times</td>
+</tr>
+<tr>
+<td>Level method</td>
+<td>A named downsampling method</td>
+</tr>
+<tr>
+<td>Scripted driver</td>
+<td>A format's headers and extra data, in Python, with pixels left to the core</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>What a driver provides.</strong> Recognize the format (<code>probe</code>), open it, describe its Images (<code>list_images</code>), describe how its blocks are stored (<code>describe_storage</code>), read Fragments (<code>read_fragment</code>), hold decoder state (<code>open_reader</code>), declare its <code>concurrency</code>, and expose metadata and geocoding. A driver never implements slice functions: the core makes every Slice from its Fragments, so a new driver gains every applicable function at once. Optionally it can describe its pixels for the core to read, add slice functions under its own family, add additional records, or emit float32 rows directly where that reproduces the core's result exactly.</p>
+<p><strong>A driver in C, C++ or Rust,</strong> built separately, is a shared library that calls <code>bil_register_driver</code> through the C interface, with the plugin interface version it was built against. A plugin of another major version is refused and listed as not loaded, with the reason.</p>
+<p><strong>A scripted driver.</strong> For an esoteric or evolving format, write the format-specific part in Python and leave the pixels to the compiled core.</p>
+<pre><code class="language-python">class VendorDriver(bil.ScriptedDriver):
+    name = &quot;vendor&quot;
+
+    def probe(self, location):
+        return bil.Confidence.High if location.read_bytes(0, 4) == b&quot;VNDR&quot; else bil.Confidence.NoMatch
+
+    def list_images(self, source):
+        self.header = parse_header(source.read_bytes(0, 512))
+        pixel_type = bil.PixelType(bil.SampleType.U16, 1, 12)
+        return [bil.ImageInfo(self.header.row_count, self.header.col_count, pixel_type, [&quot;intensity&quot;])]
+
+    def describe_pixels(self, source, image_index):
+        return bil.PixelLayout(offset=512, byte_order=&quot;big&quot;, interleave=bil.Interleave.Pixel)
+
+bil.register_driver(VendorDriver)
+</code></pre>
+<ul>
+<li><strong>Pixels by description.</strong> <code>describe_pixels</code> returns a <code>PixelLayout</code>: offset, byte order, interleave, row stride, blocks with their offsets, codec and validity. The core reads from it, with the zero-copy rule, Slices and Levels unchanged.</li>
+<li><strong>The slow path is reported.</strong> A script that returns pixels as an array instead is interpreted and slower, and <code>plan_slice</code> says so.</li>
+<li><strong>CPython, from the machine.</strong> Scripts run in the Python installed on the machine. Inside Python, BIL uses that interpreter. From Rust, C and C++, it runs in a BIL helper process started on first use, and each call into the script is a round trip between processes, made when a Source is opened and when additional data is read, never for pixels a layout describes.</li>
+<li><strong>Additional data.</strong> A script can expose extra records by name, such as calibration tables or per-line records, and callers read them with <code>list_auxiliary()</code> and <code>read_auxiliary(name)</code>. A script can be attached to a compiled driver for data that driver does not read.</li>
+<li><strong>Code is trusted only by choice.</strong> Scripts load only when you register them or name their folder.</li>
+</ul>
+<p><strong>A slice function</strong> gives its two-part name in a family it may use, the representations it accepts, its Slice names (listed, or a rule over the <code>ImageInfo</code>), the kind of each Slice (linear, angle, label or range), its radius, its parameters, the fields it needs, and its kernel. BIL calls the kernel for each block of rows with its inputs already in float32 and its margins read, and does everything else: reading, Levels, delivery and threads. A registered kernel runs as a call for each row block, slower than the core's compiled loop but with every other guarantee.</p>
+<p><strong>A level method</strong> gives its name, weights, radius and alignment. Its weights must be fixed and tied to the Image grid, so results stay independent of the Window.</p>
+<p><strong>Field definitions</strong> name coded fields without rebuilding BIL. Each record gives the native <code>name</code> as a list of parts, a <code>locator</code> in the format's own terms, a <code>value_type</code>, an <code>encoding</code>, a <code>unit</code>, a <code>handling</code>, and the dictionary item it <code>provides</code>, if it is plainly the same.</p>
+<pre><code class="language-json">{&quot;name&quot;: [&quot;nitf&quot;, &quot;VNDRTRE&quot;, &quot;GAIN&quot;],
+ &quot;locator&quot;: {&quot;extension&quot;: &quot;VNDRTRE&quot;, &quot;offset&quot;: 12, &quot;length&quot;: 6},
+ &quot;value_type&quot;: &quot;float&quot;, &quot;encoding&quot;: &quot;ascii_decimal&quot;, &quot;unit&quot;: &quot;dB&quot;,
+ &quot;handling&quot;: &quot;Ordinary&quot;, &quot;provides&quot;: null}
+</code></pre>
+<p><strong>Domain profiles</strong> are added with <code>add_profile</code> or <code>load_profiles</code> (chapter 16).</p>
+<p><strong>External decoding.</strong> By configuration, any supported format can be decoded in a separate process into BIL's own memory-mapped format, and read from there with every Fragment borrowed. It serves fragile or slow decoders, decoders that cannot load into your process, such as one written in Java, one decoding shared by several processes, and isolation. Your code does not change. The configuration names a folder or shared memory, and there is no default, so nothing is decoded externally until one is chosen.</p>
+<h2 id="21-errors-and-statuses">21. Errors and statuses</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p><strong>A call either delivers or fails.</strong> A call that cannot deliver returns an error and no value: a file that cannot be opened, a bad argument, a failed read, a limit exceeded, or corrupt data. In Python an error is an exception, in Rust an <code>Err</code>, and in C a status code with the message from <code>bil_last_error</code>.</p>
+<p><strong>What is delivered carries a status</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>For pixels</th>
+<th>For positions</th>
+<th>For accuracy</th>
+<th>For fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Complete</code></td>
+<td>No pixel is missing</td>
+<td>The position is sound</td>
+<td>Every step has an estimate</td>
+<td>The value was found</td>
+</tr>
+<tr>
+<td><code>Partial</code></td>
+<td>Some pixels are missing, and marked</td>
+<td>Not used</td>
+<td>Some steps have none, and are named</td>
+<td>Some items of a group could not be read</td>
+</tr>
+<tr>
+<td><code>Missing</code></td>
+<td>Every pixel is missing</td>
+<td>No surface there</td>
+<td>No step has an estimate</td>
+<td>No value at that index</td>
+</tr>
+<tr>
+<td><code>NotConverged</code></td>
+<td>Not used</td>
+<td>The inverse did not converge</td>
+<td>Not used</td>
+<td>Not used</td>
+</tr>
+<tr>
+<td><code>Ambiguous</code></td>
+<td>Not used</td>
+<td>More than one answer, as in the fold of a grid</td>
+<td>Not used</td>
+<td>Not used</td>
+</tr>
+</tbody>
+</table></div>
+<p>A profile report uses the same three statuses as accuracy, counted over its required items.</p>
+<p><strong>Common cases</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>You see</th>
+<th>Because</th>
+<th>Do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>An error naming a field</td>
+<td>The name is not defined for this Source</td>
+<td>Check <code>find_fields</code> or <code>list_fields</code></td>
+</tr>
+<tr>
+<td>A field with status <code>Missing</code></td>
+<td>It is defined but has no value here</td>
+<td>Supply it with <code>add_field</code> or a companion file, if you know it</td>
+</tr>
+<tr>
+<td>A function not offered</td>
+<td>An input it needs is missing</td>
+<td><code>list_required_fields</code> names it</td>
+</tr>
+<tr>
+<td>An error on a corrupt block</td>
+<td>Corrupt data is an error by default</td>
+<td>Open with <code>corrupt_as_missing=True</code> to get <code>Partial</code> instead</td>
+</tr>
+<tr>
+<td>An error on <code>stored2.level1</code></td>
+<td><code>stored2</code> is not aligned with the Level grid</td>
+<td>Read <code>stored2</code> as it stands, or a computed Level</td>
+</tr>
+<tr>
+<td>An error on a Level with <code>step</code> above 1</td>
+<td>They cannot be combined</td>
+<td>Use <code>decimate</code> for powers of two</td>
+</tr>
+<tr>
+<td>A frame with status <code>Missing</code> from a live stream</td>
+<td>It is older than the frames still held</td>
+<td>Read sooner, or keep up with <code>latest_frame</code></td>
+</tr>
+<tr>
+<td>A read that fails after a time</td>
+<td><code>timeout</code>, or the remote timeout and retries, ran out</td>
+<td>Raise them, or check the stream</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>A failure never becomes a crash.</strong> Failures inside BIL are caught at the interface and returned as errors. A C callback must not let an exception or a <code>longjmp</code> cross into BIL.</p>
+<h2 id="22-python-rust-and-c">22. Python, Rust and C</h2>
+<blockquote>
+<p><strong>Status:</strong> Specified.</p>
+</blockquote>
+<p>The same calls exist in every language, with each language's own conventions.</p>
+<p><strong>Python</strong></p>
+<pre><code class="language-python">import bil
+
+source = bil.open_source(&quot;scene.ntf&quot;)
+slice  = source.image(0).read_slice(&quot;complex.polar.magnitude&quot;, window)
+slice.data                          # a NumPy array over the same memory, read-only when borrowed
+</code></pre>
+<ul>
+<li><strong>No copy.</strong> Slices and Fragments are NumPy arrays over BIL's memory, including strided and borrowed ones.</li>
+<li><strong>The interpreter lock is released</strong> during every read.</li>
+<li><strong>One build for several Pythons:</strong> the package uses Python's stable interface.</li>
+</ul>
+<p><strong>Rust</strong></p>
+<pre><code class="language-rust">let source = bil::open_source(&quot;scene.ntf&quot;)?;
+let image  = source.image(0)?;
+let slice  = image.read_slice(&quot;complex.polar.magnitude&quot;, window)?;
+let values: &amp;[f32] = &amp;slice.data;   // borrowed where the source is already float32
+</code></pre>
+<ul>
+<li><strong>Threads are checked by the compiler.</strong> Sources, Images, Fragments and Slices are <code>Send</code> and <code>Sync</code>; a Reader is <code>Send</code>.</li>
+<li><strong>Static linking is allowed</strong> by the license's exception.</li>
+</ul>
+<p><strong>C</strong></p>
+<pre><code class="language-c">BilSource *source;
+BilImage  *image;
+BilSlice  *slice;
+BilStatus status = bil_open_source(&quot;scene.ntf&quot;, &amp;source);
+if (status == BIL_OK) status = bil_image(source, 0, &amp;image);
+if (status == BIL_OK) status = bil_read_slice(image, &quot;complex.polar.magnitude&quot;, &amp;window, &amp;slice);
+if (status == BIL_ERROR) {
+    char message[512];
+    bil_last_error(message, sizeof message);
+}
+/* BIL_PARTIAL: delivered, with missing pixels marked */
+const float *values; uint32_t rows, cols; ptrdiff_t row_stride;
+bil_slice_data(slice, &amp;values, &amp;rows, &amp;cols, &amp;row_stride);
+bil_free_slice(slice);
+bil_close_source(source);
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Convention</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Handles</td>
+<td>Every object is an opaque handle, read through accessors</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>Every function returns a <code>BilStatus</code>, and results come back through the last arguments</td>
+</tr>
+<tr>
+<td>Ownership</td>
+<td>What a call creates, free with the matching <code>bil_free_</code> call. A handle from another is valid while its parent is.</td>
+</tr>
+<tr>
+<td>Data</td>
+<td>An accessor gives a pointer, the size and the strides, valid until the object is freed</td>
+</tr>
+<tr>
+<td>Errors</td>
+<td><code>bil_last_error</code> gives the message for this thread's last failed call</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Names carry a prefix:</strong> <code>bil_</code> on functions, <code>Bil</code> on types, <code>BIL_</code> on enum values in upper case.</li>
+<li><strong>Strings are UTF-8,</strong> ending with a zero byte.</li>
+<li><strong>Options are structs whose first field is their size,</strong> so new options never break old callers.</li>
+</ul>
+<p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
+<h2 id="23-what-runs-today">23. What runs today</h2>
+<blockquote>
+<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer and kernels) and Prototyped (experiments 1 and 1b).</p>
+</blockquote>
+<p>Two pieces of code exist. Neither reads a file: they work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds.</p>
+<p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer and the kernels.</p>
+<ul>
+<li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code> and <code>Avx512</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. There is no NEON back end yet, so ARM processors run the scalar code, correctly but without vectors.</li>
+<li><strong><code>kernels</code>:</strong> the arithmetic of the pass. <code>halve</code> and <code>halve_row</code> make each bilinear halving; <code>halve_weighted</code>, <code>halve_row_weighted</code> and <code>halve_over</code> the halving with missing data; <code>min3_present</code> and <code>min3_row</code> the range reduction; <code>polar0</code>, <code>phase_from</code>, <code>hsv0</code> and <code>hue_from</code> the slice functions; and <code>atan2</code> and <code>cos_sin_turns</code> the transcendental functions, BIL's own, built only from correctly rounded operations.</li>
+</ul>
+<p>The kernels are <code>unsafe</code> and work on raw rows. They are BIL's internals, not its interface, and callers will never use them directly.</p>
+<p><strong>Experiment 1b</strong> (<code>experiments/exp1-fused-loop</code>) is the rolling pass of specification section 12: every Slice and every Level of a request in one pass, on a ring of three rows for each Level, written straight into the caller's buffers.</p>
+<pre><code class="language-rust">use bil_exp1::{Func, Image, LevelMethod, MissingWeights, Pass, ReadOptions, Samples, Window};
+use bil_exp1::simd::Isa;
+
+let image = Image { rows: 4096, cols: 4096, comps: 1, samples: Samples::U16(stored), valid: None };
+let window = Window { row_start: 0, col_start: 0, row_count: 2048, col_count: 2048 };
+
+let mut pass = Pass::new(&amp;image, Func::Raw, window, 4);   // plan Levels 0 to 4, once
+let mut out  = pass.outputs();                            // allocate the Slices, once
+let options  = ReadOptions {
+    level_method: LevelMethod::Bilinear,
+    missing_value: None,
+    missing_weights: MissingWeights::Equal,
+};
+pass.run(&amp;image, Isa::best(), options, &amp;mut out);          // fill them; allocates nothing
+let level2 = &amp;out[2][0];                                  // Level 2, the first Slice
+level2.at(10, 20);                                        // the value at grid row 10, column 20
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Experiment type</th>
+<th>Specification counterpart</th>
+<th>Difference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Image { rows, cols, comps, samples, valid }</code></td>
+<td>An Image's Fragment</td>
+<td>The whole Image in memory, interleaved. <code>valid</code> is the validity mask, one byte a pixel; <code>None</code> means nothing can be missing.</td>
+</tr>
+<tr>
+<td><code>Samples</code>: <code>U8</code>, <code>U16</code>, <code>F32</code>, <code>ComplexI16</code>, <code>ComplexF32</code></td>
+<td><code>SampleType</code></td>
+<td>Five of the fifteen</td>
+</tr>
+<tr>
+<td><code>Func</code>: <code>Raw</code>, <code>Polar</code>, <code>Hsv</code>, <code>Mask</code>, <code>Labels</code>, <code>Range</code></td>
+<td><code>pixel.raw</code>, <code>complex.polar</code>, <code>color.hsv</code>, <code>pixel.mask</code>, <code>class.labels</code>, <code>depth.sensor</code> (its range)</td>
+<td>Six functions, by enum rather than by name</td>
+</tr>
+<tr>
+<td><code>Window { row_start, col_start, row_count, col_count }</code></td>
+<td><code>Window</code></td>
+<td>No <code>step</code> and no <code>frame</code></td>
+</tr>
+<tr>
+<td><code>Pass::new</code>, <code>Pass::outputs</code>, <code>Pass::run</code></td>
+<td><code>plan</code>, <code>read</code> with <code>IntoBuffers</code></td>
+<td>The plan is an object the caller keeps</td>
+</tr>
+<tr>
+<td><code>ReadOptions { level_method, missing_value, missing_weights }</code></td>
+<td><code>SliceOptions</code></td>
+<td>No <code>level_source</code> or <code>decimate_first</code>; <code>LevelMethod</code> is <code>Bilinear</code> or <code>Decimate</code></td>
+</tr>
+<tr>
+<td><code>Slice { name, level, rows, cols, data }</code></td>
+<td><code>Slice</code></td>
+<td><code>rows</code> and <code>cols</code> are the Level's grid indices covered, not an <code>origin</code> and <code>scale</code></td>
+</tr>
+<tr>
+<td><code>Vec&lt;Vec&lt;Slice&gt;&gt;</code>, by Level then Slice</td>
+<td><code>read_slice_levels</code></td>
+<td>Levels 0 to <code>top</code> always, not chosen by name</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>What it shows</strong></p>
+<ul>
+<li><strong>The same bits as the whole Image.</strong> About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.</li>
+<li><strong>Missing data as the specification states it,</strong> with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.</li>
+<li><strong>Each kind of Slice</strong> reduced by its own rule, and <code>decimate</code> for every kind.</li>
+<li><strong>Speed.</strong> On the fastest instruction set, <code>pixel.raw</code> takes 1.7 times a copy into warm memory at Level 0, and <code>complex.polar</code> and <code>color.hsv</code> 1.4 to 1.7 times their own arithmetic alone. Missing data costs 1.2 to 1.8 times an unmasked read, and nothing at all where no mask exists.</li>
+</ul>
+<p><strong>Running it</strong></p>
+<pre><code class="language-sh">cd experiments/exp1-fused-loop
+cargo run --release --bin exp1b -- --check   # every correctness check, under a minute
+cargo run --release --bin exp1b              # the checks and the speed tables
+cargo run --release --bin exp1 -- --check    # experiment 1's own check
+</code></pre>
+<p>CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM. <code>RESULTS-1b.md</code> beside the code has the full results.</p>
+<p><strong>What comes next</strong> in code: the <code>binomial5</code> level method; a NEON back end, which section 12 asks for; threads by bands of rows; <code>decimate</code> reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p><strong>What specification version 68 changes in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
+<p>Writing this manual against specification version 68 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>
+<p><strong>Fixed in version 68 while writing</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Found</th>
+<th>Done</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F1</td>
+<td><code>set_cache_bytes</code> was named in section 4 and the held-data table, but missing from the cache's table of calls</td>
+<td>Added to the table</td>
+</tr>
+<tr>
+<td>F2</td>
+<td>Read-ahead was not said to work with external decoding, whose decoder owns the blocks</td>
+<td>Read-ahead asks the decoder process for the next blocks, into slots no reader has marked</td>
+</tr>
+<tr>
+<td>F3</td>
+<td>With the cache turned off, read-ahead would have had nowhere to go</td>
+<td>Stated: with the cache off, nothing is read ahead</td>
+</tr>
+<tr>
+<td>F4</td>
+<td>A profile report's items had no field names, and the profile calls belonged to no object</td>
+<td>Items have <code>name</code>, <code>need</code>, <code>status</code>, <code>origin</code> and <code>basis</code>; the profile calls are BIL's own, beside <code>list_drivers</code>, and <code>check_profile</code> is on a Source or Image</td>
+</tr>
+<tr>
+<td>F5</td>
+<td>The checking agent found that <code>ImageInfo.storage</code>, <code>describe_storage</code> and a scripted driver's <code>PixelLayout</code> described one thing three ways, and that a profile could not recommend another profile</td>
+<td>One <code>Storage</code> record, which BIL derives from a <code>PixelLayout</code> for scripted drivers; profiles named in a profile's required or recommended list, with no separate <code>includes</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Open, for the author</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Gap or inconsistency</th>
+<th>Where</th>
+<th>Proposal</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M1</td>
+<td><strong>The enum values repeat their type's name.</strong> <code>AccessPattern.SequentialAccess</code> reads twice; elsewhere values do not repeat the type (<code>LevelSource.Stored</code>, <code>MissingWeights.Equal</code>). The names follow the author's words.</td>
+<td>3.4, 4</td>
+<td><code>AccessPattern.Random</code> and <code>AccessPattern.Sequential</code>, if the author agrees</td>
+</tr>
+<tr>
+<td>M2</td>
+<td><strong>Whether an Image can have missing pixels</strong> is something "a driver states" (section 5), but <code>ImageInfo</code> has no field for it, so a caller cannot see whether the fast path applies</td>
+<td>3, 5</td>
+<td>Add <code>may_have_missing</code> to <code>ImageInfo</code></td>
+</tr>
+<tr>
+<td>M3</td>
+<td><strong>How a Source is closed</strong> is stated for C (<code>bil_close_source</code>) but not for Rust or Python. This manual says a Source closes when the last reference goes.</td>
+<td>2, 4</td>
+<td>State that, and add <code>close()</code> in Python for callers who want to free memory at a known point</td>
+</tr>
+<tr>
+<td>M4</td>
+<td><strong>The configuration</strong> names plugin locations, the decoder's place, <code>isolation</code> and the driver order, but its form and where it lives are not specified</td>
+<td>10.2, 10.3</td>
+<td>A file in a stated place, with an environment variable to point elsewhere and a call to read it, settled when Tier 2 starts</td>
+</tr>
+<tr>
+<td>M5</td>
+<td><strong>Python forms not stated:</strong> how a <code>SliceRequest</code> is built, how a returned set of Slices is indexed by Slice and Level, how a time is passed to <code>find_index</code>, and the fields of a world position</td>
+<td>3.1, 5, 13.4</td>
+<td>Constructors with keywords, indexing by <code>(slice_name, level_name)</code>, <code>datetime</code> for times, and positions with <code>lat</code>, <code>lon</code>, <code>height</code>, <code>status</code> and <code>accuracy</code>, as this manual assumes</td>
+</tr>
+<tr>
+<td>M6</td>
+<td><strong><code>level_count()</code></strong> is "how many resolution levels this Image offers", but computed Levels have no natural limit</td>
+<td>5</td>
+<td>The number of halvings until the Image is one pixel along its shorter side</td>
+</tr>
+<tr>
+<td>M7</td>
+<td><strong><code>common.units</code> and a Slice's unit.</strong> A Slice's unit is part of its definition; <code>common.units</code> gives the unit of the calibrated value per component. They can disagree for a function that converts units.</td>
+<td>5, 14.2</td>
+<td>Define <code>common.units</code> as the unit of the calibration that <code>radiometric_gain</code> and <code>radiometric_offset</code> produce, and nothing else</td>
+</tr>
+<tr>
+<td>M8</td>
+<td><strong><code>common.sample_spacing</code> beside <code>common.ground_sample_distance</code>.</strong> One is in the image plane, such as slant range, and the other on the ground, but the definitions do not yet say so</td>
+<td>14.2</td>
+<td>State it in both definitions</td>
+</tr>
+<tr>
+<td>M9</td>
+<td><strong>Access patterns on a live stream.</strong> A live stream has one position for every Reader, so neither pattern can change how it is read</td>
+<td>3.2, 4</td>
+<td>State that a live stream ignores the pattern, and <code>plan</code> reports it</td>
+</tr>
+<tr>
+<td>M10</td>
+<td><strong>Read-ahead and the count limit.</strong> As section 4 now proposes, blocks read ahead count against <code>set_cache_size</code> as well as the bytes, so with the default count of 16 a file of small tiles would read little ahead</td>
+<td>4, 16</td>
+<td>Open in section 16 with the other access pattern details; benchmarks to settle it</td>
+</tr>
+<tr>
+<td>M11</td>
+<td><strong>The four proposals of experiment 1b:</strong> one 2D average rather than rescaling after each pass; stored NaN counted as missing; <code>valid_fraction</code> weighted by the filter; and <code>valid</code> following the averaged mask beside kinds that are not averaged</td>
+<td>5</td>
+<td>As the experiment does, set out in <code>RESULTS-1b.md</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>How this list is kept.</strong> Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.</p>
+<h2 id="appendix-where-each-call-is-described">Appendix: where each call is described</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Chapter</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>open_source</code>, <code>open_source_with</code>, <code>describe_decoding</code></td>
+<td>5</td>
+</tr>
+<tr>
+<td><code>image_count</code>, <code>list_images</code>, <code>image</code>, <code>info</code></td>
+<td>6</td>
+</tr>
+<tr>
+<td><code>list_slice_functions</code>, <code>list_slice_names</code>, <code>default_slice</code></td>
+<td>6, 7</td>
+</tr>
+<tr>
+<td><code>read_slice</code>, <code>read_slices</code>, <code>read_slice_into</code>, <code>stream_slice</code>, <code>read</code>, <code>plan</code>, <code>plan_slice</code></td>
+<td>7</td>
+</tr>
+<tr>
+<td><code>list_level_methods</code>, <code>list_stored_levels</code></td>
+<td>6, 8</td>
+</tr>
+<tr>
+<td><code>read_slice_levels</code>, <code>level_count</code></td>
+<td>8</td>
+</tr>
+<tr>
+<td><code>read_fragment</code></td>
+<td>10</td>
+</tr>
+<tr>
+<td><code>count_frames</code>, <code>build_frame_index</code>, <code>write_frame_index</code>, <code>latest_frame</code>, <code>resolve_frame</code></td>
+<td>11</td>
+</tr>
+<tr>
+<td><code>list_coordinates</code>, <code>read_coordinate</code>, <code>find_index</code></td>
+<td>11</td>
+</tr>
+<tr>
+<td><code>open_reader</code>, <code>set_cache_size</code>, <code>set_cache_bytes</code>, <code>describe_cache</code>, <code>clear_cache</code>, <code>describe_held</code></td>
+<td>12</td>
+</tr>
+<tr>
+<td><code>list_required_fields</code></td>
+<td>14, 16</td>
+</tr>
+<tr>
+<td><code>list_field_groups</code>, <code>list_fields</code>, <code>read_field</code>, <code>read_field_at</code>, <code>describe_field</code>, <code>find_fields</code>, <code>add_field</code>, <code>release_metadata</code></td>
+<td>16, 21</td>
+</tr>
+<tr>
+<td><code>list_profiles</code>, <code>describe_profile</code>, <code>check_profile</code>, <code>add_profile</code>, <code>load_profiles</code></td>
+<td>16</td>
+</tr>
+<tr>
+<td><code>write_companion</code>, <code>add_field_definitions</code>, <code>load_field_definitions</code>, <code>list_markings</code></td>
+<td>16, 20</td>
+</tr>
+<tr>
+<td><code>list_geo_models</code>, <code>read_geo_model</code>, <code>for_slice</code>, <code>for_window</code>, <code>image_to_world</code>, <code>world_to_image</code>, <code>list_steps</code>, <code>concatenate</code>, <code>make_step</code></td>
+<td>17</td>
+</tr>
+<tr>
+<td><code>open_terrain</code>, <code>constant_terrain</code>, <code>caller_terrain</code>, <code>height_at</code>, <code>intersect</code>, <code>coverage</code></td>
+<td>17</td>
+</tr>
+<tr>
+<td><code>relative_accuracy</code>, <code>list_error_sources</code>, <code>circular_error</code>, <code>linear_error</code>, <code>error_ellipse</code></td>
+<td>17</td>
+</tr>
+<tr>
+<td><code>list_writers</code>, <code>create_source</code>, <code>write_fragment</code>, <code>write_slice</code>, <code>write_geo_model</code>, <code>write_metadata</code>, <code>close</code></td>
+<td>18</td>
+</tr>
+<tr>
+<td><code>list_drivers</code></td>
+<td>19</td>
+</tr>
+<tr>
+<td><code>register_plugin</code>, <code>register_driver</code>, <code>register_slice_function</code>, <code>register_level_method</code>, <code>bil_register_driver</code></td>
+<td>20</td>
+</tr>
+<tr>
+<td><code>list_auxiliary</code>, <code>read_auxiliary</code></td>
+<td>20</td>
+</tr>
+<tr>
+<td><code>bil_last_error</code> and the C conventions</td>
+<td>21, 22</td>
+</tr>
+</tbody>
+</table></div>
+      </main>
+      <footer>BIL User Manual, version 1, written beside the code against version 68 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
+    </div>
+  </div>
+</div>

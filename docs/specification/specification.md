@@ -104,7 +104,7 @@ BIL is used on closed networks and with data that must not leak. Two rules follo
 **No copy unless asked**
 
 - **Only at a place the caller named.** BIL writes to storage only for an output file, a companion file, a saved frame index, or mapped data with the lock file and control channel of its decoder process (section 10.2).
-- **No files of its own.** BIL creates no temporary files and no cache files. The Fragment cache and held metadata exist in memory only.
+- **No files of its own.** BIL creates no temporary files and no cache files. The Fragment cache, blocks read ahead and held metadata exist in memory only.
 - **One decoded copy is possible.** Mapped data is the only decoded copy BIL can leave on storage, and section 10.2 fixes how it is handled.
 
 **The limit.** A plugin or a scripted driver is code the caller chose to load, and BIL cannot hold it to these rules. `list_drivers` reports every plugin that is loaded.
@@ -336,6 +336,7 @@ A driver opens the file and produces Fragments. The core applies a slice functio
 | `representation` | What the samples are, with its parameters (section 3, above) |
 | `component_names` | The name of each component |
 | `relations` | Each related Image: its index, the relation, and for a scaled grid the reduction and the position of its samples |
+| `storage` | How the pixels lie in the file: the block size, the interleave and whether the block order is known, from the `Storage` of section 4 |
 
 ### 3.1 Indexes and coordinates
 
@@ -350,7 +351,7 @@ BIL addresses data by index and describes it by coordinate.
 
 Every coordinate attaches to one index. A coordinate is a metadata field attached to that index, seen along the whole of it (section 14).
 
-**One field, not two.** Where a dictionary item describes the same thing as a coordinate, the coordinate's field is that item. The wavelength coordinate of the component index is `common.band_center`, and the time coordinate of the frame index at frame 0 is `common.collection_time`. A driver fills one field, never two.
+**One field, not two.** Where a dictionary item describes the same thing as a coordinate, the coordinate's field is that item. The wavelength coordinate of the component index is `common.band_center`, its polarization coordinate is `common.polarization`, and the time coordinate of the frame index at frame 0 is `common.collection_time`. A driver fills one field, never two.
 
 | Index | Coordinates that can attach to it |
 | --- | --- |
@@ -446,6 +447,8 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `remote_retries` | 3 | How many times a failed remote request is tried again |
 | `remote_merge_gap` | 1 MB | Byte ranges closer than this are read in one request |
 | `trust_companion` | True, or False when `untrusted` is set | Read the companion file's values (section 14.2) |
+| `access_pattern` | `RandomAccess` | How the caller will move through the Source: `RandomAccess` or `SequentialAccess` (section 4) |
+| `read_ahead_bytes` | 64 MB | Under `SequentialAccess`, the most bytes of blocks read ahead of the caller, within the cache's limits |
 
 **`SliceOptions`**, given to any read
 
@@ -472,6 +475,7 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | What is held | Limit | Reported by |
 | --- | --- | --- |
 | Decoded Fragments | `set_cache_size`, 16 by default, and `set_cache_bytes`, a quarter of physical memory by default (section 4) | `describe_held` and `describe_cache` |
+| Blocks read ahead | `read_ahead_bytes`, and they sit in the Fragment cache, within its limits (section 4) | `describe_held` and `describe_cache` |
 | Metadata attached to an index | `max_held_positions` | `describe_held` |
 | Extracted metadata groups | `max_held_group_bytes` | `describe_held` |
 | Terrain tiles | None of their own: terrain is read through BIL's drivers, so its tiles sit in the Fragment cache of the terrain Sources | `describe_held` on those Sources |
@@ -554,7 +558,7 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 
 - **One Reader for each thread.** A thread that reads an Image gets its own Reader, made on first use. The Image itself holds nothing that changes during a read.
 - **Sequential reads are cheap.** A Reader keeps its place in the stream, so forming a Slice for the next frame decodes one frame, not the whole run from the key frame.
-- **More on request.** `open_reader` gives a caller a further Reader, for example to hold two places in one stream.
+- **More on request.** `open_reader` gives a caller a further Reader, for example to hold two places in one stream. It takes an `access_pattern`, which overrides the Source's for that Reader alone.
 - **A Reader reads like its Image.** A Reader offers every read call its Image offers, with the same arguments. A call on the Image uses the Reader of the calling thread; a call on a Reader uses that Reader.
 
 **Sharing between threads**
@@ -574,7 +578,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 - **What it saves.** Adjacent Windows that share a block, the margins BIL reads around a Window, and video frames that are read more than once.
 - **Sized by count, with a ceiling in bytes.** The caller sets how many Fragments are kept. Zero turns the cache off, and the default is 16. A second limit, `set_cache_bytes`, caps the bytes held, by default a quarter of physical memory. Whichever limit is reached first applies, so very large blocks, such as wide-area motion imagery frames, cannot exhaust memory.
 - **One cache for each Source.** Every Reader of the Source shares it, and it is freed when the Source is closed.
-- **Least recently used goes first.** When the cache is full, the Fragment that has gone longest without use is dropped.
+- **Least recently used goes first.** When the cache is full, the Fragment that has gone longest without use is dropped. Under `SequentialAccess`, blocks the reading has passed go before that (below).
 - **Memory follows the block size.** A count does not fix the memory used. `describe_cache` reports the bytes held, and `plan_slice` reports the size of the blocks a read will decode.
 - **Borrowed data is never cached.** Uncompressed data that meets the zero-copy rule has nothing to decode.
 - **Safe to hold.** A Fragment handed to a caller stays valid after its block has left the cache.
@@ -582,8 +586,38 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 | Call | Result |
 | --- | --- |
 | `set_cache_size(fragment_count)` | Sets how many decoded Fragments this Source keeps |
-| `describe_cache()` | The Fragments held, the bytes held, and how many reads the cache has served |
+| `set_cache_bytes(byte_count)` | Sets the most bytes of decoded Fragments this Source keeps |
+| `describe_cache()` | The Fragments held, the bytes held, how many reads the cache has served, and how many of those it served from blocks read ahead |
 | `clear_cache()` | Frees every cached Fragment |
+
+**Access patterns.** Callers move through very large Images in one of two ways, and BIL can read faster when it knows which. The caller says so with `access_pattern` in `OpenOptions`, or for one Reader through `open_reader`. Read-ahead is kept for each Reader, since each holds its own place.
+
+| `AccessPattern` | The caller | What BIL does |
+| --- | --- | --- |
+| `RandomAccess` | Jumps from place to place, as a viewer or a search for targets does | Reads only the blocks a read needs, keeps the cache in order of last use, and tells the operating system the access is random, so it does not read ahead either |
+| `SequentialAccess` | Moves through adjacent blocks, normally forward in the order they are stored, as processing a whole Image Window by Window does | Reads and decodes the next blocks ahead of the caller, merges adjacent byte ranges into larger reads, drops passed blocks first, and tells the operating system the access is sequential |
+
+- **A hint, never a change of result.** Values, statuses, sizes and errors are the same under either pattern. Only the time a read takes and the memory held between reads differ.
+- **The storage order comes from the driver.** Each driver reports how its blocks lie in the file as a `Storage`, through `describe_storage`. Its first three parts are also the `storage` of `ImageInfo`, known when the Source is opened. Read-ahead follows its order. Where the order is `Unknown`, BIL reads nothing ahead and gives the operating system the hint alone.
+
+| Part of a `Storage` | Content |
+| --- | --- |
+| `block_size` | Rows and columns of one block: a tile, a strip, a chunk, or the whole Image when it is not blocked |
+| `interleave` | An `Interleave`: `Pixel`, `Line` or `Band`, as in a `PixelLayout` (section 10.1) |
+| `order` | `Known` or `Unknown`, as a `StorageOrder` |
+| `blocks` | Where the order is known, the blocks in the order they lie in the file: each with its Image, stored level, frame, block row and column, the components it holds, and its byte offset and length. For video, only the frames the frame index already covers, since opening never scans (section 3.2). |
+
+- **One record for every kind of driver.** A compiled driver fills it from its format's own tables. For a scripted driver, BIL derives it from the `PixelLayout`, whose `interleave` and `blocks` already say the same things.
+- **What is read ahead.** After each read, BIL reads the blocks that follow the last block read in storage order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage, where each component's blocks lie apart, it reads ahead along each component the last read used, as proposed (section 16). It stops at `read_ahead_bytes`, and never takes the cache past its byte ceiling. As proposed, blocks read ahead also count against `set_cache_size`, so with the cache turned off nothing is read ahead; that is still open (section 16).
+- **Decoded ahead too.** Blocks read ahead are decoded on a background thread into the Fragment cache, so the caller's next read finds them ready. Uncompressed blocks, which have nothing to decode, are only fetched, or for mapped files the operating system is asked to bring them into memory.
+- **Within the driver's concurrency.** The background thread uses a Reader of its own under `Parallel` and `OneHandlePerThread`. Under `Serial` it takes the library's one lock like any other call, so it reads between the caller's calls rather than beside them.
+- **Passed blocks go first.** Under `SequentialAccess`, when the cache is full, a block that lies wholly before the last read in storage order is dropped before any other. Where several Readers of the Source read ahead, a block counts as passed only when every one of them has passed it, since the cache is shared. Blocks the last read shares with the next, such as a block row under adjacent Windows, are kept.
+- **Errors arrive with the read that needs them.** A block that fails while read ahead is not reported then. It is read again when the caller asks for it, and any error is reported by that read, as it would be under `RandomAccess`.
+- **Larger requests for remote Sources.** Under `SequentialAccess`, byte ranges read ahead are merged as `remote_merge_gap` allows, and each request still counts against `remote_timeout` and `remote_retries` (section 10.3). Read-ahead reaches only the Source being read.
+- **Reported.** `plan` reports the blocks a read will find read ahead and those it will read itself. `describe_held` and `describe_cache` report the bytes read ahead and how many reads they served.
+- **It stops when it is not wanted.** Read-ahead stops when the Source is closed, when the Reader it reads ahead for is dropped, and when a read is canceled.
+- **With external decoding.** Where a decoder process serves the Source (section 10.2), read-ahead asks it for the next blocks over the control channel, and it decodes them into free slots. A slot a reader has marked is never taken for read-ahead.
+- **Within one request it is already done.** One request reads its own blocks in storage order and streams them through the pass (section 12). The access pattern concerns what happens between requests.
 
 **Reading a Fragment.** `read_fragment(window, level)` returns the native pixels of a Window. `level` is `level0` by default, or the name of a stored level such as `stored2`, read as it stands. A computed Level is not a Fragment, because it holds new values, so naming one is an error. The Window is given in full-resolution rows and columns, as for a Slice.
 
@@ -1314,6 +1348,7 @@ A driver teaches BIL one format family by describing the Images in a Source, pro
 | Read pixels | `read_fragment` | From the full-resolution Image or one of its stored levels. Borrowed or owned, following the zero-copy rule. Marks any pixels that were never recorded. |
 | Hold decoder state | `open_reader` | One Reader for each thread that reads. The Image itself holds nothing that changes (section 4). |
 | Declare concurrency | `concurrency` | `Parallel`, `OneHandlePerThread` or `Serial`, as below |
+| Describe storage | `describe_storage` | For each Image and stored level, a `Storage`: the block size, the interleave, and the blocks with their byte ranges in file order, where that order is known. The core uses it to read ahead and to merge requests (section 4). |
 | Expose metadata | `list_field_groups`, `read_field_group` | Named fields, one group at a time and only when asked (section 14) |
 | Supply normalization parameters | `read_normalization` | The format's parameters, mapped to the functions of section 7. They become fields, filled in the order of section 14.2. |
 | Expose geocoding | `list_geo_models` | The format's geo models, as chains of the steps in section 13 |
@@ -1458,6 +1493,7 @@ pub trait Driver {
 pub trait SourceReader {
     fn list_images(&self) -> Vec<ImageInfo>;
     fn open_reader(&self, image_index: u32) -> Result<Box<dyn Reader>>;   // one for each thread; holds decoder state
+    fn describe_storage(&self, image_index: u32) -> Storage;               // block size, interleave, and blocks in file order where known
     fn list_field_groups(&self, image_index: u32) -> Vec<String>;
     fn read_field_group(&self, image_index: u32, group_name: &str) -> Result<FieldGroup>;
 }
@@ -1487,7 +1523,7 @@ Scripted drivers exist for esoteric and evolving formats, and for special additi
 | --- | --- |
 | `offset` | Where the pixel data starts |
 | `byte_order` | Big or little endian |
-| `interleave` | Pixel, line or band order |
+| `interleave` | An `Interleave`: `Pixel`, `Line` or `Band` |
 | `row_stride` | Bytes from one row to the next, for rows that carry padding or their own headers |
 | `blocks` | For tiled or striped data, the position and byte offset of each block |
 | `codec` | The codec for compressed blocks, by name |
@@ -1511,7 +1547,7 @@ class VendorDriver(bil.ScriptedDriver):
         return [bil.ImageInfo(self.header.row_count, self.header.col_count, pixel_type, ["intensity"])]
 
     def describe_pixels(self, source, image_index):
-        return bil.PixelLayout(offset=512, byte_order="big", interleave="pixel")   # compiled from here
+        return bil.PixelLayout(offset=512, byte_order="big", interleave=bil.Interleave.Pixel)   # compiled from here
 
     def read_auxiliary(self, source, name):
         return parse_calibration_table(source.read_bytes(self.header.table_offset, self.header.table_size))
@@ -1674,6 +1710,7 @@ A driver is finished when it passes one suite of tests, which is the same for ev
 | Uniformity | Code written against another driver reads this driver's Sources without change |
 | Geocoding | Each step the driver supplies passes the validation tests of section 13.8 |
 | Declared concurrency | Reads on many threads give the same values as the same reads on one, under the driver's declared `concurrency` |
+| Access patterns | Every read gives the same values and statuses under `RandomAccess` and `SequentialAccess`, and the storage order reported matches the file |
 | Deferred decoding | A deferred Fragment's native pixels equal those of the same Fragment decoded at once |
 | Status | Files built with known gaps and damage report `Partial` and `Missing` where they should, and `Complete` elsewhere |
 | Field names | Names with escaped dots and numbered repeats are listed and read back correctly |
@@ -1844,6 +1881,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 - The cost of reading a Window depends on the Window, its Level and its slice function, not on the size of the Image around it.
 - An Image of any size can be processed within a fixed memory budget, by Window or by stream.
 - Where a format's own structure prevents this, such as one compressed block covering a whole image, `plan_slice` reports the real cost before the read.
+- Blocks read ahead under `SequentialAccess` are held within `read_ahead_bytes` and the cache's limits.
 
 **The pass itself**
 
@@ -1857,6 +1895,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 8. **Cheap variants offered.** Where a Slice needs costly arithmetic, a cheaper relative is provided: `power` avoids the square root in `magnitude`, and both avoid the arctangent in `phase` and the logarithm in `power_db`.
 9. **No-copy hand-off to Python.** Slices and Fragments are exposed as NumPy arrays over the same memory, including strided and borrowed ones. Borrowed arrays are read-only. The interpreter lock is released during every read.
 10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window, and against its own arithmetic alone on data already in memory. The aim is the least cost each function's arithmetic allows: a function that only converts should run near the speed of a copy, and one that needs an arctangent or a square root for every pixel should run near the speed of that arithmetic. The figures guide the design, and no single factor applies to every function. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release. The round trip to the interpreter's helper process is benchmarked in the same way (section 10.1).
+11. **Reads follow the storage.** One request reads its blocks in the order they are stored. Between requests, `SequentialAccess` reads and decodes ahead in that order, so a caller working through an Image finds its next blocks ready, and `RandomAccess` reads nothing it was not asked for (section 4). Both are benchmarked on files stored in strips, in tiles and band by band, locally and remotely.
 
 ## 13. Geocoding
 
@@ -2313,6 +2352,73 @@ The mapping lives in the native field's definition, which names the dictionary i
 - **Loaded only when needed.** The boundary map is large, so a lookup reads it the first time a zone has to be found.
 - **Stated.** `describe_field` reports which of the four ways gave the zone, so a time taken as local because no lookup was installed is visible as such.
 
+**More first entries,** for the domain profiles below (illustrative, as above)
+
+| Item | Value | Provided by, for example | Derived from |
+| --- | --- | --- | --- |
+| `common.processing_level` | Text, as the producer names it | Product formats that state it | Not derived |
+| `common.reference_system` | The coordinate reference system of the geo model, as an EPSG code or a full description | GeoTIFF keys, NITF `ICORDS` | The geo model |
+| `common.horizontal_accuracy`, `common.vertical_accuracy` | Meters, at 90 percent | Products that state CE90 and LE90 | The accuracy record at the center of the Image (section 13.9) |
+| `common.band_width` | Nanometers, for each component | ENVI `fwhm` | The difference of each band's upper and lower edges |
+| `common.radiometric_gain`, `common.radiometric_offset` | For each component, in the units of `common.units` per stored unit | Product calibration fields | The Image's normalization parameters, where they are a linear scale (section 7) |
+| `common.units` | The unit of the calibrated value, for each component | Product formats, HDF5 and NetCDF `units` | The Image's normalization |
+| `common.solar_irradiance` | Watts per square meter per micrometer, for each component | Optical satellite products | Not derived |
+| `common.thermal_constants` | The two constants that turn radiance into brightness temperature, for each component | Thermal products | Not derived |
+| `common.polarization` | The transmit and receive polarization of each component | SAR products | Not derived |
+| `common.look_side` | `left` or `right` | SAR products | The sensor's position and velocity in the geo model, and the center position |
+| `common.sample_spacing` | The distance between samples along rows and along columns, with its unit | SAR products, DICOM `PixelSpacing` | The geo model, where it has one |
+| `common.calibration_constant` | The radar calibration constant, for each component | SAR products | Not derived |
+| `common.frame_rate` | Frames per second | Video streams | The time coordinate of the frames |
+| `common.sensor_position`, `common.sensor_attitude` | Position, and roll, pitch and yaw, for each frame | MISB KLV, camera models | The geo model's camera step |
+| `common.field_of_view` | Degrees, horizontal and vertical | MISB KLV | The geo model's camera step |
+| `common.camera_intrinsics` | Focal length, principal point and distortion, in pixels | Depth and camera formats | The geo model's camera step |
+| `common.modality` | Text | DICOM `Modality` | Not derived |
+| `common.slice_thickness` | Millimeters | DICOM `SliceThickness` | Not derived |
+| `common.image_orientation`, `common.image_position` | Direction cosines, and millimeters | DICOM `ImageOrientationPatient` and `ImagePositionPatient` | Not derived |
+| `common.depth_scale` | Meters per stored unit | Depth camera formats | Not derived |
+| `common.f_number`, `common.focal_length`, `common.sensitivity` | A ratio, millimeters, and ISO speed | Exif `FNumber`, `FocalLength` and `PhotographicSensitivity` | Not derived |
+
+**Domain profiles.** Each problem domain needs a known set of metadata, whatever sensor or format the data came from. A profile names that set.
+
+- **Dictionary items only.** A profile lists dictionary items, never native fields, so one profile applies to every format. Each format fills the items through the three ways above.
+- **Required or recommended.** Each item of a profile is, as a `ProfileNeed`, `Required`, without which the domain's work cannot be done, or `Recommended`, which improves it.
+- **Profiles build on profiles.** A profile's required or recommended list may name another profile, whose items then count as required or recommended in it. `optical_radiometry` requires `geolocation` rather than repeating its items, and `thermal` recommends it.
+- **Checked, not enforced.** `check_profile` reports what a Source holds against a profile. It never refuses a read or holds back a function. What a function itself needs remains its own declaration, above.
+- **Added by layers above.** An algorithm above BIL can state its needs once as a profile, with `add_profile`, and check any Source against it before reading a pixel.
+- **Gaps can be filled.** A missing item can be supplied by `add_field` or in a companion file, as for any dictionary item. `check_profile` names each one, with whether it could be derived and which inputs are missing.
+
+**A profile report.** `check_profile(profile_name, index)` returns a `ProfileReport`. For fields attached to an index, such as those of each frame, the caller names the index; otherwise it is left out.
+
+| Part | Content |
+| --- | --- |
+| `status` | `Complete` when every required item has a value, `Partial` when some do, and `Missing` when none does (section 3.3). Recommended items do not change it. |
+| `items` | For each item: its `name`; its `need`, `Required` or `Recommended`; its `status`; its `origin`; and its `basis`, the native field or the formula and inputs behind it, as `describe_field` gives them (section 14.1) |
+
+**First profiles** (illustrative, settled with the dictionary as drivers are built)
+
+| Profile | Required | Recommended |
+| --- | --- | --- |
+| `provenance` | `sensor_name`, `collection_time` | `platform_name`, `processing_level`, `title` |
+| `geolocation` | `footprint`, `reference_system` | `center_position`, `ground_sample_distance`, `horizontal_accuracy`, `vertical_accuracy` |
+| `optical_radiometry` | `provenance`, `geolocation`, `band_center`, `radiometric_gain`, `radiometric_offset`, `units`, `sun_elevation`, `earth_sun_distance` | `band_width`, `solar_irradiance`, `sun_azimuth`, `view_elevation`, `view_azimuth` |
+| `thermal` | `provenance`, `band_center`, `radiometric_gain`, `radiometric_offset`, `units`, `thermal_constants` | `geolocation`, `view_elevation` |
+| `sar` | `provenance`, `geolocation`, `radar_wavelength`, `polarization`, `look_side`, `incidence_angle`, `sample_spacing` | `calibration_constant`, `view_azimuth` |
+| `motion_imagery` | `provenance`, `frame_rate`, `sensor_position`, `sensor_attitude`, `field_of_view` | `geolocation` |
+| `photography` | `collection_time`, `exposure_time`, `f_number`, `focal_length` | `sensor_name`, `sensitivity`, `color_primaries`, `transfer_characteristics`, `center_position` |
+| `medical` | `modality`, `sample_spacing`, `image_orientation`, `image_position` | `slice_thickness`, `units`, `sensor_name` |
+| `depth_sensing` | `depth_scale`, `camera_intrinsics`, `units` | `collection_time`, `sensor_position`, `sensor_attitude` |
+
+Every item above is in the `common` namespace, and a profile named in a list stands for its items. Where an item is reached twice, the stronger need applies. A profile that names itself, directly or through others, is refused by `add_profile` and `load_profiles`, as proposed. A profile holds no identity field and no marking: `medical` says what the data is, never whom it is of.
+
+**The form of a profile.** Profiles are records with these parts, kept as JSON when they are in a file, as field definitions are.
+
+| Part | Meaning | Example |
+| --- | --- | --- |
+| `name` | The profile's name | `"sar"` |
+| `description` | What the domain's work is | `"Calibrated SAR backscatter and geometry"` |
+| `required` | Dictionary items, and profiles, without which the work cannot be done | `["provenance", "geolocation", "common.radar_wavelength"]` |
+| `recommended` | Dictionary items, and profiles, that improve it | `["common.calibration_constant"]` |
+
 **Left out on purpose.** Security classification is not a dictionary item. Classification schemes differ between formats and nations, and a wrong mapping does harm, so markings are always read and written in their native form.
 
 **What a function needs.** Slice functions, normalization functions and geocoding steps each declare every input they need: dictionary items and normalization parameters alike. `spectral.toa_reflectance`, for example, needs the sun elevation and the Earth–Sun distance.
@@ -2355,6 +2461,7 @@ The calls exist on a Source and on each of its Images.
 | `read_field_at(field_name, index)` | The value at one position along the index the field attaches to, such as one frame. For a field with its own times, the latest value at or before that position, with its time. |
 | `describe_field(field_name)` | The field's definition, without its value. For a dictionary item, also its origin, and the native field or the formula and inputs behind it. |
 | `list_required_fields(function_name)` | The dictionary items a function needs, with whether each is available and its origin |
+| `check_profile(profile_name, index)` | A `ProfileReport` for this Source or Image: each item with its status and origin. `index` is needed only for items attached to an index. |
 | `write_companion(fields)` | Writes a companion file for this Source, without changing the Source |
 | `list_markings()` | The fields flagged as markings. Also available on a Fragment and a Slice, for the Source they came from. |
 | `find_fields(pattern, extract)` | The names that match a pattern, among the defined names and the groups already extracted. With `extract` true, every group is extracted first. |
@@ -2362,6 +2469,15 @@ The calls exist on a Source and on each of its Images.
 | `add_field_definitions(definitions)` | Adds names, value types and units for coded fields, and any dictionary item each provides |
 | `load_field_definitions(location)` | Reads field definitions from a file in the form below |
 | `release_metadata(group_name)` | Frees a held group. It is extracted again if asked for. |
+
+Profiles belong to no one Source, so their other calls are BIL's own, beside `list_drivers`.
+
+| Call | Result |
+| --- | --- |
+| `list_profiles()` | The names of the domain profiles BIL knows, its own and those added |
+| `describe_profile(profile_name)` | A profile's description, and its required and recommended items and profiles |
+| `add_profile(profile)` | Adds a profile in the form of section 14.2, until the process ends |
+| `load_profiles(location)` | Reads profiles from a file in that form |
 
 ```python
 source = bil.open_source("scene.ntf")
@@ -2374,6 +2490,10 @@ title.value, title.origin                         # the title text, Origin.Speci
 source.read_field("common.title").value           # the same text, by its dictionary name
 
 source.add_field("caller.task_id", "T-0417")
+
+report = image.check_profile("sar")
+report.status                                     # Status.Partial
+[i.name for i in report.items if i.status != bil.Status.Complete]   # ["common.look_side"]
 ```
 
 ### 14.5 How metadata relates to the rest of BIL
@@ -2403,7 +2523,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and sixty-eight have been decided. Each lists the current proposal.
+Three points are not yet settled, and seventy have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2412,6 +2532,8 @@ Two points are not yet settled, and sixty-eight have been decided. Each lists th
 - [x] **Indexes and coordinates.** Decided: data is addressed by index and described by coordinate. Frame is an index, and time is a coordinate linked to it (section 3.1).
 - [x] **External decoding.** Decided: an optional, built-in layer in which a separate process decodes into BIL's memory-mapped format and a mapped driver reads it (section 10.2).
 - [x] **Fragment cache.** Decided: decoded blocks and video frames are kept in a cache for each Source, sized by the number of Fragments kept. Decoder state is held in a Reader for each thread (section 4).
+- [x] **Access patterns.** Decided: the caller declares `RandomAccess` or `SequentialAccess`, for a Source or for one Reader. Under `SequentialAccess`, BIL reads and decodes ahead in the storage order each driver reports, merges adjacent reads and drops passed blocks first. The pattern never changes a result (section 4).
+- [ ] **Access pattern details.** Proposed: `RandomAccess` is the default, since reading ahead wrongly costs more than not reading ahead; `read_ahead_bytes` is 64 MB; read-ahead runs forward only, in storage order; in band-sequential storage it follows each component the last read used; and blocks read ahead count against `set_cache_size` as well as the byte ceiling. Still open: whether that count is right, since a count sized for reuse can hold few small tiles; whether BIL should follow a caller moving backward; whether an `Automatic` pattern that detects sequential reads is worth its complexity, and the default size, which benchmarks will settle (section 4).
 - [x] **Video chroma.** Decided: luma and reduced chroma are two related Images. Chroma upsampling is part of the local slice functions `video.planes` and `video.rgb`, which read both, because every Slice at one Level shares one grid (sections 3, 5 and 9.3).
 - [x] **One resolution for every Slice.** Decided: the Level sets the grid. At a given Level every Slice of an Image has the same size, whichever slice function made it. Data stored at lower resolution, such as video chroma, mosaic sites, polarizer angles and video fields, is interpolated onto that grid (section 5).
 - [x] **Frame count and index.** Decided: a frame count is `Known`, `AtLeast` or `Unknown`, and the frame index is built on first need, never when a Source is opened (section 3.2).
@@ -2436,7 +2558,8 @@ Two points are not yet settled, and sixty-eight have been decided. Each lists th
 - [x] **Red team, second review.** Decided: isolation decodes on request, and a whole copy is a separate choice; Window independence and agreement between machines hold to a stated tolerance, not to the bit; markings are written inside files where they fit, a missing companion is noticed, and refusal is available but off by default; writers write the geo model, hold stated sample types and write Slices on their own grid; deferred Fragments decode themselves; the cache has a byte ceiling and untrusted Sources get limits; remote Sources run on a private runtime with counted, merged requests and timeouts; a live stream has one position and past frames are `Missing`; a static-linking exception; arithmetic never in integers; masks reduced as masks; checked frame indexes and companions not trusted blindly; a stability policy; more conformance tests; and Exif GPS time used first (R26 to R41 except R29).
 - [x] **Stored levels and the Level grid.** Decided: a stored level is used to make a Level only when it is aligned with the Level grid. A misaligned one can be read as it stands, with its true origin and scale, but never makes a Level (section 5).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
-- [ ] **Dictionary contents.** Which items the metadata dictionary holds, and the formula for each derived one. The first entries are in section 14.2, and the list is settled as drivers are built.
+- [ ] **Dictionary contents.** Which items the metadata dictionary holds, the formula for each derived one, and the items of each domain profile. The first entries and first profiles are in section 14.2, and both are settled as drivers are built.
+- [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).
 - [x] **Sensor geometry.** Decided: geocoding is a chain of steps between named coordinate spaces, covering affine, RPC, SAR and camera models, with Community Sensor Model plugins as one kind of step (section 13).
 - [x] **Geocoding validation.** Decided: BIL implements rigorous sensor models itself and tests each step against an established implementation, in both directions (section 13.8).
 - [x] **Geocoding without a clean answer.** Decided: a line of sight stops at the first surface it meets, every position carries a status, and longitude wraps (section 13.3).

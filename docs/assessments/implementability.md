@@ -1,6 +1,6 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 and 4 bring the document in step with specification version 67: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. The rest of the judgment stands as written for version 56.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 5 bring the document in step with specification version 68: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. The rest of the judgment stands as written for version 56.
 
-**What has changed between versions 56 and 67**
+**What has changed between versions 56 and 68**
 
 | Change | Where it bears |
 | --- | --- |
@@ -12,6 +12,8 @@ This document asks whether BIL, as specification version 56 describes it, can be
 | Tier 1 reads GeoTIFF and NITF with Rust readers, and 22 real NITF test files are pinned | Section 7 |
 | Speed aims to be as fast as each function's arithmetic allows, measured against a copy and against that arithmetic (version 66) | H1, section 8 |
 | `missing_weights` chooses how coarse Levels weight missing data: `Equal` or `PixelCount` (version 67) | H1 |
+| `RandomAccess` and `SequentialAccess`: read-ahead and decoding ahead in the storage order each driver reports (version 68) | Section 3, section 10 |
+| Domain profiles in the metadata dictionary, with 27 new items (version 68) | Section 3, section 10 |
 
 ## 1. Verdict
 
@@ -53,6 +55,7 @@ The difficulty ratings are judgments: Low is routine work, Medium needs care, Hi
 | The fused loop | High | Every slice function × sample type × instruction set × kind of Slice | Code size, compile time, and bitwise agreement (H1) |
 | All Levels in one pass | High | Rolling buffers, margins that grow with the Level, mirroring by pattern period at edges | Edge cases at Image borders and in the last rows |
 | Fragment cache | Medium | Sharing between Readers and threads, deferred and decoded forms | Memory use for very large blocks (pass 2, R32) |
+| Access patterns and read-ahead | Medium | A background Reader, storage order from every driver, eviction of passed blocks, operating system hints on three systems | Read-ahead competing with the caller's own threads, and errors met ahead of time reported at the right read |
 | GeoTIFF driver | Low to Medium | Mature libraries in Rust and C | Choosing between GDAL, libtiff and a Rust reader |
 | NITF driver | Medium | NITRO is mature; many extensions and odd files exist | Breadth of real-world NITF variation |
 | JPEG 2000 in NITF | High | Region and reduced-resolution decoding of very large codestreams | Speed of OpenJPEG on large untiled files (H3) |
@@ -60,6 +63,7 @@ The difficulty ratings are judgments: Low is routine work, Medium needs care, Hi
 | ENVI driver | Low | Text header and flat binary | None of note |
 | Video with KLV | Very high | Frame-accurate seeking, deferred decoding, threads, KLV timing | Seeking correctness across real streams (H4) |
 | Metadata framework | Medium | Groups, lazy decoding, names as lists, repeats, the dictionary | Hand-mapping each format to the dictionary |
+| Domain profiles | Low to Medium | Named lists of dictionary items, checked against a Source | Agreeing what each domain truly requires; the items themselves are the dictionary's work |
 | Field definitions for NITF extensions and DICOM | Medium, and large | Hundreds of definitions | Volume of work, not difficulty |
 | Geocoding: affine, projective, RPC | Low to Medium | Well understood, with GDAL as reference | Iterative inverses near the edges of validity |
 | Geocoding: SAR, camera, pose | High | Rigorous models with time-dependent geometry | Agreement to 0.01 pixel against references |
@@ -270,7 +274,7 @@ These are the backing libraries whose health matters most to the early tiers. He
 
 ## 7. What the specification must settle before coding
 
-These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 67, every one is settled.
+These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 68, every one is settled. Version 68 opens one point that blocks nothing: the details of access patterns, which benchmarks will settle.
 
 **Before Tier 1**
 
@@ -321,6 +325,26 @@ If time runs short, these cuts keep BIL's purpose and remove the most risk.
 | C interface beyond the core calls | Opening, reading, metadata and geocoding from C | Advanced calls from C, which Rust and Python keep |
 
 BIL's claim in section 1.7 rests on its combination of features, so the cuts that matter least are those that reduce breadth, and the ones to avoid are those that break the read model, window independence or geocoding.
+
+## 10. What version 68 means for the code already written
+
+The code written so far is experiment 1 and 1b and the `bil` crate's vector layer and kernels. None of it reads files, holds a cache or reads metadata, so neither addition changes a line of it. The impact falls on the layers still to be built.
+
+| Code | Access patterns | Domain profiles |
+| --- | --- | --- |
+| Kernels and the rolling pass (`crates/bil`, experiment 1b) | None. A pass already reads its rows top to bottom, which is storage order for strips and for tiles stored row by row, as section 12 rule 11 asks within one request. | None |
+| Threads by bands of rows, the next step | Read-ahead adds a background thread beside the pass's threads, so the thread count must leave room for it, and both must be measured together | None |
+| Fragment cache, still to be built | Must hold a read position for each Reader, evict passed blocks first under `SequentialAccess`, and count blocks read ahead apart from those asked for | None |
+| Reader and input layer, still to be built | A background Reader for `Parallel` and `OneHandlePerThread` drivers; merged byte ranges; `madvise`, `posix_fadvise` and Windows' sequential scan flag; errors held until the read that needs the block | None |
+| GeoTIFF reader, Tier 1 | `describe_storage` from `TileOffsets` or `StripOffsets` and `PlanarConfiguration`. The order is by byte offset, which most files keep row by row, but not all. | Items such as `reference_system` provided by GeoTIFF keys |
+| NITF reader, Tier 1 | `describe_storage` from `IMODE` (B, P, R or S), the block counts and the block mask table, which can leave blocks out | Field definitions name the items they provide, as before, now for more items |
+| JPEG 2000 in NITF | Read-ahead decodes the next tiles or precincts of one codestream, so the codec must allow a second decoder on the same stream | None |
+| Dictionary and field definitions, still to be built | None | Profiles are data over the dictionary: a JSON form, profile names resolved at load, and a report built from the item statuses that already exist |
+
+**Two consequences for the design**
+
+- **Band-sequential storage.** A pass reads every component of a row together. In band-sequential storage those lie in separate parts of the file, so storage order runs band by band while a pass runs row by row. For mapped, uncompressed data that costs nothing. For compressed band-sequential data, read-ahead must follow the blocks of every component the request uses. Section 4 of the specification now proposes that, and section 16 leaves it open with the other details of read-ahead.
+- **Measuring.** Section 12 rule 11 asks for benchmarks of both patterns on strips, tiles and band-sequential files. They need real large files, so they wait for the Tier 1 readers and for files from the author.
 
 ## Sources
 
