@@ -2,10 +2,10 @@
 //! Experiment 1b: the same arithmetic as `read_levels`, with rows streamed through every Level
 //! on a buffer of a few rows, and every Slice written straight into buffers the caller owns.
 //!
-//! Each Level above Level 0 keeps a ring of three rows, already halved along the row, from the
-//! Level before. A row of Level k is made as soon as the three rows of Level k - 1 it needs are in
-//! the ring, and it is written out at once and passed on to Level k + 1. No full-size
-//! intermediate plane is made. Where nothing can be missing, the kernels and the order of
+//! Each Level above Level 0 keeps a ring of rows, already halved along the row, from the Level
+//! before: three for `bilinear` and five for `binomial5`. A row of Level k is made as soon as the
+//! rows of Level k - 1 it needs are in the ring, and it is written out at once and passed on to
+//! Level k + 1. No full-size intermediate plane is made. Where nothing can be missing, the kernels and the order of
 //! operations are those of `read_levels`, so every value has the same bits.
 //!
 //! **Missing data.** An Image with a validity mask takes a second path, for section 5 of the
@@ -29,17 +29,13 @@
 //!   labels or range it can differ from where a reduced value exists.
 
 use super::{
-    axis_plan, convert_row, grid_len, halve, halve_over, halve_row, halve_row_weighted,
-    halve_weighted, hsv0, hue_from, keep_present, mask_planes1, mask_planes4, mask_planes5,
-    min3_present, min3_row, phase_from, polar0, present_one, reflect, weight_present, Func, Image,
-    Reduce, Samples, Slice, Window,
+    axis_plan_radius, blur5, blur5_over, blur5_row, blur5_row_weighted, blur5_weighted,
+    convert_row, grid_len, halve, halve_over, halve_row, halve_row_weighted, halve_weighted, hsv0,
+    hue_from, keep_present, mask_planes1, mask_planes4, mask_planes5, min3_present, min3_row,
+    phase_from, polar0, present_one, reflect, weight_present, Func, Image, Reduce, Samples, Slice,
+    Window,
 };
 use crate::simd::Isa;
-
-/// Rows of the Level before that each Level above Level 0 holds. A row of Level k + 1 is made
-/// the moment the last of its three source rows arrives, and its oldest source is then at most
-/// two rows back, so three are enough. Each use checks that the row it reads is the one it wants.
-const RING: usize = 3;
 
 /// The grid of a request: for each Level that makes anything, the rows and columns it outputs
 /// and the rows and columns it must compute so that the next Level can be made.
@@ -51,18 +47,20 @@ struct Plan {
 }
 
 impl Plan {
-    fn new(img: &Image, window: Window, top: u32) -> Plan {
-        let (row_out, row_need) = axis_plan(
+    fn new(img: &Image, window: Window, top: u32, radius: i64) -> Plan {
+        let (row_out, row_need) = axis_plan_radius(
             img.rows,
             window.row_start,
             window.row_start + window.row_count - 1,
             top,
+            radius,
         );
-        let (col_out, col_need) = axis_plan(
+        let (col_out, col_need) = axis_plan_radius(
             img.cols,
             window.col_start,
             window.col_start + window.col_count - 1,
             top,
+            radius,
         );
         // A Level is needed only while some Level at or above it has output, so the needed
         // Levels are a prefix, as in `read_levels`.
@@ -93,22 +91,26 @@ struct LevelState {
     next: i64,
     /// Grid length of the Level before, along rows, for mirroring at the Image edge.
     prev_rows: i64,
-    /// For each output column, the three source columns in the Level before, relative to the
-    /// first column that Level computes. Empty for Level 0.
-    gather: [Vec<usize>; 3],
+    /// For each tap of the halving, each output column's source column in the Level before,
+    /// relative to the first column that Level computes. Empty for Level 0.
+    gather: Vec<Vec<usize>>,
     /// The output columns `lo..hi` whose sources need no mirroring, and the source column of the
     /// first one's left neighbor. Their sources are read from the row itself.
     interior: (usize, usize, usize),
-    /// Rows of the Level before, halved along the row, in `RING` slots: one plane for each
-    /// carried plane. With missing data they are weighted sums, not yet divided.
+    /// Rows of the Level before, halved along the row, in one slot for each tap: one plane for
+    /// each carried plane. With missing data they are weighted sums, not yet divided. A row of
+    /// this Level is made the moment the last of its source rows arrives, and its oldest source
+    /// is then at most taps - 1 rows back, so that many slots are enough. Each use checks that
+    /// the row it reads is the one it wants.
     ring: Vec<Vec<f32>>,
     /// With missing data, the weight of each value of the current row: 0 where it is missing.
     /// Every plane of a pixel is present or missing together, so one row serves them all.
     count: Vec<f32>,
-    /// With missing data, the weights of the Level before, halved along the row, in `RING` slots.
+    /// With missing data, the weights of the Level before, halved along the row, in the same
+    /// slots.
     ring_count: Vec<f32>,
     /// Which row of the Level before each ring slot holds.
-    tags: [i64; RING],
+    tags: Vec<i64>,
     /// The current row of this Level: carried planes, then Level 0's extra planes, which every
     /// Level keeps when values are kept rather than averaged.
     row: Vec<Vec<f32>>,
@@ -124,17 +126,21 @@ impl LevelState {
 /// on the same Image shape allocates nothing.
 pub struct Pass {
     func: Func,
+    /// Taps of an averaging halving: 3 for `bilinear`, 5 for `binomial5`. Kinds that are not
+    /// averaged, and `decimate`, use the three of the 3 × 3 block.
+    taps: usize,
     rows: usize,
     cols: usize,
     masked: bool,
     plan: Plan,
     levels: Vec<LevelState>,
-    /// Gathered sources at the two ends of a row, where the Image edge mirrors them.
-    edge: [Vec<f32>; 3],
+    /// Gathered sources at the two ends of a row, where the Image edge mirrors them, one row for
+    /// each tap.
+    edge: Vec<Vec<f32>>,
     /// The native samples of one row, converted to f32 component rows.
     inputs: Vec<Vec<f32>>,
     /// Gathered weights at the two ends of a row, with missing data.
-    edge_count: [Vec<f32>; 3],
+    edge_count: Vec<Vec<f32>>,
 }
 
 /// How a Level weights the values below it where some are missing (section 5 of the
@@ -155,6 +161,9 @@ pub enum LevelMethod {
     /// Weights 1 2 1 at each halving, for every kind of Slice that is averaged.
     #[default]
     Bilinear,
+    /// Weights 1 4 6 4 1 at each halving, radius 2, for every kind of Slice that is averaged.
+    /// Labels and range keep their own reductions.
+    Binomial5,
     /// The value at each point of the reduced grid, for every kind of Slice.
     Decimate,
 }
@@ -168,11 +177,40 @@ pub struct ReadOptions {
     pub missing_weights: MissingWeights,
 }
 
+impl LevelMethod {
+    /// Taps of each halving this method makes for `func`: five for `binomial5` where the Slices
+    /// are averaged, and otherwise the three of the 3 × 3 block that `bilinear`, range and
+    /// keeping use.
+    pub(crate) fn taps(self, func: Func) -> usize {
+        match (self, func.reduce()) {
+            (LevelMethod::Binomial5, Reduce::Average) => 5,
+            _ => 3,
+        }
+    }
+}
+
 impl Pass {
     /// Plans a read of `func` for `window` at Levels 0 to `top`, as `read_levels` makes it, for
-    /// Images of `img`'s shape, with or without a validity mask as `img` has.
+    /// Images of `img`'s shape, with or without a validity mask as `img` has, for any level
+    /// method of three taps: `bilinear`, `decimate`, and `binomial5` on kinds that are not
+    /// averaged.
     pub fn new(img: &Image, func: Func, window: Window, top: u32) -> Pass {
-        let plan = Plan::new(img, window, top);
+        Pass::for_method(img, func, window, top, LevelMethod::Bilinear)
+    }
+
+    /// As `new`, for a level method. `binomial5` reaches two grid points to each side, so its
+    /// margins are wider and each Level holds five rows; a read is planned for its method, as
+    /// `plan` is given the whole request.
+    pub fn for_method(
+        img: &Image,
+        func: Func,
+        window: Window,
+        top: u32,
+        method: LevelMethod,
+    ) -> Pass {
+        let taps = method.taps(func);
+        let radius = (taps / 2) as i64;
+        let plan = Plan::new(img, window, top, radius);
         let masked = img.valid.is_some();
         let (carried, extra) = func.level0_planes();
         let levels: Vec<LevelState> = (0..plan.levels())
@@ -180,23 +218,28 @@ impl Pass {
                 let cols = plan.col_need[k];
                 let w = (cols.1 - cols.0 + 1) as usize;
                 let gather = if k == 0 {
-                    [Vec::new(), Vec::new(), Vec::new()]
+                    vec![Vec::new(); taps]
                 } else {
                     let jc = grid_len(img.cols, k as u32 - 1);
                     let first = plan.col_need[k - 1].0;
-                    let idx = |i: i64| (reflect(i, jc) - first) as usize;
-                    [
-                        (cols.0..=cols.1).map(|j| idx(2 * j - 1)).collect(),
-                        (cols.0..=cols.1)
-                            .map(|j| (2 * j - first) as usize)
-                            .collect(),
-                        (cols.0..=cols.1).map(|j| idx(2 * j + 1)).collect(),
-                    ]
+                    // The center source is always on the grid; the others are mirrored at the
+                    // Image edge.
+                    (0..taps as i64)
+                        .map(|t| {
+                            (cols.0..=cols.1)
+                                .map(|j| {
+                                    let i = 2 * j + t - radius;
+                                    let i = if t == radius { i } else { reflect(i, jc) };
+                                    (i - first) as usize
+                                })
+                                .collect()
+                        })
+                        .collect()
                 };
                 let interior = interior_of(&gather);
                 let ring_planes = if k == 0 { 0 } else { carried };
                 let count_len = if masked { w } else { 0 };
-                let ring_count_len = if masked && k > 0 { RING * w } else { 0 };
+                let ring_count_len = if masked && k > 0 { taps * w } else { 0 };
                 LevelState {
                     cols,
                     interior,
@@ -208,10 +251,10 @@ impl Pass {
                         grid_len(img.rows, k as u32 - 1)
                     },
                     gather,
-                    ring: vec![vec![0f32; RING * w]; ring_planes],
+                    ring: vec![vec![0f32; taps * w]; ring_planes],
                     count: vec![0f32; count_len],
                     ring_count: vec![0f32; ring_count_len],
-                    tags: [i64::MIN; RING],
+                    tags: vec![i64::MIN; taps],
                     row: vec![vec![0f32; w]; carried + extra],
                 }
             })
@@ -219,14 +262,15 @@ impl Pass {
         let widest = levels.iter().map(LevelState::width).max().unwrap();
         Pass {
             func,
+            taps,
             rows: img.rows,
             cols: img.cols,
             masked,
             plan,
             levels,
-            edge: [vec![0f32; widest], vec![0f32; widest], vec![0f32; widest]],
+            edge: vec![vec![0f32; widest]; taps],
             inputs: vec![vec![0f32; widest]; func.inputs().max(components(img))],
-            edge_count: [vec![0f32; widest], vec![0f32; widest], vec![0f32; widest]],
+            edge_count: vec![vec![0f32; widest]; taps],
         }
     }
 
@@ -266,15 +310,20 @@ impl Pass {
             img.rows == self.rows && img.cols == self.cols && img.valid.is_some() == self.masked,
             "the Image differs from the one planned for"
         );
+        assert_eq!(
+            options.level_method.taps(self.func),
+            self.taps,
+            "the read was planned for another level method"
+        );
         self.check_shape(out);
         for level in &mut self.levels {
             level.next = level.rows.0;
-            level.tags = [i64::MIN; RING];
+            level.tags.fill(i64::MIN);
         }
         let func = self.func;
         let reduce = match options.level_method {
             LevelMethod::Decimate => Reduce::Keep,
-            LevelMethod::Bilinear => func.reduce(),
+            LevelMethod::Bilinear | LevelMethod::Binomial5 => func.reduce(),
         };
         let (r0, r1) = self.levels[0].rows;
         let (c0, c1) = self.levels[0].cols;
@@ -462,7 +511,7 @@ impl Pass {
                 if next.next > next.rows.1 || r != 2 * next.next {
                     return;
                 }
-                let even = &next.gather[1];
+                let even = &next.gather[self.taps / 2];
                 for p in 0..carried + extra {
                     for (d, &j) in next.row[p].iter_mut().zip(even) {
                         *d = cur.row[p][j];
@@ -476,35 +525,37 @@ impl Pass {
         if reduce == Reduce::Min3 {
             return self.emit_min3(isa, options, k, r, out);
         }
+        let taps = self.taps;
+        let radius = (taps / 2) as i64;
         let (here, above) = self.levels.split_at_mut(k + 1);
         let (cur, next) = (&here[k], &mut above[0]);
 
         // Halve this row along the row into the next Level's ring. With missing data the
         // weights are halved first, once for every plane, and each plane is weighted by them.
         let w = next.width();
-        let slot = r.rem_euclid(RING as i64) as usize;
+        let slot = r.rem_euclid(taps as i64) as usize;
         let (lo, hi, first) = next.interior;
-        let span = 2 * (hi - lo) + 1;
+        let span = 2 * (hi - lo) + taps - 2;
         if masked {
             let src = &cur.count;
             let dst = next.ring_count[slot * w..].as_mut_ptr();
             for (i0, i1) in [(0, lo), (hi, w)] {
                 for i in i0..i1 {
-                    for t in 0..3 {
+                    for t in 0..taps {
                         self.edge_count[t][i] = src[next.gather[t][i]];
                     }
                 }
                 if i1 > i0 {
-                    let [a, b, c] = [0, 1, 2].map(|t| self.edge_count[t][i0..].as_ptr());
+                    let x = taps_at(&self.edge_count, i0);
                     // The edge buffers hold at least w values and the ring slot w, and i0..i1
                     // lies inside both.
-                    unsafe { halve(isa, i1 - i0, a, b, c, dst.add(i0)) };
+                    unsafe { along(isa, taps, i1 - i0, x, dst.add(i0)) };
                 }
             }
             if hi > lo {
                 let from = src[first..first + span].as_ptr();
-                // `from` holds 2(hi - lo) + 1 values, and lo..hi lies inside the ring slot.
-                unsafe { halve_row(isa, hi - lo, from, dst.add(lo)) };
+                // `from` holds 2(hi - lo) + taps - 2 values, and lo..hi lies inside the ring slot.
+                unsafe { along_row(isa, taps, hi - lo, from, dst.add(lo)) };
             }
         }
         for p in 0..carried {
@@ -516,41 +567,41 @@ impl Pass {
                     continue;
                 }
                 for i in i0..i1 {
-                    for t in 0..3 {
+                    for t in 0..taps {
                         self.edge[t][i] = src[next.gather[t][i]];
                     }
                 }
-                let x = [0, 1, 2].map(|t| self.edge[t][i0..].as_ptr());
+                let x = taps_at(&self.edge, i0);
                 // The edge buffers hold at least w values and each ring slot w, and i0..i1 lies
                 // inside both.
                 unsafe {
                     if masked {
-                        let c = [0, 1, 2].map(|t| self.edge_count[t][i0..].as_ptr());
-                        halve_weighted(isa, i1 - i0, x, c, dst.add(i0));
+                        let c = taps_at(&self.edge_count, i0);
+                        along_weighted(isa, taps, i1 - i0, x, c, dst.add(i0));
                     } else {
-                        halve(isa, i1 - i0, x[0], x[1], x[2], dst.add(i0));
+                        along(isa, taps, i1 - i0, x, dst.add(i0));
                     }
                 }
             }
-            // The interior is read from the row itself: 2(hi - lo) + 1 values from `first`.
+            // The interior is read from the row itself: 2(hi - lo) + taps - 2 values from `first`.
             if hi > lo {
                 let from = src[first..first + span].as_ptr();
-                // `from` and the weights hold 2(hi - lo) + 1 values from `first`, and lo..hi lies
+                // `from` and the weights hold that many values from `first`, and lo..hi lies
                 // inside each ring slot.
                 unsafe {
                     if masked {
                         let weights = cur.count[first..first + span].as_ptr();
-                        halve_row_weighted(isa, hi - lo, from, weights, dst.add(lo));
+                        along_row_weighted(isa, taps, hi - lo, from, weights, dst.add(lo));
                     } else {
-                        halve_row(isa, hi - lo, from, dst.add(lo));
+                        along_row(isa, taps, hi - lo, from, dst.add(lo));
                     }
                 }
             }
         }
         next.tags[slot] = r;
 
-        // Make every row of the next Level whose three source rows are now in the ring. Each row
-        // made is passed on at once, so the loop takes the next Level afresh on every turn.
+        // Make every row of the next Level whose source rows are now in the ring. Each row made
+        // is passed on at once, so the loop takes the next Level afresh on every turn.
         loop {
             let i = {
                 let next = &mut self.levels[k + 1];
@@ -558,36 +609,51 @@ impl Pass {
                     return;
                 }
                 let i = next.next;
-                let src = [
-                    reflect(2 * i - 1, next.prev_rows),
-                    2 * i,
-                    reflect(2 * i + 1, next.prev_rows),
-                ];
-                if src.iter().any(|&s| s > r) {
+                let mut src = [0i64; 5];
+                for (t, s) in src.iter_mut().enumerate().take(taps) {
+                    let row = 2 * i + t as i64 - radius;
+                    *s = if t as i64 == radius {
+                        row
+                    } else {
+                        reflect(row, next.prev_rows)
+                    };
+                }
+                if src[..taps].iter().any(|&s| s > r) {
                     return;
                 }
-                let slots = src.map(|s| {
-                    let slot = s.rem_euclid(RING as i64) as usize;
-                    assert_eq!(next.tags[slot], s, "row {s} left the ring too early");
-                    slot
-                });
+                let mut slots = [0usize; 5];
+                for t in 0..taps {
+                    let slot = src[t].rem_euclid(taps as i64) as usize;
+                    assert_eq!(
+                        next.tags[slot], src[t],
+                        "row {} left the ring too early",
+                        src[t]
+                    );
+                    slots[t] = slot;
+                }
+                let rows_of = |ring: &[f32]| {
+                    let mut x = [std::ptr::null(); 5];
+                    for t in 0..taps {
+                        x[t] = ring[slots[t] * w..].as_ptr();
+                    }
+                    x
+                };
                 if masked {
                     // The weights of this row first: they divide every plane.
-                    let [a, b, c] = slots.map(|t| next.ring_count[t * w..].as_ptr());
+                    let x = rows_of(&next.ring_count);
                     let wt = next.count.as_mut_ptr();
                     // Each ring slot and the weight row hold w values.
-                    unsafe { halve(isa, w, a, b, c, wt) };
+                    unsafe { along(isa, taps, w, x, wt) };
                 }
                 for p in 0..carried {
                     let out = next.row[p].as_mut_ptr();
+                    let x = rows_of(&next.ring[p]);
                     // Each ring slot, the weight row and the output row hold w values.
                     unsafe {
                         if masked {
-                            let sums = slots.map(|t| next.ring[p][t * w..].as_ptr());
-                            halve_over(isa, w, sums, next.count.as_ptr(), out);
+                            over(isa, taps, w, x, next.count.as_ptr(), out);
                         } else {
-                            let [a, b, c] = slots.map(|t| next.ring[p][t * w..].as_ptr());
-                            halve(isa, w, a, b, c, out);
+                            along(isa, taps, w, x, out);
                         }
                     }
                 }
@@ -618,7 +684,7 @@ impl Pass {
             let (here, above) = self.levels.split_at_mut(k + 1);
             let (cur, next) = (&here[k], &mut above[0]);
             let w = next.width();
-            let slot = r.rem_euclid(RING as i64) as usize;
+            let slot = r.rem_euclid(3) as usize;
             let (lo, hi, first) = next.interior;
             let src = &cur.row[0];
             let dst = next.ring[0][slot * w..].as_mut_ptr();
@@ -659,7 +725,7 @@ impl Pass {
                     return;
                 }
                 let [a, b, c] = src.map(|s| {
-                    let slot = s.rem_euclid(RING as i64) as usize;
+                    let slot = s.rem_euclid(3) as usize;
                     assert_eq!(next.tags[slot], s, "row {s} left the ring too early");
                     next.ring[0][slot * w..].as_ptr()
                 });
@@ -691,7 +757,7 @@ pub fn read_levels_into(
     options: ReadOptions,
     out: &mut [Vec<Slice>],
 ) {
-    Pass::new(img, func, window, top).run(img, isa, options, out);
+    Pass::for_method(img, func, window, top, options.level_method).run(img, isa, options, out);
 }
 
 /// The components each pixel's samples hold: two for complex samples, else the Image's count.
@@ -702,17 +768,118 @@ fn components(img: &Image) -> usize {
     }
 }
 
-/// Finds the run of output columns whose three sources are consecutive columns, unmirrored.
-/// Mirroring happens only at the two ends, so the run is one stretch of the row.
-fn interior_of(gather: &[Vec<usize>; 3]) -> (usize, usize, usize) {
-    let [a, b, c] = gather;
-    let plain = |i: usize| b[i] >= 1 && a[i] == b[i] - 1 && c[i] == b[i] + 1;
-    let Some(lo) = (0..b.len()).find(|&i| plain(i)) else {
-        return (0, 0, 0);
-    };
-    let hi = (lo..b.len()).find(|&i| !plain(i)).unwrap_or(b.len());
-    assert!((hi..b.len()).all(|i| !plain(i)), "mirroring inside the row");
-    (lo, hi, a[lo])
+/// Finds the run of output columns whose sources are consecutive columns, unmirrored, and the
+/// source column of the first one's first tap. Mirroring happens only at the two ends, so the run
+/// is one stretch of the row.
+fn interior_of(gather: &[Vec<usize>]) -> (usize, usize, usize) {
+    let taps = gather.len();
+    let radius = taps / 2;
+    let center = &gather[radius];
+    let plain =
+        |i: usize| center[i] >= radius && (0..taps).all(|t| gather[t][i] + radius == center[i] + t);
+    let w = center.len();
+    let lo = (0..w).find(|&i| plain(i)).unwrap_or(w);
+    let hi = (lo..w).find(|&i| !plain(i)).unwrap_or(w);
+    let first = if lo < hi { gather[0][lo] } else { 0 };
+    (lo, hi, first)
+}
+
+/// The rows of `bufs`, one for each tap, from index `at`.
+fn taps_at(bufs: &[Vec<f32>], at: usize) -> [*const f32; 5] {
+    let mut x = [std::ptr::null(); 5];
+    for (p, b) in x.iter_mut().zip(bufs) {
+        *p = b[at..].as_ptr();
+    }
+    x
+}
+
+/// One halving of `n` values across `taps` sources: `halve` or `blur5`.
+///
+/// # Safety
+/// The first `taps` sources and `out` hold `n` values.
+unsafe fn along(isa: Isa, taps: usize, n: usize, x: [*const f32; 5], out: *mut f32) {
+    debug_assert!(taps == 3 || taps == 5, "a halving has three or five taps");
+    unsafe {
+        if taps == 3 {
+            halve(isa, n, x[0], x[1], x[2], out)
+        } else {
+            blur5(isa, n, x, out)
+        }
+    }
+}
+
+/// One halving along a row read from the row itself: `halve_row` or `blur5_row`.
+///
+/// # Safety
+/// `src` holds `2n + taps - 2` values and `out` holds `n`.
+unsafe fn along_row(isa: Isa, taps: usize, n: usize, src: *const f32, out: *mut f32) {
+    debug_assert!(taps == 3 || taps == 5, "a halving has three or five taps");
+    unsafe {
+        if taps == 3 {
+            halve_row(isa, n, src, out)
+        } else {
+            blur5_row(isa, n, src, out)
+        }
+    }
+}
+
+/// The weighted sum of a halving with missing data: `halve_weighted` or `blur5_weighted`.
+///
+/// # Safety
+/// The first `taps` values and weights and `out` hold `n` values.
+unsafe fn along_weighted(
+    isa: Isa,
+    taps: usize,
+    n: usize,
+    x: [*const f32; 5],
+    c: [*const f32; 5],
+    out: *mut f32,
+) {
+    debug_assert!(taps == 3 || taps == 5, "a halving has three or five taps");
+    unsafe {
+        if taps == 3 {
+            halve_weighted(isa, n, [x[0], x[1], x[2]], [c[0], c[1], c[2]], out)
+        } else {
+            blur5_weighted(isa, n, x, c, out)
+        }
+    }
+}
+
+/// `along_weighted` read from the rows themselves: `halve_row_weighted` or `blur5_row_weighted`.
+///
+/// # Safety
+/// `x` and `c` hold `2n + taps - 2` values and `out` holds `n`.
+unsafe fn along_row_weighted(
+    isa: Isa,
+    taps: usize,
+    n: usize,
+    x: *const f32,
+    c: *const f32,
+    out: *mut f32,
+) {
+    debug_assert!(taps == 3 || taps == 5, "a halving has three or five taps");
+    unsafe {
+        if taps == 3 {
+            halve_row_weighted(isa, n, x, c, out)
+        } else {
+            blur5_row_weighted(isa, n, x, c, out)
+        }
+    }
+}
+
+/// The weighted sums combined down the column and divided: `halve_over` or `blur5_over`.
+///
+/// # Safety
+/// The first `taps` sums, `w` and `out` hold `n` values.
+unsafe fn over(isa: Isa, taps: usize, n: usize, s: [*const f32; 5], w: *const f32, out: *mut f32) {
+    debug_assert!(taps == 3 || taps == 5, "a halving has three or five taps");
+    unsafe {
+        if taps == 3 {
+            halve_over(isa, n, [s[0], s[1], s[2]], w, out)
+        } else {
+            blur5_over(isa, n, s, w, out)
+        }
+    }
 }
 
 /// Writes the columns the Window shows of row `r` of Level `k` into that Level's Slices.

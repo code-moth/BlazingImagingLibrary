@@ -209,6 +209,11 @@ dispatch!(mask_planes5(n: usize, rows: [*mut f32; 6]));
 dispatch!(min3_present(n: usize, a: *const f32, b: *const f32, c: *const f32, out: *mut f32));
 dispatch!(min3_row(n: usize, src: *const f32, out: *mut f32));
 dispatch!(keep_present(n: usize, probe: *const f32, x: *const f32, out: *mut f32));
+dispatch!(blur5(n: usize, x: [*const f32; 5], out: *mut f32));
+dispatch!(blur5_row(n: usize, src: *const f32, out: *mut f32));
+dispatch!(blur5_weighted(n: usize, x: [*const f32; 5], c: [*const f32; 5], out: *mut f32));
+dispatch!(blur5_row_weighted(n: usize, x: *const f32, c: *const f32, out: *mut f32));
+dispatch!(blur5_over(n: usize, s: [*const f32; 5], w: *const f32, out: *mut f32));
 
 // ---------------------------------------------------------------- grid arithmetic
 
@@ -243,8 +248,19 @@ fn out_range(w0: usize, w1: usize, k: u32) -> Option<(i64, i64)> {
 type LevelRanges = Vec<Option<(i64, i64)>>;
 
 /// For one axis: the output range at each Level, and the range of valid grid indices that must
-/// be computed at each Level so that every output can be made.
+/// be computed at each Level so that every output can be made by a halving of radius 1.
 fn axis_plan(n: usize, w0: usize, w1: usize, top: u32) -> (LevelRanges, LevelRanges) {
+    axis_plan_radius(n, w0, w1, top, 1)
+}
+
+/// `axis_plan` for a halving that reaches `radius` grid points of the Level before on each side.
+fn axis_plan_radius(
+    n: usize,
+    w0: usize,
+    w1: usize,
+    top: u32,
+    radius: i64,
+) -> (LevelRanges, LevelRanges) {
     let outs: Vec<_> = (0..=top).map(|k| out_range(w0, w1, k)).collect();
     let mut need = vec![None; top as usize + 1];
     for k in (0..=top as usize).rev() {
@@ -257,7 +273,7 @@ fn axis_plan(n: usize, w0: usize, w1: usize, top: u32) -> (LevelRanges, LevelRan
         if k < top as usize {
             if let Some((a, b)) = need[k + 1] {
                 let j = grid_len(n, k as u32);
-                for i in (2 * a - 1)..=(2 * b + 1) {
+                for i in (2 * a - radius)..=(2 * b + radius) {
                     let r = reflect(i, j);
                     lo = lo.min(r);
                     hi = hi.max(r);

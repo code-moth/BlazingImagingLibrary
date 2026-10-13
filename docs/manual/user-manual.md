@@ -322,7 +322,7 @@ Streamed blocks of one Slice and Level arrive in row order. Blocks of different 
 
 ## 8. Levels
 
-> **Status:** Prototyped for `bilinear` and the values of `decimate`, every kind of Slice, and Levels 0 to 4 in one pass. A `decimate` that reads only the pixels kept, `binomial5`, `decimate_first` and stored levels are specified.
+> **Status:** Prototyped for `bilinear`, `binomial5` and the values of `decimate`, every kind of Slice, and Levels 0 to 4 in one pass. A `decimate` that reads only the pixels kept, `decimate_first` and stored levels are specified.
 
 **What a Level is.** Level 0 is full resolution. Level n holds the Image pixels whose row and column are multiples of 2ⁿ, each made from the Level below by the level method. The grid is anchored to the Image origin, not to the Window, which is why a Window gives the same values as the whole.
 
@@ -343,7 +343,7 @@ pyramid["level2"]
 | Method | Weights at each halving | Use it for |
 | --- | --- | --- |
 | `bilinear`, the default | 1 2 1, divided by 4, along rows then columns | Most work. Cheap, and every Level in one pass. It passes half the amplitude at the highest frequency the halved grid can hold, so fine detail aliases. |
-| `binomial5` | 1 4 6 4 1, divided by 16 | Where aliasing matters. It passes a quarter at that frequency, for about twice the arithmetic. |
+| `binomial5` | 1 4 6 4 1, divided by 16 | Where aliasing matters. It passes a quarter at that frequency, for about twice the arithmetic, which cost 0.9 to 1.3 times `bilinear` in experiment 1b. |
 | `decimate` | None: the pixel at each grid point | A quick look. It reads only the pixels kept, where the storage allows. |
 
 **Kinds of Slice.** Averaging suits most Slices, but not all, so each Slice declares how it is reduced.
@@ -1124,7 +1124,7 @@ Two pieces of code exist. Neither reads a file: they work on Images already in m
 **The `bil` crate** (`crates/bil`, version 0.0.1) holds the vector layer and the kernels.
 
 - **`simd`:** a `Vf` trait over vectors of float32, with `Scalar`, `Avx2` and `Avx512` back ends, and `Isa`, which finds the instruction sets the processor offers. There is no NEON back end yet, so ARM processors run the scalar code, correctly but without vectors.
-- **`kernels`:** the arithmetic of the pass. `halve` and `halve_row` make each bilinear halving; `halve_weighted`, `halve_row_weighted` and `halve_over` the halving with missing data; `min3_present` and `min3_row` the range reduction; `polar0`, `phase_from`, `hsv0` and `hue_from` the slice functions; and `atan2` and `cos_sin_turns` the transcendental functions, BIL's own, built only from correctly rounded operations.
+- **`kernels`:** the arithmetic of the pass. `halve` and `halve_row` make each `bilinear` halving, and `blur5` and `blur5_row` each `binomial5` halving; `halve_weighted`, `halve_row_weighted`, `halve_over` and their `blur5` counterparts the halvings with missing data; `min3_present` and `min3_row` the range reduction; `polar0`, `phase_from`, `hsv0` and `hue_from` the slice functions; and `atan2` and `cos_sin_turns` the transcendental functions, BIL's own, built only from correctly rounded operations.
 
 The kernels are `unsafe` and work on raw rows. They are BIL's internals, not its interface, and callers will never use them directly.
 
@@ -1138,6 +1138,7 @@ let image = Image { rows: 4096, cols: 4096, comps: 1, samples: Samples::U16(stor
 let window = Window { row_start: 0, col_start: 0, row_count: 2048, col_count: 2048 };
 
 let mut pass = Pass::new(&image, Func::Raw, window, 4);   // plan Levels 0 to 4, once
+// Pass::for_method(&image, Func::Raw, window, 4, LevelMethod::Binomial5) plans for binomial5
 let mut out  = pass.outputs();                            // allocate the Slices, once
 let options  = ReadOptions {
     level_method: LevelMethod::Bilinear,
@@ -1156,7 +1157,7 @@ level2.at(10, 20);                                        // the value at grid r
 | `Func`: `Raw`, `Polar`, `Hsv`, `Mask`, `Labels`, `Range` | `pixel.raw`, `complex.polar`, `color.hsv`, `pixel.mask`, `class.labels`, `depth.sensor` (its range) | Six functions, by enum rather than by name |
 | `Window { row_start, col_start, row_count, col_count }` | `Window` | No `step` and no `frame` |
 | `Pass::new`, `Pass::outputs`, `Pass::run` | `plan`, `read` with `IntoBuffers` | The plan is an object the caller keeps |
-| `ReadOptions { level_method, missing_value, missing_weights }` | `SliceOptions` | No `level_source` or `decimate_first`; `LevelMethod` is `Bilinear` or `Decimate` |
+| `ReadOptions { level_method, missing_value, missing_weights }` | `SliceOptions` | No `level_source` or `decimate_first`; `LevelMethod` is `Bilinear`, `Binomial5` or `Decimate`. A `Pass` is planned for its method, since `binomial5` reaches further. |
 | `Slice { name, level, rows, cols, data }` | `Slice` | `rows` and `cols` are the Level's grid indices covered, not an `origin` and `scale` |
 | `Vec<Vec<Slice>>`, by Level then Slice | `read_slice_levels` | Levels 0 to `top` always, not chosen by name |
 
@@ -1165,6 +1166,7 @@ level2.at(10, 20);                                        // the value at grid r
 - **The same bits as the whole Image.** About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.
 - **Missing data as the specification states it,** with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.
 - **Each kind of Slice** reduced by its own rule, and `decimate` for every kind.
+- **`binomial5`,** bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against `bilinear`'s half, as the specification states. It cost 0.9 to 1.3 times `bilinear`.
 - **Speed.** On the fastest instruction set, `pixel.raw` takes 1.7 times a copy into warm memory at Level 0, and `complex.polar` and `color.hsv` 1.4 to 1.7 times their own arithmetic alone. Missing data costs 1.2 to 1.8 times an unmasked read, and nothing at all where no mask exists.
 
 **Running it**
@@ -1178,7 +1180,7 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 
 CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM. `RESULTS-1b.md` beside the code has the full results.
 
-**What comes next** in code: the `binomial5` level method; a NEON back end, which section 12 asks for; threads by bands of rows; `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
+**What comes next** in code: a NEON back end, which section 12 asks for; threads by bands of rows; `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
 **What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 

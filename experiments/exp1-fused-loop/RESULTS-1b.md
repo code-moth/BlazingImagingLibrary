@@ -1,4 +1,4 @@
-Experiment 1b replaces experiment 1's whole planes with the rolling buffer of specification section 12: "every bilinear resolution level [is] produced in the same pass, on a rolling buffer of a few rows that stays in the processor cache." It then adds missing data, the other kinds of Slice and `decimate`, for section 5. It was run in this workspace on 12 October 2026, against specification version 67.
+Experiment 1b replaces experiment 1's whole planes with the rolling buffer of specification section 12: "every bilinear resolution level [is] produced in the same pass, on a rolling buffer of a few rows that stays in the processor cache." It then adds missing data, the other kinds of Slice, `decimate` and `binomial5`, for section 5. It was run in this workspace on 12 and 13 October 2026, against specification versions 67 to 69.
 
 ## Result
 
@@ -8,6 +8,7 @@ Experiment 1b replaces experiment 1's whole planes with the rolling buffer of sp
 - **The edge cases too.** Every Window of 25 small Images, from 1 × 1 to 9 × 9 pixels, with up to 6 Levels asked for, gives the same bits as experiment 1: 308,700 reads.
 - **Missing data, for section 5.** A missing pixel is NaN in every Slice. Each halving leaves NaN out and rescales the weights, and a value is NaN only when nothing that would contribute is present. `missing_value` is applied last. `missing_weights` chooses how a Level weights the values below it: `Equal`, the default, or `PixelCount`, by the share of present full-resolution pixels behind each, as the author ruled in version 67. Both agree bitwise with an independent reference, between Windows and the whole Image, and between instruction sets. The rule itself agrees with a float64 computation to 5.6 × 10⁻⁸, and `PixelCount` equals the pyramid of the masked data over the pyramid of the mask to 2.7 × 10⁻⁷. Three details the specification leaves open are proposals, set out below.
 - **The other kinds of Slice, and `decimate`.** Labels keep every second value, range takes the least present value of each 3 × 3 block, and `pixel.mask` gives `valid` and `valid_fraction`. `decimate` keeps the value at each grid point for every kind. Each agrees with its definition, between Windows and the whole Image, and across instruction sets, with and without missing data.
+- **`binomial5`, the second level method.** Weights 1 4 6 4 1 at each halving, with a radius of 2, so each Level keeps a ring of five rows and the margins are wider. It agrees bitwise with a whole-plane reference, with and without missing data and under both weightings, between Windows and the whole Image, across instruction sets, and on every Window of 36 small Images. Its arithmetic agrees with float64 to 1.9 × 10⁻⁷, and a wave at the highest frequency the halved grid holds comes through at a quarter of its amplitude, against half for `bilinear`, as section 5 states. It costs about what `bilinear` costs: 0.9 to 1.3 times over two runs, probably because the halvings are limited by memory rather than arithmetic.
 - **No cost where nothing is missing.** An Image without a mask makes no checks. A mask with nothing missing gives exactly the values of no mask, including values near the top of the float32 range.
 - **Nothing allocated per read.** A `Pass` is planned once, and running it again writes into the same Slice buffers and working rows.
 - **3 to 5 times faster than experiment 1,** on the fastest instruction set. `pixel.raw` takes 1.7 times a copy into warm memory at Level 0, and 2.7 times for Levels 0 to 4. `complex.polar` and `color.hsv` take 1.4 to 1.7 times their own arithmetic at Level 0, and 2.2 to 2.8 times for Levels 0 to 4.
@@ -41,6 +42,13 @@ Section 5 gives each kind of Slice its own reduction. Each `Func` declares one, 
 - **Keep, for labels and `decimate`.** The next Level's row i is this Level's row 2i at the even columns, copied as it is, with no ring. Every plane is kept, the Level 0 extras included, so a kept phase or hue is Level 0's own value, not one rebuilt from a unit vector.
 - **Minimum, for range.** `min3_present` and `min3_row` take the least present value of three, along the row into the ring and down the column, so each Level holds the least present value of a 3 × 3 block of the Level before. NaN only when all nine are missing.
 - **The mask Slices.** `pixel.mask` averages the mask itself, 1.0 where present and 0.0 where missing, with no missing values of its own. `valid_fraction` is that average, and `valid` is 1.0 wherever it is above 0, which is wherever any contributing pixel was valid.
+
+### `binomial5`
+
+- **The same structure, with five taps.** A halving has 3 taps for `bilinear` and 5 for `binomial5`; the gathered columns, the edge buffers and the ring each have one entry for each tap, and a row of Level k + 1 is made once the last of its five source rows arrives. Kinds that are not averaged keep their own reductions, labels keeping and range the 3 × 3 minimum, so `binomial5` changes only the averaged Slices.
+- **Planned for its method.** The radius sets the margins, so a `Pass` is planned for its level method with `Pass::for_method`, as `plan` takes the whole request. Running it with a method of another radius is refused.
+- **The arithmetic.** `((a + e) / 16 + (b + d) / 4) + 3c / 8`, in that order. Each scale is a power of two or 3/8, so weights of exactly 1 give exactly 1 and the weighted path keeps the bits of the unweighted one, as for `bilinear`; a sum overflows only where `bilinear`'s would.
+- **Kernels.** `blur5`, `blur5_row`, `blur5_weighted`, `blur5_row_weighted` and `blur5_over` in the `bil` crate, beside their `bilinear` counterparts. Reading five taps from the row itself takes three even-and-odd loads; `row_taps` serves three taps and five alike.
 
 ### Proposals awaiting the author
 
@@ -110,6 +118,17 @@ The same Image size, 200 random Windows for each case, on scalar, AVX2 and AVX-5
 
 Every Window of the 25 small Images with masks, Levels 0 to 0 up to 0 to 6, for labels, range, the mask Slices, and `decimate` on `pixel.raw` and `complex.polar`: 514,500 reads, no value differing from the whole Image or from the definition.
 
+### `binomial5`
+
+The six cases of the bitwise table, each with and without the mask of the missing-data tests and under both weightings, 200 random Windows each, on scalar, AVX2 and AVX-512: 7,884,067 to 24,068,058 values compared for each row, and no value differing from the reference, from the whole Image or from scalar code. Every Window of 36 small Images, of 1, 2, 3, 4, 5 and 9 rows by the same columns, at Levels 0 to 0 up to 0 to 6, with and without masks: 537,600 reads, no value differing. Labels and range read with `binomial5` are identical to `bilinear`, and `pixel.mask` gives the mask averaged by `binomial5`.
+
+| Check | Result |
+| --- | --- |
+| Levels 1 and 2 against the 1 4 6 4 1 filter in float64 | Largest relative difference 1.9 × 10⁻⁷ |
+| A wave with a period of four pixels, through Level 1 | 0.5 of its amplitude through `bilinear`, 0.25 through `binomial5` |
+
+At Levels 0 to 4, on the vector instruction sets, `binomial5` took 0.94 to 1.13 times as long as `bilinear` in one run and 0.90 to 1.26 in another: in the first, 1.04 for `pixel.raw` on 8,192 × 8,192, 0.98 to 1.13 for `complex.polar` and 0.94 to 0.95 for `color.hsv` on 4,096 × 4,096. The difference is mostly within the variation of this shared two-core machine. The extra arithmetic of each halving is probably hidden behind the memory it reads.
+
 ### Reused buffers
 
 The buffers of a first read were filled with NaN and read into again. Every value was rewritten, with the same bits as the first read, on every instruction set.
@@ -153,7 +172,7 @@ The fastest instruction set is shown; the copy took 0.026 s in that run. `pixel.
 - **`decimate` reads every pixel here.** A request in this experiment always includes Level 0, which needs every pixel, so `decimate` costs what `bilinear` does. Section 5 has `decimate` stride across the storage and touch only the pixels kept; that needs a request for coarser Levels alone.
 - **Keeping copies by index.** The kept row is copied value by value; the even-column load of `halve_row` could do it in vector code.
 - **Threads.** Each thread would take a band of rows with its own rings, and the rows a band shares with its neighbor would be made twice.
-- **Not covered,** as in experiment 1: stored levels, local functions such as demosaicing, `binomial5`, and `pixel.mask.saturated`.
+- **Not covered,** as in experiment 1: stored levels, local functions such as demosaicing, and `pixel.mask.saturated`.
 
 ## Running it
 

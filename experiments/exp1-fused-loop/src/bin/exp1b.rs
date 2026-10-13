@@ -2,11 +2,13 @@
 //! Runs experiment 1b, the rolling buffer, and prints its report.
 //!
 //! `--check` runs the correctness tests: experiment 1's bitwise tests through the rolling buffer,
-//! small Images, reused buffers and missing data. The full report adds speed, measured against a
+//! small Images, reused buffers, missing data, the other kinds of Slice, and `binomial5`. The full report adds speed, measured against a
 //! copy into warm memory and against each function's own arithmetic, as section 12 asks.
 
 use bil_exp1::simd::Isa;
-use bil_exp1::testing::{bit_diffs, full, make, masked_reference, random_window, with_holes, Rng};
+use bil_exp1::testing::{
+    bit_diffs, full, make, masked_reference, random_window, reference, with_holes, Rng,
+};
 use bil_exp1::{
     hsv0, plan_outputs, polar0, read_levels, read_levels_into, Func, Image, LevelMethod,
     MissingWeights, Pass, ReadOptions, Slice, Window,
@@ -108,6 +110,7 @@ fn main() {
     all_ok &= reuse(&isas);
     all_ok &= missing_data(&isas, &cases, rows, cols);
     all_ok &= other_kinds(&isas, rows, cols);
+    all_ok &= binomial(&isas, &cases, rows, cols);
 
     if std::env::args().any(|a| a == "--check") {
         if !all_ok {
@@ -884,6 +887,323 @@ fn benchmarks(isas: &[Isa]) {
     println!();
     missing_speed(isas);
     other_speed(isas);
+    binomial_speed(isas);
+}
+
+/// The level method's name in the specification.
+fn method_name(method: LevelMethod) -> &'static str {
+    match method {
+        LevelMethod::Bilinear => "bilinear",
+        LevelMethod::Binomial5 => "binomial5",
+        LevelMethod::Decimate => "decimate",
+    }
+}
+
+/// Values whose bits differ between a result and the whole-Image reference at the same grid
+/// points.
+fn vs_reference(got: &[Vec<Slice>], reference: &[Vec<Slice>]) -> usize {
+    got.iter()
+        .zip(reference)
+        .map(|(l, r)| l.iter().zip(r).map(|(s, w)| bit_diffs(s, w)).sum::<usize>())
+        .sum()
+}
+
+/// `binomial5`, the second level method of section 5: weights 1 4 6 4 1 at each halving, with a
+/// radius of 2, so each Level keeps five rows and the margins are wider. Checked bitwise against
+/// the whole-plane reference, with and without missing data, between Windows and the whole
+/// Image, between instruction sets, on every Window of small Images, and its arithmetic against
+/// float64.
+fn binomial(isas: &[Isa], cases: &[(Func, &str)], rows: usize, cols: usize) -> bool {
+    println!("## 7. `binomial5`\n");
+    println!("The same Images and random Windows as section 1, read with `binomial5`. The reference makes whole planes, one Level after another, in scalar code, with the arithmetic of the kernels but none of the rolling buffer's structure.\n");
+    println!("| Function | Sample type | Mask | `missing_weights` | Instruction set | Values compared | Whole vs reference | Window vs whole | Against scalar |");
+    println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    let mut ok = true;
+    for (case_no, (func, kind)) in cases.iter().enumerate() {
+        let plain = make(kind, rows, cols, 7 + case_no as u64);
+        let holes = with_holes(
+            make(kind, rows, cols, 7 + case_no as u64),
+            70 + case_no as u64,
+        );
+        for (img, mask) in [(&plain, "none"), (&holes, "holes")] {
+            let weightings: &[MissingWeights] = if img.valid.is_some() {
+                &[MissingWeights::Equal, MissingWeights::PixelCount]
+            } else {
+                &[MissingWeights::Equal]
+            };
+            for &weights in weightings {
+                let options = ReadOptions {
+                    level_method: LevelMethod::Binomial5,
+                    missing_weights: weights,
+                    ..ReadOptions::default()
+                };
+                let expected = reference(img, *func, TOP, weights, LevelMethod::Binomial5);
+                for isa in isas {
+                    let whole = rolling_with(img, *func, *isa, full(img), TOP, options);
+                    let against = vs_reference(&whole, &expected);
+                    let (compared, diffs, vs_scalar) =
+                        independence(img, *func, *isa, options, 80 + case_no as u64);
+                    ok &= against == 0 && diffs == 0 && vs_scalar == 0;
+                    let weights = if img.valid.is_some() {
+                        format!("`{weights:?}`")
+                    } else {
+                        String::new()
+                    };
+                    println!(
+                        "| `{}` | {kind} | {mask} | {weights} | {isa:?} | {compared} | {against} | {diffs} | {vs_scalar} |",
+                        func.name()
+                    );
+                }
+            }
+        }
+    }
+
+    // The arithmetic against float64: Level 1 and Level 2 of `pixel.raw` on float data, each the
+    // 1 4 6 4 1 filter applied along rows and down columns of the Level before, mirrored.
+    let img = make("F32", rows, cols, 90);
+    let got = rolling_with(
+        &img,
+        Func::Raw,
+        Isa::best(),
+        full(&img),
+        2,
+        ReadOptions {
+            level_method: LevelMethod::Binomial5,
+            ..ReadOptions::default()
+        },
+    );
+    let bil_exp1::Samples::F32(v) = &img.samples else {
+        unreachable!()
+    };
+    let mirror = |i: i64, n: usize| {
+        let n = n as i64;
+        if n == 1 {
+            return 0;
+        }
+        let p = 2 * (n - 1);
+        let m = i.rem_euclid(p);
+        (if m >= n { p - m } else { m }) as usize
+    };
+    let wts = [1.0, 4.0, 6.0, 4.0, 1.0];
+    let (mut plane, mut h, mut w): (Vec<f64>, usize, usize) =
+        (v.iter().map(|x| *x as f64).collect(), rows, cols);
+    let mut worst = 0f64;
+    for level in got.iter().skip(1) {
+        let (h2, w2) = ((h - 1) / 2 + 1, (w - 1) / 2 + 1);
+        let mut along = vec![0f64; h * w2];
+        for r in 0..h {
+            for j in 0..w2 {
+                along[r * w2 + j] = (0..5)
+                    .map(|t| wts[t] * plane[r * w + mirror(2 * j as i64 + t as i64 - 2, w)])
+                    .sum::<f64>()
+                    / 16.0;
+            }
+        }
+        let mut next = vec![0f64; h2 * w2];
+        for i in 0..h2 {
+            for j in 0..w2 {
+                next[i * w2 + j] = (0..5)
+                    .map(|t| wts[t] * along[mirror(2 * i as i64 + t as i64 - 2, h) * w2 + j])
+                    .sum::<f64>()
+                    / 16.0;
+            }
+        }
+        for (x, y) in level[0].data.iter().zip(&next) {
+            worst = worst.max(((*x as f64 - y) / y.abs().max(1.0)).abs());
+        }
+        (plane, h, w) = (next, h2, w2);
+    }
+    let arithmetic_ok = worst < 1e-6;
+    ok &= arithmetic_ok;
+    println!("\nThe arithmetic: Levels 1 and 2 of `pixel.raw` on float data against the filter 1 4 6 4 1 by 1 4 6 4 1, divided by 256, computed in float64 from the Level before. Largest relative difference {worst:.1e}. Passed: **{arithmetic_ok}**\n");
+
+    // Aliasing, as section 5 states it: at the highest frequency the halved grid can hold, a
+    // period of four pixels, `bilinear` passes half the amplitude and `binomial5` a quarter.
+    let (n, m) = (64, 256);
+    let wave = Image {
+        rows: n,
+        cols: m,
+        comps: 1,
+        samples: bil_exp1::Samples::F32(
+            (0..n * m)
+                .map(|i| (std::f64::consts::FRAC_PI_2 * (i % m) as f64).cos() as f32)
+                .collect(),
+        ),
+        valid: None,
+    };
+    let mut passed = [0f32; 2];
+    for (slot, method) in [LevelMethod::Bilinear, LevelMethod::Binomial5]
+        .into_iter()
+        .enumerate()
+    {
+        let options = ReadOptions {
+            level_method: method,
+            ..ReadOptions::default()
+        };
+        let level1 = &rolling_with(&wave, Func::Raw, Isa::best(), full(&wave), 1, options)[1][0];
+        // Away from the edges, Level 1 alternates between plus and minus the amplitude passed.
+        passed[slot] = level1.at(16, 20).abs();
+    }
+    let alias_ok = (passed[0] - 0.5).abs() < 1e-6 && (passed[1] - 0.25).abs() < 1e-6;
+    ok &= alias_ok;
+    println!("Aliasing: a wave with a period of four pixels, the highest frequency Level 1 can hold, comes through `bilinear` at {} of its amplitude and through `binomial5` at {}, as section 5 states. Passed: **{alias_ok}**\n", passed[0], passed[1]);
+
+    // Kinds that are not averaged keep their own reductions, so `binomial5` gives labels and range
+    // exactly what `bilinear` gives; the mask Slices are the mask averaged by `binomial5`.
+    let binomial = ReadOptions {
+        level_method: LevelMethod::Binomial5,
+        ..ReadOptions::default()
+    };
+    let mut kinds = 0;
+    let labels = with_holes(make("U16", rows, cols, 91), 92);
+    let depth = with_holes(make("F32", rows, cols, 93), 94);
+    for isa in isas {
+        for (img, func) in [(&labels, Func::Labels), (&depth, Func::Range)] {
+            kinds += differ(
+                &rolling_with(img, func, *isa, full(img), TOP, binomial),
+                &rolling_with(img, func, *isa, full(img), TOP, ReadOptions::default()),
+            );
+        }
+        let mask_as_image = Image {
+            rows,
+            cols,
+            comps: 1,
+            samples: bil_exp1::Samples::F32(
+                labels
+                    .valid
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|&b| f32::from(b))
+                    .collect(),
+            ),
+            valid: None,
+        };
+        let averaged = rolling_with(
+            &mask_as_image,
+            Func::Raw,
+            *isa,
+            full(&labels),
+            TOP,
+            binomial,
+        );
+        let got = rolling_with(&labels, Func::Mask, *isa, full(&labels), TOP, binomial);
+        for (l, a) in got.iter().zip(&averaged) {
+            for ((v, f), x) in l[0].data.iter().zip(&l[1].data).zip(&a[0].data) {
+                kinds += usize::from(f.to_bits() != x.to_bits());
+                kinds += usize::from(*v != if *x > 0.0 { 1.0 } else { 0.0 });
+            }
+        }
+        let (_, d, s) = independence(&labels, Func::Mask, *isa, binomial, 95);
+        kinds += d + s;
+    }
+    let kinds_ok = kinds == 0;
+    ok &= kinds_ok;
+    println!("Other kinds: labels and range read with `binomial5` give exactly what `bilinear` gives, since neither is averaged; `pixel.mask` gives the mask averaged by `binomial5`, the same between Windows and the whole Image and on every instruction set. Values differing: {kinds}. Passed: **{kinds_ok}**\n");
+
+    // Every Window of small Images, where the five-row ring and mirroring by two meet single rows,
+    // single columns and Levels of one point.
+    let (mut reads, mut diffs) = (0usize, 0usize);
+    let sizes = [1, 2, 3, 4, 5, 9];
+    for &hh in &sizes {
+        for &ww in &sizes {
+            let mut rng = Rng((hh * 17 + ww) as u64);
+            let mask: Vec<u8> = (0..hh * ww).map(|_| u8::from(rng.below(5) >= 2)).collect();
+            for (func, kind, masked) in [
+                (Func::Raw, "U16", false),
+                (Func::Raw, "U16", true),
+                (Func::Polar, "ComplexF32", true),
+                (Func::Hsv, "U8x3", false),
+            ] {
+                let mut img = make(kind, hh, ww, (hh * 37 + ww) as u64);
+                if masked {
+                    img.valid = Some(mask.clone());
+                }
+                for isa in isas {
+                    for top in 0..=6 {
+                        let whole = rolling_with(&img, func, *isa, full(&img), top, binomial);
+                        diffs += vs_reference(
+                            &whole,
+                            &reference(
+                                &img,
+                                func,
+                                top,
+                                MissingWeights::Equal,
+                                LevelMethod::Binomial5,
+                            ),
+                        );
+                        for r0 in 0..hh {
+                            for c0 in 0..ww {
+                                for rc in 1..=hh - r0 {
+                                    for cc in 1..=ww - c0 {
+                                        let win = Window {
+                                            row_start: r0,
+                                            col_start: c0,
+                                            row_count: rc,
+                                            col_count: cc,
+                                        };
+                                        let got =
+                                            rolling_with(&img, func, *isa, win, top, binomial);
+                                        diffs += vs_reference(&got, &whole);
+                                        reads += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let small_ok = diffs == 0;
+    ok &= small_ok;
+    println!("Small Images of 1, 2, 3, 4, 5 and 9 rows by the same columns, every Window, Levels 0 to 0 up to 0 to 6, with and without masks missing two pixels in five: {reads} reads, {diffs} values differing from the whole Image or from the reference. Passed: **{small_ok}**\n");
+    println!("All `binomial5` checks passed: **{ok}**\n");
+    ok
+}
+
+/// What `binomial5` costs beside `bilinear`: about twice the arithmetic at each halving, and two
+/// more rows a Level.
+fn binomial_speed(isas: &[Isa]) {
+    println!("### `binomial5` beside `bilinear`\n");
+    println!("The whole Image, one thread, best of five, Levels 0 to 4. Level 0 is the same for both, so the difference is in the halvings.\n");
+    println!(
+        "| Function | Sample type | Image | Instruction set | `bilinear` | `binomial5` | Ratio |"
+    );
+    println!("| --- | --- | --- | --- | --- | --- | --- |");
+    for (func, kind, n) in [
+        (Func::Raw, "U16", 8192),
+        (Func::Polar, "ComplexI16", 4096),
+        (Func::Hsv, "U8x3", 4096),
+    ] {
+        let img = make(kind, n, n, 11);
+        for isa in isas.iter().filter(|i| **i != Isa::Scalar) {
+            let mut t = [0f64; 2];
+            for (slot, method) in [LevelMethod::Bilinear, LevelMethod::Binomial5]
+                .into_iter()
+                .enumerate()
+            {
+                let options = ReadOptions {
+                    level_method: method,
+                    ..ReadOptions::default()
+                };
+                let mut pass = Pass::for_method(&img, func, full(&img), TOP, method);
+                let mut out = pass.outputs();
+                t[slot] = time(|| {
+                    pass.run(&img, *isa, options, &mut out);
+                    std::hint::black_box(&mut out);
+                });
+            }
+            println!(
+                "| `{}` | {kind} | {n} × {n} | {isa:?} | {:.3} s | {:.3} s | {:.2} |",
+                func.name(),
+                t[0],
+                t[1],
+                t[1] / t[0]
+            );
+        }
+    }
+    println!();
 }
 
 /// The other kinds of Slice and `decimate`, against a copy.
@@ -942,10 +1262,7 @@ fn other_speed(isas: &[Isa]) {
                     pass.run(img, *isa, *options, &mut out);
                     std::hint::black_box(&mut out);
                 });
-                let method = match options.level_method {
-                    LevelMethod::Bilinear => "bilinear",
-                    LevelMethod::Decimate => "decimate",
-                };
+                let method = method_name(options.level_method);
                 println!(
                     "| `{name}` | {image} | `{method}` | {isa:?} | 0 to {top} | {t:.3} s | {:.1} |",
                     t / copy

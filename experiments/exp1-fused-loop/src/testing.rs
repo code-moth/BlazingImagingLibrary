@@ -195,8 +195,38 @@ pub fn masked_reference(
     top: u32,
     weights: crate::MissingWeights,
 ) -> Vec<Vec<Slice>> {
+    assert!(img.valid.is_some(), "an Image with a validity mask");
+    reference(img, func, top, weights, crate::LevelMethod::Bilinear)
+}
+
+/// `masked_reference` for a filtering level method, `bilinear` or `binomial5`, and for an Image
+/// with or without a mask: with none, every pixel is present. Weights of exactly 1 give the bits
+/// of a halving with nothing missing, so this checks both paths of the rolling buffer.
+pub fn reference(
+    img: &Image,
+    func: Func,
+    top: u32,
+    weights: crate::MissingWeights,
+    method: crate::LevelMethod,
+) -> Vec<Vec<Slice>> {
     use crate::simd::Isa::Scalar;
-    let mask = img.valid.as_ref().expect("an Image with a validity mask");
+    assert!(
+        method != crate::LevelMethod::Decimate,
+        "the reference makes only filtering methods"
+    );
+    let ones = vec![1u8; img.rows * img.cols];
+    let mask = img.valid.as_ref().unwrap_or(&ones);
+    let taps = method.taps(func) as i64;
+    let radius = taps / 2;
+    // A halving's arithmetic, in the order of the kernels: `halve` for three taps, `blur5` for
+    // five.
+    let filter = |x: &[f32]| -> f32 {
+        if taps == 3 {
+            ((x[0] + x[2]) + (x[1] + x[1])) * 0.25
+        } else {
+            ((x[0] + x[4]) * 0.0625 + (x[1] + x[3]) * 0.25) + x[2] * 0.375
+        }
+    };
     let (carried, extra) = func.level0_planes();
     let (rows, cols) = (img.rows, img.cols);
     // Level 0 planes, row by row through the Level 0 kernels.
@@ -268,22 +298,24 @@ pub fn masked_reference(
             );
             let (jr, jc) = (h as i64, w as i64);
             let at = |i: i64, j: i64| crate::reflect(i, j) as usize;
-            let cols3 = |j: i64| [at(2 * j - 1, jc), at(2 * j, jc), at(2 * j + 1, jc)];
-            let rows3 = |i: i64| [at(2 * i - 1, jr), at(2 * i, jr), at(2 * i + 1, jr)];
-            // Along rows, the weights: 1 2 1, a quarter.
+            // The sources of grid point j along an axis of length n, mirrored at the edges.
+            let sources = |j: i64, n: i64| -> Vec<usize> {
+                (-radius..=radius).map(|d| at(2 * j + d, n)).collect()
+            };
+            // Along rows, the weights.
             let mut wt = vec![0f32; h * w2];
             for r in 0..h {
                 for j in 0..w2 as i64 {
-                    let c = cols3(j).map(|c| weight[r * w + c]);
-                    wt[r * w2 + j as usize] = ((c[0] + c[2]) + (c[1] + c[1])) * 0.25;
+                    let c: Vec<f32> = sources(j, jc).iter().map(|&c| weight[r * w + c]).collect();
+                    wt[r * w2 + j as usize] = filter(&c);
                 }
             }
             // Down columns, the weights of the new Level.
             let mut q = vec![0f32; h2 * w2];
             for i in 0..h2 as i64 {
                 for j in 0..w2 {
-                    let c = rows3(i).map(|r| wt[r * w2 + j]);
-                    q[i as usize * w2 + j] = ((c[0] + c[2]) + (c[1] + c[1])) * 0.25;
+                    let c: Vec<f32> = sources(i, jr).iter().map(|&r| wt[r * w2 + j]).collect();
+                    q[i as usize * w2 + j] = filter(&c);
                 }
             }
             for plane in planes.iter_mut().take(carried) {
@@ -291,21 +323,22 @@ pub fn masked_reference(
                 let mut sum = vec![0f32; h * w2];
                 for r in 0..h {
                     for j in 0..w2 as i64 {
-                        let idx = cols3(j);
-                        let x = idx
-                            .map(|c| plane[r * w + c])
-                            .map(|x| if x.is_nan() { 0.0 } else { x });
-                        let c = idx.map(|c| weight[r * w + c]);
-                        sum[r * w2 + j as usize] =
-                            ((c[0] * x[0] + c[2] * x[2]) + (c[1] * x[1] + c[1] * x[1])) * 0.25;
+                        let x: Vec<f32> = sources(j, jc)
+                            .iter()
+                            .map(|&c| {
+                                let x = plane[r * w + c];
+                                (if x.is_nan() { 0.0 } else { x }) * weight[r * w + c]
+                            })
+                            .collect();
+                        sum[r * w2 + j as usize] = filter(&x);
                     }
                 }
                 // Down columns: combined, then divided once by the new weight.
                 let mut next = vec![0f32; h2 * w2];
                 for i in 0..h2 as i64 {
                     for j in 0..w2 {
-                        let s = rows3(i).map(|r| sum[r * w2 + j]);
-                        let s = ((s[0] + s[2]) + (s[1] + s[1])) * 0.25;
+                        let s: Vec<f32> = sources(i, jr).iter().map(|&r| sum[r * w2 + j]).collect();
+                        let s = filter(&s);
                         let q = q[i as usize * w2 + j];
                         next[i as usize * w2 + j] = if q == 0.0 { f32::NAN } else { s / q };
                     }

@@ -145,7 +145,7 @@ pub unsafe fn halve<V: Vf>(n: usize, a: *const f32, b: *const f32, c: *const f32
 /// `src` holds `2n + 1` values.
 #[inline(always)]
 pub unsafe fn halve_row<V: Vf>(n: usize, src: *const f32, out: *mut f32) {
-    row_pairs::<V, 1, 1>(
+    row_taps::<V, 1, 1, 3>(
         n,
         [src],
         [out],
@@ -179,7 +179,7 @@ pub unsafe fn halve_weighted<V: Vf>(
 /// as `halve_row` does. `x` and `c` each hold `2n + 1` values.
 #[inline(always)]
 pub unsafe fn halve_row_weighted<V: Vf>(n: usize, x: *const f32, c: *const f32, out: *mut f32) {
-    row_pairs::<V, 2, 1>(
+    row_taps::<V, 2, 1, 3>(
         n,
         [x, c],
         [out],
@@ -247,7 +247,7 @@ pub unsafe fn min3_present<V: Vf>(
 /// values.
 #[inline(always)]
 pub unsafe fn min3_row<V: Vf>(n: usize, src: *const f32, out: *mut f32) {
-    row_pairs::<V, 1, 1>(
+    row_taps::<V, 1, 1, 3>(
         n,
         [src],
         [out],
@@ -355,26 +355,25 @@ unsafe fn weighted_sum<V: Vf>(x: [V; 3], c: [V; 3]) -> V {
     a.add(cc).add(b.add(b)).mul(V::splat(0.25))
 }
 
-/// Applies `f` to the left, center and right sources of each output of a halving along a row,
-/// read from each of `NI` rows itself: `src[2i]`, `src[2i + 1]` and `src[2i + 2]`. Each source
-/// holds `2n + 1` values. The last outputs go through the same vector code on a padded copy.
+/// Applies `f` to the `T` sources of each output of a halving along a row, read from each of
+/// `NI` rows itself: output `i` takes `src[2i]` to `src[2i + T - 1]`, and each source holds
+/// `2n + T - 2` values. The even and odd columns are separated by vector shuffles, which only
+/// move values. The last outputs go through the same vector code on a padded copy.
 #[inline(always)]
-unsafe fn row_pairs<V: Vf, const NI: usize, const NO: usize>(
+unsafe fn row_taps<V: Vf, const NI: usize, const NO: usize, const T: usize>(
     n: usize,
     srcs: [*const f32; NI],
     outs: [*mut f32; NO],
-    f: impl Fn([[V; 3]; NI]) -> [V; NO],
+    f: impl Fn([[V; T]; NI]) -> [V; NO],
 ) {
     let l = V::LANES;
     let mut i = 0;
-    // The right source of the last output in a vector is read by the second load, which ends
-    // one value past it, so a full vector needs i + l < n.
+    // The last source of the last output in a vector is read by the last load, which ends one
+    // value past it, so a full vector needs i + l < n.
     while i + l < n {
-        let mut v = [[V::splat(0.0); 3]; NI];
+        let mut v = [[V::splat(0.0); T]; NI];
         for k in 0..NI {
-            let (a, b) = V::load_even_odd(srcs[k].add(2 * i));
-            let (c, _) = V::load_even_odd(srcs[k].add(2 * i + 2));
-            v[k] = [a, b, c];
+            v[k] = taps::<V, T>(srcs[k].add(2 * i));
         }
         let r = f(v);
         for k in 0..NO {
@@ -384,15 +383,13 @@ unsafe fn row_pairs<V: Vf, const NI: usize, const NO: usize>(
     }
     if i < n {
         let rem = n - i;
-        let mut t = [[0f32; 2 * MAX_LANES + 2]; NI];
-        let mut v = [[V::splat(0.0); 3]; NI];
+        let mut t = [[0f32; 2 * MAX_LANES + 6]; NI];
+        let mut v = [[V::splat(0.0); T]; NI];
         for k in 0..NI {
-            for j in 0..2 * rem + 1 {
+            for j in 0..2 * rem + T - 2 {
                 t[k][j] = *srcs[k].add(2 * i + j);
             }
-            let (a, b) = V::load_even_odd(t[k].as_ptr());
-            let (c, _) = V::load_even_odd(t[k].as_ptr().add(2));
-            v[k] = [a, b, c];
+            v[k] = taps::<V, T>(t[k].as_ptr());
         }
         let r = f(v);
         let mut tout = [0f32; MAX_LANES];
@@ -403,6 +400,133 @@ unsafe fn row_pairs<V: Vf, const NI: usize, const NO: usize>(
             }
         }
     }
+}
+
+/// The `T` sources of `LANES` consecutive outputs of a halving along a row: tap `t` of output
+/// `i` is `p[2i + t]`. `T` is 3 or 5.
+#[inline(always)]
+unsafe fn taps<V: Vf, const T: usize>(p: *const f32) -> [V; T] {
+    let mut v = [V::splat(0.0); T];
+    // Written as a loop over a constant count, not with array `map`, so that it inlines.
+    let mut m = 0;
+    while 2 * m < T {
+        let (e, o) = V::load_even_odd(p.add(2 * m));
+        v[2 * m] = e;
+        if 2 * m + 1 < T {
+            v[2 * m + 1] = o;
+        }
+        m += 1;
+    }
+    v
+}
+
+/// One `binomial5` halving: weights 1 4 6 4 1, divided by 16, written as
+/// `((a + e) / 16 + (b + d) / 4) + 3c / 8`. Each scale is a power of two or 3/8, so the order
+/// is fixed, every operation is correctly rounded, and a pair sum overflows only when the pair
+/// exceeds `f32::MAX`, as in `bilinear`. Weights of 1 throughout give exactly 1.
+#[inline(always)]
+unsafe fn blur5_of<V: Vf>(x: [V; 5]) -> V {
+    x[0].add(x[4])
+        .mul(V::splat(0.0625))
+        .add(x[1].add(x[3]).mul(V::splat(0.25)))
+        .add(x[2].mul(V::splat(0.375)))
+}
+
+/// One `binomial5` halving of a linear plane, from five rows or gathered columns.
+#[inline(always)]
+pub unsafe fn blur5<V: Vf>(n: usize, x: [*const f32; 5], out: *mut f32) {
+    map::<V, 5, 1>(
+        n,
+        x,
+        [out],
+        #[inline(always)]
+        |x| [blur5_of(x)],
+    );
+}
+
+/// `blur5` along a row, reading the row itself: `out[i]` is made from `src[2i]` to `src[2i + 4]`
+/// with the arithmetic of `blur5`, so the bits are the same. `src` holds `2n + 3` values.
+#[inline(always)]
+pub unsafe fn blur5_row<V: Vf>(n: usize, src: *const f32, out: *mut f32) {
+    row_taps::<V, 1, 1, 5>(
+        n,
+        [src],
+        [out],
+        #[inline(always)]
+        |[x]| [blur5_of(x)],
+    );
+}
+
+/// The first half of a `binomial5` halving where values may be missing, as `halve_weighted` is
+/// for `bilinear`: the sum of the present values times their weights, with the weights of
+/// `blur5`, not divided.
+#[inline(always)]
+pub unsafe fn blur5_weighted<V: Vf>(
+    n: usize,
+    x: [*const f32; 5],
+    c: [*const f32; 5],
+    out: *mut f32,
+) {
+    map::<V, 10, 1>(
+        n,
+        [x[0], x[1], x[2], x[3], x[4], c[0], c[1], c[2], c[3], c[4]],
+        [out],
+        #[inline(always)]
+        |v| [blur5_of(present_times(v))],
+    );
+}
+
+/// `blur5_weighted` along a row, reading the values and their weights from the rows themselves.
+/// `x` and `c` each hold `2n + 3` values.
+#[inline(always)]
+pub unsafe fn blur5_row_weighted<V: Vf>(n: usize, x: *const f32, c: *const f32, out: *mut f32) {
+    row_taps::<V, 2, 1, 5>(
+        n,
+        [x, c],
+        [out],
+        #[inline(always)]
+        |[x, c]| {
+            [blur5_of(present_times([
+                x[0], x[1], x[2], x[3], x[4], c[0], c[1], c[2], c[3], c[4],
+            ]))]
+        },
+    );
+}
+
+/// The second half of a `binomial5` halving where values may be missing, as `halve_over` is for
+/// `bilinear`: five rows of weighted sums combined by `blur5`, divided by the halved weight `w`,
+/// and NaN where `w` is 0.
+#[inline(always)]
+pub unsafe fn blur5_over<V: Vf>(n: usize, s: [*const f32; 5], w: *const f32, out: *mut f32) {
+    map::<V, 6, 1>(
+        n,
+        [s[0], s[1], s[2], s[3], s[4], w],
+        [out],
+        #[inline(always)]
+        |[a, b, c, d, e, w]| {
+            let s = blur5_of([a, b, c, d, e]);
+            let none = w.eq(V::splat(0.0));
+            [V::select(
+                none,
+                V::splat(f32::NAN),
+                s.div(V::select(none, V::splat(1.0), w)),
+            )]
+        },
+    );
+}
+
+/// Five values times their five weights, a missing value, which may be NaN, taken as 0 first.
+#[inline(always)]
+unsafe fn present_times<V: Vf>(v: [V; 10]) -> [V; 5] {
+    let zero = V::splat(0.0);
+    // Written out, not with array `map`, so that it inlines into vector code.
+    [
+        V::select(v[0].eq(v[0]), v[0], zero).mul(v[5]),
+        V::select(v[1].eq(v[1]), v[1], zero).mul(v[6]),
+        V::select(v[2].eq(v[2]), v[2], zero).mul(v[7]),
+        V::select(v[3].eq(v[3]), v[3], zero).mul(v[8]),
+        V::select(v[4].eq(v[4]), v[4], zero).mul(v[9]),
+    ]
 }
 
 /// `complex.polar` at Level 0: magnitude, the unit vector carried to coarser Levels, and phase.
