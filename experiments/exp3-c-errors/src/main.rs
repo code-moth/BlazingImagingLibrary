@@ -93,10 +93,14 @@ extern "C" {
     fn bil_j2k_decode_unprotected(data: *const u8, len: usize, format: c_int) -> c_int;
     fn bil_state_describe(buf: *mut c_char, cap: usize) -> usize;
     fn bil_heap_in_use() -> u64;
+    fn bil_fp_flags() -> u32;
+    fn bil_fp_clear();
+    fn opj_version() -> *const c_char;
     fn bil_state_poke(what: c_int, undo: c_int) -> c_int;
 }
 
-/// The limits every decode here is given: the sizes of section 10.3's resource limits.
+/// The limits every decode here is given: section 10.3's limits, at sizes chosen for the
+/// experiment, large beside its files.
 const LIMITS: Limits = Limits {
     max_image_pixels: 1 << 22,
     max_decoded_bytes: 64 << 20,
@@ -419,6 +423,10 @@ const WARMUP: u64 = 50;
 fn worker(codec: Codec, start: u64, count: u64) {
     let seeds = seeds(codec);
     let before = state();
+    unsafe { bil_fp_clear() };
+    let (mut slowest, mut slowest_at) = (Duration::ZERO, start);
+    // A digest of every outcome, so that two workers over the same files can be compared.
+    let mut digest = fnv(&[]);
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     let (mut ok, mut warned, mut errors, mut refused, mut differ) = (0u64, 0u64, 0u64, 0u64, 0u64);
@@ -429,7 +437,13 @@ fn worker(codec: Codec, start: u64, count: u64) {
         writeln!(out, "i {i}").unwrap();
         out.flush().unwrap();
         let data = corrupt(&seeds, i);
+        let begun = Instant::now();
         let (outcome, _, left) = decode_with(codec, &data, &LIMITS, false);
+        let took = begun.elapsed();
+        if took > slowest {
+            (slowest, slowest_at) = (took, i);
+        }
+        digest = fnv(format!("{digest} {outcome:?}").as_bytes());
         if i >= start + WARMUP && left != 0 {
             leaked += left;
             if shown < 20 {
@@ -453,7 +467,11 @@ fn worker(codec: Codec, start: u64, count: u64) {
             Outcome::Refused => refused += 1,
         }
     }
+    let flags = unsafe { bil_fp_flags() };
     let after = state();
+    writeln!(out, "fp flags={flags:x}").unwrap();
+    writeln!(out, "slowest={} {slowest_at}", slowest.as_secs_f64()).unwrap();
+    writeln!(out, "digest={digest:x}").unwrap();
     writeln!(out, "outcomes ok={ok} warned={warned} error={errors} refused={refused} nondeterministic={differ}").unwrap();
     writeln!(out, "heap left={leaked}").unwrap();
     if before == after {
@@ -485,6 +503,12 @@ struct Run {
 
 /// Runs this program with `args`, watching it for at most `limit`.
 fn child(args: &[String], limit: Duration) -> Run {
+    child_with(args, limit, 0)
+}
+
+/// As `child`, with glibc filling memory it hands out, and memory freed, with `perturb` where
+/// that is not 0, so that a read of memory never written sees other bytes than in another run.
+fn child_with(args: &[String], limit: Duration, perturb: u8) -> Run {
     let exe = std::env::current_exe().unwrap();
     let begun = Instant::now();
     let mut proc = Command::new(exe)
@@ -493,7 +517,9 @@ fn child(args: &[String], limit: Duration) -> Run {
         // use still includes; without them, the count falls back exactly when memory is freed.
         .env(
             "GLIBC_TUNABLES",
-            "glibc.malloc.tcache_count=0:glibc.malloc.mxfast=0",
+            format!(
+                "glibc.malloc.tcache_count=0:glibc.malloc.mxfast=0:glibc.malloc.perturb={perturb}"
+            ),
         )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -558,8 +584,21 @@ fn main() {
             control(Codec::parse(&args[1]));
             return;
         }
+        Some("--limits") => {
+            limits();
+            return;
+        }
         _ => {}
     }
+    // The OpenJPEG header in vendor/ describes 2.5.0, and nothing else checks that the library
+    // linked is the same.
+    let opj = unsafe { CStr::from_ptr(opj_version()) }
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(
+        opj, "2.5.0",
+        "the OpenJPEG linked is not the version of the header in vendor/"
+    );
     let check = args.iter().any(|a| a == "--check");
     let per_codec: [(Codec, u64); 3] = if check {
         [
@@ -655,42 +694,20 @@ fn main() {
     );
 
     // 3. Resource limits: a header that claims an enormous Image is refused before decoding,
-    // with no memory taken for it.
-    let mut refused = 0;
-    let heap0 = unsafe { bil_heap_in_use() };
-    for codec in [Codec::Jpeg, Codec::J2k] {
-        let s = &seeds(codec)[0];
-        let mut d = s.data.clone();
-        let huge = match codec {
-            // SOF0's height and width, after the marker, length and precision.
-            Codec::Jpeg => {
-                let sof = (0..d.len() - 1)
-                    .find(|&i| d[i] == 0xFF && (d[i + 1] == 0xC0 || d[i + 1] == 0xC2))
-                    .unwrap();
-                d[sof + 5..sof + 9].copy_from_slice(&[0xFD, 0xE8, 0xFD, 0xE8]); // 65,000 × 65,000
-                d
-            }
-            // SIZ, after its marker, length and capabilities.
-            _ => {
-                let siz = (0..d.len() - 1)
-                    .find(|&i| d[i] == 0xFF && d[i + 1] == 0x51)
-                    .unwrap();
-                // Xsiz and Ysiz, then XTsiz and YTsiz, so that the tiles still cover the Image
-                // in one: 65,536 × 65,536.
-                d[siz + 6..siz + 14].copy_from_slice(&[0, 1, 0, 0, 0, 1, 0, 0]);
-                d[siz + 22..siz + 30].copy_from_slice(&[0, 1, 0, 0, 0, 1, 0, 0]);
-                d
-            }
-        };
-        if decode(codec, &huge, &LIMITS).0 == Outcome::Refused {
-            refused += 1;
-        }
-    }
-    let taken = unsafe { bil_heap_in_use() } as i64 - heap0 as i64;
+    // with no memory taken for it; and a progressive JPEG with more scans than the layer
+    // allows is stopped. In a child, where heap is counted exactly.
+    let run = child(&["--limits".into()], Duration::from_secs(60));
+    let refused: usize = field(&run.stdout, "refused=")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let taken: i64 = field(&run.stdout, "taken=")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(i64::MAX);
+    let scans = field(&run.stdout, "scans=").unwrap_or_default();
     report(
         "Limits",
-        refused == 2 && taken < (1 << 20),
-        format!("headers claiming 65,000 × 65,000 and 65,536 × 65,536 pixels refused before decoding: {refused} of 2; heap taken meanwhile: {taken} bytes"),
+        refused == 3 && taken == 0 && scans == "stopped" && run.status == Some(0),
+        format!("headers claiming 65,000 × 65,000 pixels for JPEG and 65,536 × 65,536 for a codestream and a JP2 file, refused before decoding: {refused} of 3; heap left: {taken} bytes; a progressive JPEG with one scan repeated 600 times: {scans}"),
     );
 
     // 4. The check of the check: each kind of change the comparison of process state is meant
@@ -725,6 +742,9 @@ fn main() {
         let mut failures = Vec::new();
         let mut leaked = 0i64;
         let mut kinds = 0u64;
+        let mut flags = 0u32;
+        let mut scan_stops = 0u64;
+        let (mut slowest, mut slowest_at) = (0f64, 0u64);
         let begun = Instant::now();
         let jobs: Vec<(u64, u64)> = (0..parts).map(|p| (p * size, size)).collect();
         for batch in jobs.chunks(threads) {
@@ -782,20 +802,59 @@ fn main() {
                         .and_then(|g| g.parse().ok())
                         .unwrap_or(0),
                 );
+                flags |= field(&run.stdout, "fp flags=")
+                    .and_then(|g| u32::from_str_radix(&g, 16).ok())
+                    .unwrap_or(0);
+                scan_stops += field(&run.stdout, "scan limit=")
+                    .and_then(|g| g.parse().ok())
+                    .unwrap_or(0);
+                if let Some(v) = field(&run.stdout, "slowest=") {
+                    let mut it = v.split_whitespace();
+                    let secs: f64 = it.next().and_then(|t| t.parse().ok()).unwrap_or(0.0);
+                    if secs > slowest {
+                        slowest = secs;
+                        slowest_at = it.next().and_then(|t| t.parse().ok()).unwrap_or(0);
+                    }
+                }
                 for l in run.stdout.iter().filter(|l| l.starts_with("state changed")) {
                     failures.push(format!("worker from {start}: {l}"));
                 }
             }
         }
+        // The first files again, in two workers whose memory glibc fills with different bytes:
+        // a decode that read memory it had not written would see the difference.
+        let pair = (total / 10).min(20_000);
+        let args = vec![
+            "--worker".into(),
+            codec.name().into(),
+            "0".into(),
+            pair.to_string(),
+        ];
+        let digests: Vec<Option<String>> = std::thread::scope(|scope| {
+            let a = scope.spawn(|| child_with(&args, Duration::from_secs(600), 0x55));
+            let b = scope.spawn(|| child_with(&args, Duration::from_secs(600), 0xAA));
+            [a.join().unwrap(), b.join().unwrap()]
+                .iter()
+                .map(|r| field(&r.stdout, "digest="))
+                .collect()
+        });
+        let same = digests[0].is_some() && digests[0] == digests[1];
         let (ok, warned, errors, refused, differ) = summary;
         let decoded = ok + warned + errors + refused;
-        let passed = failures.is_empty() && differ == 0 && decoded == parts * size && leaked == 0;
+        let passed = failures.is_empty()
+            && differ == 0
+            && same
+            && decoded == parts * size
+            && leaked == 0
+            && slowest < 5.0;
         report(
             &format!("Corrupt {} files", codec.name()),
             passed,
             format!(
-                "{decoded} files in {parts} workers, {:.1} s: {ok} decoded, {warned} decoded with corrupt data recovered from, {errors} errors ({kinds} kinds at most in one worker), {refused} refused by the limits; {differ} decoded differently twice; heap left behind by the library and the layer, after each worker's first {WARMUP} files: {leaked} bytes; no crash, exit, hang or output, and process state unchanged: {}{}",
+                "{decoded} files in {parts} workers, {:.1} s: {ok} decoded, {warned} decoded with corrupt data recovered from, {errors} errors ({kinds} kinds at most in one worker), {refused} refused by the limits, {scan_stops} stopped at the scan limit; decoded twice in one worker with a different outcome: {differ}; the first {pair} decoded alike in two workers with memory filled differently: {same}; heap left behind by the library and the layer, after each worker's first {WARMUP} files: {leaked} bytes; slowest file {slowest_at}, {:.3} s, against a limit of 5; floating-point flags raised: {}; no crash, exit, hang or output, and process state unchanged: {}{}",
                 begun.elapsed().as_secs_f64(),
+                slowest,
+                flag_names(flags),
                 failures.is_empty(),
                 if failures.is_empty() { String::new() } else { format!(" ({})", failures.join("; ")) },
             ),
@@ -804,6 +863,99 @@ fn main() {
 
     println!("All checks of containing C errors passed: **{all_ok}**");
     std::process::exit(if all_ok { 0 } else { 1 });
+}
+
+/// The limits, checked in a child: three headers claiming enormous Images, and a progressive
+/// JPEG with one scan repeated past the scan limit.
+fn limits() {
+    let heap0 = unsafe { bil_heap_in_use() };
+    let mut refused = 0;
+    for codec in [Codec::Jpeg, Codec::J2k, Codec::Jp2] {
+        let mut d = seeds(codec)[0].data.clone();
+        if codec == Codec::Jpeg {
+            // SOF's height and width, after the marker, length and precision: 65,000 × 65,000.
+            let sof = (0..d.len() - 1)
+                .find(|&i| d[i] == 0xFF && (d[i + 1] == 0xC0 || d[i + 1] == 0xC2))
+                .unwrap();
+            d[sof + 5..sof + 9].copy_from_slice(&[0xFD, 0xE8, 0xFD, 0xE8]);
+        } else {
+            // SIZ, after its marker, length and capabilities: Xsiz and Ysiz, then XTsiz and
+            // YTsiz, so that one tile still covers the Image: 65,536 × 65,536.
+            let siz = (0..d.len() - 1)
+                .find(|&i| d[i] == 0xFF && d[i + 1] == 0x51)
+                .unwrap();
+            d[siz + 6..siz + 14].copy_from_slice(&[0, 1, 0, 0, 0, 1, 0, 0]);
+            d[siz + 22..siz + 30].copy_from_slice(&[0, 1, 0, 0, 0, 1, 0, 0]);
+            if codec == Codec::Jp2 {
+                // The JP2 header box states the size too, as height and then width, and must
+                // agree with the codestream's.
+                let ihdr = d.windows(4).position(|w| w == b"ihdr").unwrap();
+                d[ihdr + 4..ihdr + 12].copy_from_slice(&[0, 1, 0, 0, 0, 1, 0, 0]);
+            }
+        }
+        refused += usize::from(decode_with(codec, &d, &LIMITS, false).0 == Outcome::Refused);
+    }
+    let taken = unsafe { bil_heap_in_use() } as i64 - heap0 as i64;
+    // The last scan of a progressive seed, from its SOS marker to the end of the image, repeated.
+    let seed = &seeds(Codec::Jpeg)[1].data;
+    let sos = (0..seed.len() - 1)
+        .rev()
+        .find(|&i| seed[i] == 0xFF && seed[i + 1] == 0xDA)
+        .unwrap();
+    let eoi = seed.len() - 2;
+    let mut many = seed[..eoi].to_vec();
+    for _ in 0..600 {
+        many.extend_from_slice(&seed[sos..eoi]);
+    }
+    many.extend_from_slice(&[0xFF, 0xD9]);
+    let scans = match decode_with(Codec::Jpeg, &many, &LIMITS, false).0 {
+        Outcome::Error(m) if m.contains("progressive scans") => "stopped".to_string(),
+        other => format!("not stopped ({other:?})"),
+    };
+    println!("refused={refused}");
+    println!("taken={taken}");
+    println!("scans={scans}");
+}
+
+/// The floating-point exception flags `bil_fp_flags` reports, by name.
+fn flag_names(flags: u32) -> String {
+    let names: &[(u32, &str)] = if cfg!(target_arch = "x86_64") {
+        &[
+            (0x01, "invalid"),
+            (0x02, "denormal"),
+            (0x04, "divide by zero"),
+            (0x08, "overflow"),
+            (0x10, "underflow"),
+            (0x20, "inexact"),
+            (0x0100, "x87 invalid"),
+            (0x0200, "x87 denormal"),
+            (0x0400, "x87 divide by zero"),
+            (0x0800, "x87 overflow"),
+            (0x1000, "x87 underflow"),
+            (0x2000, "x87 inexact"),
+        ]
+    } else if cfg!(target_arch = "aarch64") {
+        &[
+            (0x01, "invalid"),
+            (0x02, "divide by zero"),
+            (0x04, "overflow"),
+            (0x08, "underflow"),
+            (0x10, "inexact"),
+            (0x80, "input denormal"),
+        ]
+    } else {
+        &[]
+    };
+    let found: Vec<&str> = names
+        .iter()
+        .filter(|(b, _)| flags & b != 0)
+        .map(|(_, n)| *n)
+        .collect();
+    if found.is_empty() {
+        "none".into()
+    } else {
+        found.join(", ")
+    }
 }
 
 /// Decodes one corrupt file with the library's own error handling, in a child process.

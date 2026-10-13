@@ -3,16 +3,19 @@
  * Experiment 3: a description of the process-wide state a C library could change behind BIL's
  * back, so that the checks can compare it before and after thousands of corrupt files.
  *
- * It covers the locale, every signal's handler and flags, the floating-point environment
- * (rounding and, on x86, MXCSR's flush-to-zero and denormals-are-zero bits, which would change
- * every float32 BIL computes), the file mode mask, the working directory, the environment, and
- * the open file descriptors. Heap in use is reported apart, since it may vary a little.
+ * It covers the locale; every signal's handler, flags and mask, real-time signals included, and
+ * the calling thread's blocked signals; the floating-point modes (rounding, exception masks,
+ * and on x86 MXCSR's flush-to-zero and denormals-are-zero bits, which would change every
+ * float32 BIL computes); the file mode mask; the working directory; the environment; and the
+ * open file descriptors. The floating-point exception flags, which ordinary arithmetic sets,
+ * and heap in use are reported apart.
  */
 
 #define _GNU_SOURCE
 #include <dirent.h>
 #include <fenv.h>
 #include <locale.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -45,35 +48,52 @@ static void put(Out *o, const char *fmt, ...) {
 /* Writes the description into buf, and returns its length. */
 size_t bil_state_describe(char *buf, size_t cap) {
     Out o = {buf, cap, 0};
-    /* The exception flags are set by ordinary arithmetic, so they are cleared first: what is
-     * compared is the modes, which only a deliberate call changes. FE_ALL_EXCEPT leaves out the
-     * flag for a denormal operand (DE in x86's MXCSR and x87 status word, IDC in ARM's FPSR),
-     * which libraries' float arithmetic sets on corrupt data, so it is cleared here too. */
-    feclearexcept(FE_ALL_EXCEPT);
+    /* The modes alone: the control words without their status bits. The whole fenv_t is not
+     * compared, since on x86 it also holds the last x87 instruction's address. */
 #if defined(__x86_64__)
+    unsigned short cw;
     unsigned int csr;
+    __asm__ volatile("fnstcw %0" : "=m"(cw));
     __asm__ volatile("stmxcsr %0" : "=m"(csr));
-    csr &= ~0x3Fu;
-    __asm__ volatile("ldmxcsr %0" : : "m"(csr));
-    __asm__ volatile("fnclex");
+    put(&o, "x87 control=%04x mxcsr modes=%08x\n", cw, csr & ~0x3Fu);
 #elif defined(__aarch64__)
-    __asm__ volatile("msr fpsr, xzr");
-#endif
+    unsigned long fpcr;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+    put(&o, "fpcr=%016lx\n", fpcr);
+#else
     fenv_t env;
     fegetenv(&env);
     put(&o, "fenv=");
     const unsigned char *e = (const unsigned char *)&env;
     for (size_t i = 0; i < sizeof env; i++) put(&o, "%02x", e[i]);
-    put(&o, "\nrounding=%d\n", fegetround());
+    put(&o, "\n");
+#endif
+    put(&o, "rounding=%d\n", fegetround());
     const char *loc = setlocale(LC_ALL, NULL);
     put(&o, "locale=%s\n", loc ? loc : "(none)");
-    for (int sig = 1; sig < 32; sig++) {
+    int last = 31;
+#if defined(SIGRTMAX)
+    last = SIGRTMAX;
+#endif
+    for (int sig = 1; sig <= last; sig++) {
         struct sigaction sa;
         /* glibc adds SA_RESTORER to every action it installs, even one that restores the
          * default, so that bit says nothing about what the handler does and is left out. */
-        if (sigaction(sig, NULL, &sa) == 0)
-            put(&o, "signal %d handler=%p flags=%lx\n", sig, (void *)(uintptr_t)sa.sa_handler,
-                (unsigned long)sa.sa_flags & ~0x04000000ul);
+        if (sigaction(sig, NULL, &sa) == 0) {
+            unsigned long long masked = 0;
+            for (int m = 1; m <= last && m <= 64; m++)
+                if (sigismember(&sa.sa_mask, m) == 1) masked |= 1ull << (m - 1);
+            put(&o, "signal %d handler=%p flags=%lx mask=%llx\n", sig,
+                (void *)(uintptr_t)sa.sa_handler, (unsigned long)sa.sa_flags & ~0x04000000ul,
+                masked);
+        }
+    }
+    sigset_t blocked;
+    if (pthread_sigmask(SIG_BLOCK, NULL, &blocked) == 0) {
+        put(&o, "blocked=");
+        for (int m = 1; m <= last; m++)
+            if (sigismember(&blocked, m) == 1) put(&o, "%d ", m);
+        put(&o, "\n");
     }
     mode_t mask = umask(0);
     umask(mask);
@@ -95,6 +115,39 @@ size_t bil_state_describe(char *buf, size_t cap) {
     /* The directory itself was one of them while it was open. */
     put(&o, "open descriptors=%llu\n", fds ? fds - 1 : 0);
     return o.at;
+}
+
+/* The floating-point exception flags, all of them, the denormal-operand flag included, which
+ * FE_ALL_EXCEPT leaves out (DE in x86's MXCSR and x87 status word, IDC in ARM's FPSR): x86's
+ * MXCSR flags in the low byte and the x87 flags in the next, or ARM's FPSR flags. */
+unsigned int bil_fp_flags(void) {
+#if defined(__x86_64__)
+    unsigned int csr;
+    unsigned short sw;
+    __asm__ volatile("stmxcsr %0" : "=m"(csr));
+    __asm__ volatile("fnstsw %0" : "=m"(sw));
+    return (csr & 0x3Fu) | ((sw & 0x3Fu) << 8);
+#elif defined(__aarch64__)
+    unsigned long fpsr;
+    __asm__ volatile("mrs %0, fpsr" : "=r"(fpsr));
+    return (unsigned int)(fpsr & 0x9Ful);
+#else
+    return (unsigned int)fetestexcept(FE_ALL_EXCEPT);
+#endif
+}
+
+/* Clears every floating-point exception flag. */
+void bil_fp_clear(void) {
+    feclearexcept(FE_ALL_EXCEPT);
+#if defined(__x86_64__)
+    unsigned int csr;
+    __asm__ volatile("stmxcsr %0" : "=m"(csr));
+    csr &= ~0x3Fu;
+    __asm__ volatile("ldmxcsr %0" : : "m"(csr));
+    __asm__ volatile("fnclex");
+#elif defined(__aarch64__)
+    __asm__ volatile("msr fpsr, xzr");
+#endif
 }
 
 /* Bytes of heap in use, where the C library reports it; 0 where it does not. */

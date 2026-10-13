@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: IJG AND BSD-3-Clause */
 /* jconfig.h for the libjpeg-turbo 2.1.5 runtime of Ubuntu 24.04 (libjpeg-turbo8), written for
  * BIL's experiment 3 from the release's jconfig.h.in. The library checks the size of every
  * struct it is given against its own, so a mismatch is reported, not silently used. */

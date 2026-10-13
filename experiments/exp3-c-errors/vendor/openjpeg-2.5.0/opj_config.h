@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /* opj_config.h for OpenJPEG 2.5.0, written for BIL's experiment 3 from the release's
  * opj_config.h.cmake.in. */
 #define OPJ_HAVE_STDINT_H 1

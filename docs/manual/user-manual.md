@@ -924,7 +924,7 @@ out.close()
 - **The limit.** BIL empties only fields its definitions flag as identity; identity can also sit in free text and in the pixels. Once an array leaves BIL as plain data, keeping its markings is your task.
 ## 19. Safety and containment
 
-> **Status:** Specified.
+> **Status:** Specified. The C layer that keeps libjpeg-turbo's and OpenJPEG's errors from crashing, ending or printing in the caller's process, and the limits checked before pixel memory is taken, are prototyped in experiment 3 (chapter 23).
 
 BIL is used on closed networks and with data that must not leak, and imagery files often come from outside. Two rules and four measures follow.
 
@@ -1117,9 +1117,9 @@ bil_close_source(source);
 **Stability.** The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.
 ## 23. What runs today
 
-> **Status:** Built (the `bil` crate's vector layer and kernels) and Prototyped (experiments 1, 1b and 5).
+> **Status:** Built (the `bil` crate's vector layer and kernels) and Prototyped (experiments 1, 1b, 3 and 5).
 
-Three pieces of code exist. The `bil` crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. Experiment 5 maps files and hands their bytes to NumPy without a copy.
+Four pieces of code exist. The `bil` crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. Experiment 5 maps files and hands their bytes to NumPy without a copy. Experiment 3 puts two C libraries behind a C layer and feeds them corrupt files.
 
 **The `bil` crate** (`crates/bil`, version 0.0.1) holds the vector layer and the kernels.
 
@@ -1215,6 +1215,15 @@ python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs Nu
 
 `RESULTS.md` beside it has the full results.
 
+**Experiment 3** (`experiments/exp3-c-errors`) is the C layer of section 10.3's "Untrusted files" for two libraries, libjpeg-turbo and OpenJPEG. Every call goes through a C function that returns a status whatever the library does: libjpeg's fatal errors, which by default print and end the process, come back as errors; warnings are counted, never printed; and a header's claimed size is checked against the limits before any pixel memory is taken. Over 5.2 million corrupt files, made by seeded mutation of valid ones, nothing crashed, ended the process, hung, printed, leaked or changed state the whole process shares. It is a program, not an interface; nothing in it is called by a user.
+
+```sh
+cd experiments/exp3-c-errors
+cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0, as Ubuntu 24.04 has
+```
+
+It runs in CI on Linux on x86 and ARM. GDAL, the other library the assessment names, is still to come. `RESULTS.md` beside it has the full results.
+
 **What comes next** in code: the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
 **What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
@@ -1252,6 +1261,8 @@ Writing this manual against specification versions 68 and 69 found the points be
 | M13 | **Writes under `Private`.** Every array borrowed from one Source shares its copy-on-write pages, so a write through one is seen by the others, and a write while another thread reads the same pages is a data race in the caller's code. Section 4 says only that changes stay in the caller's memory. | 4 | State both, as experiment 5 finds |
 | M14 | **Two statements differ.** Section 12, rule 9 says borrowed arrays are read-only; section 4 allows writes under `Private` | 4, 12 | Rule 9: "read-only under `Shared` mapping" |
 | M15 | **How the Python interface is built.** The implementability assessment assumes PyO3. Experiment 5 declares the stable interface itself, about 190 lines, because this workspace cannot fetch PyO3. | 10.5, 12 | PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check |
+| M16 | **Corrupt data a library recovers from.** libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default. | 3.3, 10.3 | A warning is an error by default; under `corrupt_as_missing`, the Fragment is `Partial`, though libjpeg does not say which rows it filled, so the whole Window is marked missing |
+| M17 | **A limit on progressive scans,** and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image. | 10.3 | A fourth limit, `max_scans`, 500 by default for untrusted Sources and none otherwise, like the others; a refusal is an error, as section 3.3 says |
 
 **How this list is kept.** Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.
 

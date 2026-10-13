@@ -15,7 +15,9 @@
  *   decode after BIL_MAX_SCANS scans.
  * - OpenJPEG reports through callbacks, which here copy the message and never print.
  * - Before any pixel memory is taken, the size the header claims is checked against the
- *   caller's limits (section 10.3 of the specification).
+ *   caller's limits (section 10.3 of the specification), and libjpeg's own working memory is
+ *   capped too. OpenJPEG is told not to expand JP2 palettes, which would add components after
+ *   the check; a palette is BIL's to apply, as the slice function palette.lookup.
  *
  * Nothing here writes to stdout or stderr, changes the locale, signal handlers or floating-point
  * environment, or keeps state between calls.
@@ -45,12 +47,31 @@ typedef struct {
     uint64_t max_decoded_bytes;
 } BilLimits;
 
-enum { BIL_OK = 0, BIL_ERROR = 1, BIL_REFUSED = 2 };
+/* This layer's own statuses, internal to the experiment, apart from the interface's BilStatus. A
+ * refusal by a limit is an error under section 3.3; it is told apart only for the checks. */
+enum { SHIM_OK = 0, SHIM_ERROR = 1, SHIM_REFUSED = 2 };
 
+/* Progressive scans a decode may read, a limit the specification does not yet have. */
 #define BIL_MAX_SCANS 500
 
+/* a × b × c × d, or UINT64_MAX where it would overflow. */
+static uint64_t product(uint64_t a, uint64_t b, uint64_t c, uint64_t d) {
+    uint64_t v[4] = {a, b, c, d}, p = 1;
+    for (int i = 0; i < 4; i++) {
+        if (v[i] != 0 && p > UINT64_MAX / v[i]) return UINT64_MAX;
+        p *= v[i];
+    }
+    return p;
+}
+
+/* Whether an Image of these dimensions and bytes for each sample breaks the caller's limits. */
+static int too_large(const BilLimits *limits, uint64_t w, uint64_t h, uint64_t c, uint64_t bytes) {
+    return (limits->max_image_pixels && product(w, h, 1, 1) > limits->max_image_pixels) ||
+           (limits->max_decoded_bytes && product(w, h, c, bytes) > limits->max_decoded_bytes);
+}
+
 static void copy_message(char *dst, size_t cap, const char *src) {
-    if (cap == 0) return;
+    if (!dst || cap == 0) return;
     size_t n = strlen(src);
     if (n >= cap) n = cap - 1;
     memcpy(dst, src, n);
@@ -140,7 +161,7 @@ int bil_jpeg_decode(const uint8_t *data, size_t len, const BilLimits *limits, ui
     copy_message(message, cap, "");
     if (!s) {
         copy_message(message, cap, "out of memory");
-        return BIL_ERROR;
+        return SHIM_ERROR;
     }
     bil_jpeg_handlers(&s->err, message, cap);
     s->cinfo.err = &s->err.pub;
@@ -150,10 +171,14 @@ int bil_jpeg_decode(const uint8_t *data, size_t len, const BilLimits *limits, ui
         if (s->created) jpeg_destroy_decompress(&s->cinfo);
         free(s->pixels);
         free(s);
-        return refused ? BIL_REFUSED : BIL_ERROR;
+        return refused ? SHIM_REFUSED : SHIM_ERROR;
     }
     jpeg_create_decompress(&s->cinfo);
     s->created = 1;
+    /* libjpeg's working memory, such as a progressive file's whole-image coefficients, beside
+     * the output: capped at twice the output's limit, a figure for the experiment. */
+    if (limits->max_decoded_bytes)
+        s->cinfo.mem->max_memory_to_use = (long)(limits->max_decoded_bytes * 2);
     s->progress.pub.progress_monitor = bil_jpeg_progress;
     s->progress.err = &s->err;
     s->cinfo.progress = &s->progress.pub;
@@ -165,8 +190,7 @@ int bil_jpeg_decode(const uint8_t *data, size_t len, const BilLimits *limits, ui
     info->height = (uint32_t)h;
     info->components = (uint32_t)c;
     info->precision = (uint32_t)s->cinfo.data_precision;
-    if ((limits->max_image_pixels && w * h > limits->max_image_pixels) ||
-        (limits->max_decoded_bytes && w * h * c > limits->max_decoded_bytes)) {
+    if (too_large(limits, w, h, c, 1)) {
         s->refused = 1;
         copy_message(message, cap, "the Image is larger than the caller's limits");
         longjmp(s->err.jump, 1);
@@ -189,7 +213,7 @@ int bil_jpeg_decode(const uint8_t *data, size_t len, const BilLimits *limits, ui
     *out = s->pixels;
     *out_len = total;
     free(s);
-    return BIL_OK;
+    return SHIM_OK;
 }
 
 /* Encodes 8-bit samples to a JPEG, for the experiment's seed files. */
@@ -205,14 +229,17 @@ int bil_jpeg_encode(const uint8_t *pixels, uint32_t width, uint32_t height, uint
     } *s = calloc(1, sizeof(struct State));
     *out = NULL;
     *out_len = 0;
-    if (!s) return BIL_ERROR;
+    if (!s) return SHIM_ERROR;
     bil_jpeg_handlers(&s->err, message, cap);
     s->cinfo.err = &s->err.pub;
     if (setjmp(s->err.jump)) {
+        /* The memory destination's buffer is not freed here: once it has grown, libjpeg has
+         * freed the one s->buffer names and holds the newest itself, setting s->buffer only
+         * when compression finishes. An encode that fails, which only a seed's could, leaks
+         * that buffer. */
         if (s->created) jpeg_destroy_compress(&s->cinfo);
-        free(s->buffer);
         free(s);
-        return BIL_ERROR;
+        return SHIM_ERROR;
     }
     jpeg_create_compress(&s->cinfo);
     s->created = 1;
@@ -235,7 +262,7 @@ int bil_jpeg_encode(const uint8_t *pixels, uint32_t width, uint32_t height, uint
     *out = s->buffer;
     *out_len = s->size;
     free(s);
-    return BIL_OK;
+    return SHIM_OK;
 }
 
 /*
@@ -251,7 +278,7 @@ int bil_jpeg_decode_unprotected(const uint8_t *data, size_t len) {
     jpeg_mem_src(&cinfo, data, (unsigned long)len);
     jpeg_read_header(&cinfo, TRUE);
     jpeg_destroy_decompress(&cinfo);
-    return BIL_OK;
+    return SHIM_OK;
 }
 
 /* ------------------------------------------------------------------------- OpenJPEG */
@@ -273,6 +300,9 @@ static OPJ_SIZE_T mem_read(void *buffer, OPJ_SIZE_T n, void *user) {
 
 static OPJ_OFF_T mem_skip(OPJ_OFF_T n, void *user) {
     BilMemReader *r = user;
+    /* OpenJPEG skips in a loop until the count is done or -1 comes back, so a skip that cannot
+     * move reports -1 rather than 0. */
+    if ((n > 0 && r->pos >= r->len) || (n < 0 && r->pos == 0)) return -1;
     if (n < 0) {
         if ((size_t)(-n) > r->pos) n = -(OPJ_OFF_T)r->pos;
     } else if ((size_t)n > r->len - r->pos) {
@@ -330,7 +360,7 @@ int bil_j2k_decode(const uint8_t *data, size_t len, int format, const BilLimits 
     copy_message(message, cap, "");
     BilMemReader reader = {data, len, 0};
     BilOpjMessages msgs = {message, cap, 0, 0};
-    int status = BIL_ERROR;
+    int status = SHIM_ERROR;
     opj_image_t *image = NULL;
     opj_codec_t *codec = opj_create_decompress(format == 2 ? OPJ_CODEC_JP2 : OPJ_CODEC_J2K);
     opj_stream_t *stream = opj_stream_create(OPJ_J2K_STREAM_CHUNK_SIZE, OPJ_TRUE);
@@ -345,6 +375,7 @@ int bil_j2k_decode(const uint8_t *data, size_t len, int format, const BilLimits 
     opj_stream_set_seek_function(stream, mem_seek);
     opj_dparameters_t params;
     opj_set_default_decoder_parameters(&params);
+    params.flags |= OPJ_DPARAMETERS_IGNORE_PCLR_CMAP_CDEF_FLAG;
     if (!opj_setup_decoder(codec, &params)) goto done;
     if (!opj_read_header(stream, codec, &image) || !image) goto done;
     uint64_t w = image->x1 > image->x0 ? image->x1 - image->x0 : 0;
@@ -353,10 +384,9 @@ int bil_j2k_decode(const uint8_t *data, size_t len, int format, const BilLimits 
     info->height = (uint32_t)h;
     info->components = image->numcomps;
     info->precision = image->numcomps ? image->comps[0].prec : 0;
-    if ((limits->max_image_pixels && w * h > limits->max_image_pixels) ||
-        (limits->max_decoded_bytes && w * h * image->numcomps * 4 > limits->max_decoded_bytes)) {
+    if (too_large(limits, w, h, image->numcomps, 4)) {
         copy_message(message, cap, "the Image is larger than the caller's limits");
-        status = BIL_REFUSED;
+        status = SHIM_REFUSED;
         goto done;
     }
     if (!opj_decode(codec, stream, image) || !opj_end_decompress(codec, stream)) goto done;
@@ -367,6 +397,13 @@ int bil_j2k_decode(const uint8_t *data, size_t len, int format, const BilLimits 
             goto done;
         }
         total += (size_t)image->comps[i].w * image->comps[i].h;
+    }
+    /* Checked again on what was decoded, which corrupt files can make differ from what the
+     * header said. */
+    if (limits->max_decoded_bytes && product(total, 4, 1, 1) > limits->max_decoded_bytes) {
+        copy_message(message, cap, "the decoded Image is larger than the caller's limits");
+        status = SHIM_REFUSED;
+        goto done;
     }
     int32_t *pixels = malloc((total ? total : 1) * sizeof(int32_t));
     if (!pixels) {
@@ -381,9 +418,9 @@ int bil_j2k_decode(const uint8_t *data, size_t len, int format, const BilLimits 
     }
     *out = pixels;
     *out_len = total;
-    status = BIL_OK;
+    status = SHIM_OK;
 done:
-    if (status == BIL_ERROR && message[0] == '\0') copy_message(message, cap, "decode failed");
+    if (status == SHIM_ERROR && cap && message[0] == '\0') copy_message(message, cap, "decode failed");
     info->warnings = msgs.warnings;
     if (image) opj_image_destroy(image);
     if (stream) opj_stream_destroy(stream);
@@ -415,7 +452,15 @@ static OPJ_SIZE_T mem_write(void *buffer, OPJ_SIZE_T n, void *user) {
 
 static OPJ_OFF_T mem_wskip(OPJ_OFF_T n, void *user) {
     BilMemWriter *w = user;
-    if (n < 0 || w->pos + (size_t)n > w->cap) return -1;
+    if (n < 0) return -1;
+    if (w->pos + (size_t)n > w->cap) {
+        size_t cap = (w->pos + (size_t)n) * 2;
+        uint8_t *grown = realloc(w->data, cap);
+        if (!grown) return -1;
+        memset(grown + w->cap, 0, cap - w->cap);
+        w->data = grown;
+        w->cap = cap;
+    }
     w->pos += (size_t)n;
     if (w->pos > w->len) w->len = w->pos;
     return n;
@@ -436,9 +481,13 @@ int bil_j2k_encode(const uint8_t *pixels, uint32_t width, uint32_t height, uint3
     *out = NULL;
     *out_len = 0;
     copy_message(message, cap, "");
+    if (components != 1 && components != 3) {
+        copy_message(message, cap, "seeds have 1 or 3 components");
+        return SHIM_ERROR;
+    }
     BilOpjMessages msgs = {message, cap, 0, 0};
     BilMemWriter writer = {NULL, 0, 0, 0};
-    int status = BIL_ERROR;
+    int status = SHIM_ERROR;
     opj_cparameters_t params;
     opj_set_default_encoder_parameters(&params);
     params.tcp_numlayers = 1;
@@ -484,7 +533,7 @@ int bil_j2k_encode(const uint8_t *pixels, uint32_t width, uint32_t height, uint3
     *out = writer.data;
     *out_len = writer.len;
     writer.data = NULL;
-    status = BIL_OK;
+    status = SHIM_OK;
 done:
     free(writer.data);
     if (stream) opj_stream_destroy(stream);
@@ -514,5 +563,5 @@ int bil_j2k_decode_unprotected(const uint8_t *data, size_t len, int format) {
     if (image) opj_image_destroy(image);
     opj_stream_destroy(stream);
     opj_destroy_codec(codec);
-    return BIL_OK;
+    return SHIM_OK;
 }

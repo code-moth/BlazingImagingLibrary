@@ -122,11 +122,11 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 | Document | What it is |
 | --- | --- |
 | [Specification](docs/specification/specification.md), version 69 | The source of truth for the design |
-| [User Manual](docs/manual/user-manual.md), version 3 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
+| [User Manual](docs/manual/user-manual.md), version 4 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 8 | Calls for every use case, in Python, Rust and C |
-| [Implementability](docs/assessments/implementability.md), version 7 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
+| [Implementability](docs/assessments/implementability.md), version 8 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |
-| [Experiment 1](experiments/exp1-fused-loop/RESULTS.md), [1b](experiments/exp1-fused-loop/RESULTS-1b.md) and [5](experiments/exp5-borrowed-arrays/RESULTS.md) | The fused loop, the rolling buffer, and borrowed NumPy arrays |
+| [Experiment 1](experiments/exp1-fused-loop/RESULTS.md), [1b](experiments/exp1-fused-loop/RESULTS-1b.md), [3](experiments/exp3-c-errors/RESULTS.md) and [5](experiments/exp5-borrowed-arrays/RESULTS.md) | The fused loop, the rolling buffer, containing C errors, and borrowed NumPy arrays |
 
 Each document has a rendered `.html` page beside its Markdown source.
 
@@ -142,6 +142,8 @@ cargo run --release --bin exp1b -- --check  # correctness only, as CI runs it
 cargo run --release --bin exp1 -- --check   # experiment 1's own check
 ```
 
+**Experiment 3, containing C errors.** libjpeg-turbo and OpenJPEG behind a C layer of BIL's, fed 5.2 million corrupt files: nothing crashed, ended the process, hung, printed, leaked or changed state the whole process shares. Without the layer, libjpeg's first corrupt file prints and ends the process. GDAL, the other library the experiment names, is still to come.
+
 **Experiment 5, borrowed NumPy arrays.** A Python extension module maps a file and hands its bytes to NumPy with no copy. The arrays stay valid after their Source is closed and dropped, under eight threads, are read-only under `Shared` mapping and the caller's own under `Private`, and leak nothing over 50,000 reads. Every read releases the interpreter lock.
 
 ```sh
@@ -149,7 +151,7 @@ cargo build --release -p bil-exp5
 python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
 ```
 
-CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the vector code is NEON, and experiment 5 with Python 3.12 everywhere and Python 3.11 on Linux.
+CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the vector code is NEON, experiment 5 with Python 3.12 everywhere and Python 3.11 on Linux, and experiment 3 on Linux on x86 and ARM.
 
 ## What is here
 
@@ -160,6 +162,7 @@ CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the
 | `crates/bil/` | The `bil` crate: so far, the vector layer and kernels from experiment 1 |
 | `crates/bil-sys/`, `python/` | The native bindings and Python packages: early releases that hold the names |
 | `experiments/exp1-fused-loop/` | Experiments 1 and 1b |
+| `experiments/exp3-c-errors/` | Experiment 3, a workspace of its own |
 | `experiments/exp5-borrowed-arrays/` | Experiment 5 |
 | `testdata/` | The manifest of real test files, pinned by checksum, and the script that fetches them |
 | `deny.toml`, `deny-tests.toml` | License and source checks for what ships, and for test-only code |

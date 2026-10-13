@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 3</p>
+      <p class="eyebrow">Manual · Version 4</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>3</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>4</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -1746,7 +1746,7 @@ out.close()
 </ul>
 <h2 id="19-safety-and-containment">19. Safety and containment</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified.</p>
+<p><strong>Status:</strong> Specified. The C layer that keeps libjpeg-turbo's and OpenJPEG's errors from crashing, ending or printing in the caller's process, and the limits checked before pixel memory is taken, are prototyped in experiment 3 (chapter 23).</p>
 </blockquote>
 <p>BIL is used on closed networks and with data that must not leak, and imagery files often come from outside. Two rules and four measures follow.</p>
 <p><strong>No network unless asked.</strong> BIL connects only to read a remote Source, a stream or a remote terrain store you named. It fetches no default terrain, grids or updates, and reports nothing about its use. A reference inside a file is reported, and followed only if you allow. PROJ's grid downloading is off, and XML parsing fetches nothing.</p>
@@ -2061,9 +2061,9 @@ bil_close_source(source);
 <p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
 <h2 id="23-what-runs-today">23. What runs today</h2>
 <blockquote>
-<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer and kernels) and Prototyped (experiments 1, 1b and 5).</p>
+<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer and kernels) and Prototyped (experiments 1, 1b, 3 and 5).</p>
 </blockquote>
-<p>Three pieces of code exist. The <code>bil</code> crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. Experiment 5 maps files and hands their bytes to NumPy without a copy.</p>
+<p>Four pieces of code exist. The <code>bil</code> crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. Experiment 5 maps files and hands their bytes to NumPy without a copy. Experiment 3 puts two C libraries behind a C layer and feeds them corrupt files.</p>
 <p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer and the kernels.</p>
 <ul>
 <li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code>, <code>Avx512</code> and <code>Neon</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. NEON is tested only in CI, on Linux and macOS on ARM, where it agrees bitwise with scalar code; its speed has not yet been measured.</li>
@@ -2219,6 +2219,11 @@ source.close()                      # the arrays stay valid; the mapping goes wi
 python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
 </code></pre>
 <p><code>RESULTS.md</code> beside it has the full results.</p>
+<p><strong>Experiment 3</strong> (<code>experiments/exp3-c-errors</code>) is the C layer of section 10.3's "Untrusted files" for two libraries, libjpeg-turbo and OpenJPEG. Every call goes through a C function that returns a status whatever the library does: libjpeg's fatal errors, which by default print and end the process, come back as errors; warnings are counted, never printed; and a header's claimed size is checked against the limits before any pixel memory is taken. Over 5.2 million corrupt files, made by seeded mutation of valid ones, nothing crashed, ended the process, hung, printed, leaked or changed state the whole process shares. It is a program, not an interface; nothing in it is called by a user.</p>
+<pre><code class="language-sh">cd experiments/exp3-c-errors
+cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0, as Ubuntu 24.04 has
+</code></pre>
+<p>It runs in CI on Linux on x86 and ARM. GDAL, the other library the assessment names, is still to come. <code>RESULTS.md</code> beside it has the full results.</p>
 <p><strong>What comes next</strong> in code: the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
 <p><strong>What specification versions 68 and 69 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
@@ -2359,6 +2364,18 @@ python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs Nu
 <td>10.5, 12</td>
 <td>PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check</td>
 </tr>
+<tr>
+<td>M16</td>
+<td><strong>Corrupt data a library recovers from.</strong> libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default.</td>
+<td>3.3, 10.3</td>
+<td>A warning is an error by default; under <code>corrupt_as_missing</code>, the Fragment is <code>Partial</code>, though libjpeg does not say which rows it filled, so the whole Window is marked missing</td>
+</tr>
+<tr>
+<td>M17</td>
+<td><strong>A limit on progressive scans,</strong> and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image.</td>
+<td>10.3</td>
+<td>A fourth limit, <code>max_scans</code>, 500 by default for untrusted Sources and none otherwise, like the others; a refusal is an error, as section 3.3 says</td>
+</tr>
 </tbody>
 </table></div>
 <p><strong>How this list is kept.</strong> Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.</p>
@@ -2462,7 +2479,7 @@ python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs Nu
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 3, written beside the code against version 69 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 4, written beside the code against version 69 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>
