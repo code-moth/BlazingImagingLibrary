@@ -2066,7 +2066,7 @@ bil_close_source(source);
 <p>Two pieces of code exist. Neither reads a file: they work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds.</p>
 <p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer and the kernels.</p>
 <ul>
-<li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code> and <code>Avx512</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. There is no NEON back end yet, so ARM processors run the scalar code, correctly but without vectors.</li>
+<li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code>, <code>Avx512</code> and <code>Neon</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. NEON is tested only in CI, on Linux and macOS on ARM, where it agrees bitwise with scalar code; its speed has not yet been measured.</li>
 <li><strong><code>kernels</code>:</strong> the arithmetic of the pass. <code>halve</code> and <code>halve_row</code> make each <code>bilinear</code> halving, and <code>blur5</code> and <code>blur5_row</code> each <code>binomial5</code> halving; <code>halve_weighted</code>, <code>halve_row_weighted</code>, <code>halve_over</code> and their <code>blur5</code> counterparts the halvings with missing data; <code>min3_present</code> and <code>min3_row</code> the range reduction; <code>polar0</code>, <code>phase_from</code>, <code>hsv0</code> and <code>hue_from</code> the slice functions; and <code>atan2</code> and <code>cos_sin_turns</code> the transcendental functions, BIL's own, built only from correctly rounded operations.</li>
 </ul>
 <p>The kernels are <code>unsafe</code> and work on raw rows. They are BIL's internals, not its interface, and callers will never use them directly.</p>
@@ -2142,7 +2142,7 @@ level2.at(10, 20);                                        // the value at grid r
 </table></div>
 <p><strong>What it shows</strong></p>
 <ul>
-<li><strong>The same bits as the whole Image.</strong> About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.</li>
+<li><strong>The same bits as the whole Image.</strong> About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code here and NEON in CI, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.</li>
 <li><strong>Missing data as the specification states it,</strong> with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.</li>
 <li><strong>Each kind of Slice</strong> reduced by its own rule, and <code>decimate</code> for every kind.</li>
 <li><strong><code>binomial5</code>,</strong> bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against <code>bilinear</code>'s half, as the specification states. It cost 0.9 to 1.3 times <code>bilinear</code>.</li>
@@ -2154,8 +2154,8 @@ cargo run --release --bin exp1b -- --check   # every correctness check, under a 
 cargo run --release --bin exp1b              # the checks and the speed tables
 cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </code></pre>
-<p>CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM. <code>RESULTS-1b.md</code> beside the code has the full results.</p>
-<p><strong>What comes next</strong> in code: a NEON back end, which section 12 asks for; threads by bands of rows; <code>decimate</code> reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p>CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. <code>RESULTS-1b.md</code> beside the code has the full results.</p>
+<p><strong>What comes next</strong> in code: threads by bands of rows; <code>decimate</code> reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
 <p><strong>What specification versions 68 and 69 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
 <p>Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>

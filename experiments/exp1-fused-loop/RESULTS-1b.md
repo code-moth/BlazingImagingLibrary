@@ -50,6 +50,10 @@ Section 5 gives each kind of Slice its own reduction. Each `Func` declares one, 
 - **The arithmetic.** `((a + e) / 16 + (b + d) / 4) + 3c / 8`, in that order. Each scale is a power of two or 3/8, so weights of exactly 1 give exactly 1 and the weighted path keeps the bits of the unweighted one, as for `bilinear`; a sum overflows only where `bilinear`'s would.
 - **Kernels.** `blur5`, `blur5_row`, `blur5_weighted`, `blur5_row_weighted` and `blur5_over` in the `bil` crate, beside their `bilinear` counterparts. Reading five taps from the row itself takes three even-and-odd loads; `row_taps` serves three taps and five alike.
 
+### NEON
+
+The `bil` crate has a NEON back end for 64-bit ARM since 13 October 2026: four lanes, with minimum and maximum made from a compare and a select so that NaN and signed zeros behave as in scalar code, and the deinterleaving load for even and odd values. This workspace has no ARM target, so CI is the test: on Linux and macOS on ARM, every check of this report and of experiment 1 passes with NEON, bitwise against scalar code on the same machine, and on Linux no vector instruction is left as a call. Its speed has not been measured, since CI machines are shared and section 12 runs benchmarks elsewhere.
+
 ### Proposals awaiting the author
 
 Section 5 left four details open, and the code raised a fifth. The author settled one in version 67, and for the other four the code makes these choices.

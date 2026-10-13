@@ -1123,7 +1123,7 @@ Two pieces of code exist. Neither reads a file: they work on Images already in m
 
 **The `bil` crate** (`crates/bil`, version 0.0.1) holds the vector layer and the kernels.
 
-- **`simd`:** a `Vf` trait over vectors of float32, with `Scalar`, `Avx2` and `Avx512` back ends, and `Isa`, which finds the instruction sets the processor offers. There is no NEON back end yet, so ARM processors run the scalar code, correctly but without vectors.
+- **`simd`:** a `Vf` trait over vectors of float32, with `Scalar`, `Avx2`, `Avx512` and `Neon` back ends, and `Isa`, which finds the instruction sets the processor offers. NEON is tested only in CI, on Linux and macOS on ARM, where it agrees bitwise with scalar code; its speed has not yet been measured.
 - **`kernels`:** the arithmetic of the pass. `halve` and `halve_row` make each `bilinear` halving, and `blur5` and `blur5_row` each `binomial5` halving; `halve_weighted`, `halve_row_weighted`, `halve_over` and their `blur5` counterparts the halvings with missing data; `min3_present` and `min3_row` the range reduction; `polar0`, `phase_from`, `hsv0` and `hue_from` the slice functions; and `atan2` and `cos_sin_turns` the transcendental functions, BIL's own, built only from correctly rounded operations.
 
 The kernels are `unsafe` and work on raw rows. They are BIL's internals, not its interface, and callers will never use them directly.
@@ -1163,7 +1163,7 @@ level2.at(10, 20);                                        // the value at grid r
 
 **What it shows**
 
-- **The same bits as the whole Image.** About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.
+- **The same bits as the whole Image.** About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code here and NEON in CI, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.
 - **Missing data as the specification states it,** with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.
 - **Each kind of Slice** reduced by its own rule, and `decimate` for every kind.
 - **`binomial5`,** bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against `bilinear`'s half, as the specification states. It cost 0.9 to 1.3 times `bilinear`.
@@ -1178,9 +1178,9 @@ cargo run --release --bin exp1b              # the checks and the speed tables
 cargo run --release --bin exp1 -- --check    # experiment 1's own check
 ```
 
-CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM. `RESULTS-1b.md` beside the code has the full results.
+CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. `RESULTS-1b.md` beside the code has the full results.
 
-**What comes next** in code: a NEON back end, which section 12 asks for; threads by bands of rows; `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
+**What comes next** in code: threads by bands of rows; `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
 **What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 

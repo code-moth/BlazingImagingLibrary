@@ -58,7 +58,7 @@ fn differ(a: &[Vec<Slice>], b: &[Vec<Slice>]) -> usize {
 fn main() {
     let isas = Isa::available();
     println!("# Experiment 1b report\n");
-    println!("Instruction sets available: {isas:?}. Levels 0 to {TOP} in one pass, on a rolling buffer of three rows for each Level above Level 0. Single thread.\n");
+    println!("Instruction sets available: {isas:?}. Levels 0 to {TOP} in one pass, on a rolling buffer of three rows for each Level above Level 0, five for `binomial5`. Single thread.\n");
 
     let cases = [
         (Func::Raw, "U16"),

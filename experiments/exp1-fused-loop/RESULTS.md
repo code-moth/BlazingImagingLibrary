@@ -101,7 +101,7 @@ Neither change alters any arithmetic, so the bitwise tests carry over unchanged 
 
 ## What it did not cover
 
-Missing data and NaN skipping, threads, stored levels, the other kinds of Slice (labels and range), local functions such as demosaicing, `binomial5`, and ARM. Each fits the same structure. ARM's NEON needs CI on an ARM runner, since this workspace is x86 only.
+Missing data and NaN skipping, threads, stored levels, the other kinds of Slice (labels and range), local functions such as demosaicing, `binomial5`, and ARM. Later work covered several of these: missing data, the other kinds of Slice and `binomial5` in experiment 1b, and a NEON back end for ARM, checked in CI. Each fits the same structure. ARM's NEON needs CI on an ARM runner, since this workspace is x86 only.
 
 ## Next
 

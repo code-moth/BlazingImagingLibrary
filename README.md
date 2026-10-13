@@ -142,7 +142,7 @@ cargo run --release --bin exp1b -- --check  # correctness only, as CI runs it
 cargo run --release --bin exp1 -- --check   # experiment 1's own check
 ```
 
-CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM.
+CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the vector code is NEON.
 
 ## What is here
 
