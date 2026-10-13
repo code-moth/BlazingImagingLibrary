@@ -1,6 +1,6 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 5 bring the document in step with specification version 68: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. The rest of the judgment stands as written for version 56.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 6 bring the document in step with specification version 69: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. The rest of the judgment stands as written for version 56.
 
-**What has changed between versions 56 and 68**
+**What has changed between versions 56 and 69**
 
 | Change | Where it bears |
 | --- | --- |
@@ -12,7 +12,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 | Tier 1 reads GeoTIFF and NITF with Rust readers, and 22 real NITF test files are pinned | Section 7 |
 | Speed aims to be as fast as each function's arithmetic allows, measured against a copy and against that arithmetic (version 66) | H1, section 8 |
 | `missing_weights` chooses how coarse Levels weight missing data: `Equal` or `PixelCount` (version 67) | H1 |
-| `RandomAccess` and `SequentialAccess`: read-ahead and decoding ahead in the storage order each driver reports (version 68) | Section 3, section 10 |
+| `Random` and `Sequential`: read-ahead and decoding ahead in the storage order each driver reports (versions 68 and 69) | Section 3, section 10 |
 | Domain profiles in the metadata dictionary, with 27 new items (version 68) | Section 3, section 10 |
 
 ## 1. Verdict
@@ -274,7 +274,7 @@ These are the backing libraries whose health matters most to the early tiers. He
 
 ## 7. What the specification must settle before coding
 
-These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 68, every one is settled. Version 68 opens one point that blocks nothing: the details of access patterns, which benchmarks will settle.
+These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 69, every one is settled. Version 68 opened one point that blocked nothing, the details of access patterns, and version 69 settles it.
 
 **Before Tier 1**
 
@@ -334,7 +334,7 @@ The code written so far is experiment 1 and 1b and the `bil` crate's vector laye
 | --- | --- | --- |
 | Kernels and the rolling pass (`crates/bil`, experiment 1b) | None. A pass already reads its rows top to bottom, which is storage order for strips and for tiles stored row by row, as section 12 rule 11 asks within one request. | None |
 | Threads by bands of rows, the next step | Read-ahead adds a background thread beside the pass's threads, so the thread count must leave room for it, and both must be measured together | None |
-| Fragment cache, still to be built | Must hold a read position for each Reader, evict passed blocks first under `SequentialAccess`, and count blocks read ahead apart from those asked for | None |
+| Fragment cache, still to be built | Must hold a read position for each Reader, evict passed blocks first under `Sequential`, and count blocks read ahead apart from those asked for | None |
 | Reader and input layer, still to be built | A background Reader for `Parallel` and `OneHandlePerThread` drivers; merged byte ranges; `madvise`, `posix_fadvise` and Windows' sequential scan flag; errors held until the read that needs the block | None |
 | GeoTIFF reader, Tier 1 | `describe_storage` from `TileOffsets` or `StripOffsets` and `PlanarConfiguration`. The order is by byte offset, which most files keep row by row, but not all. | Items such as `reference_system` provided by GeoTIFF keys |
 | NITF reader, Tier 1 | `describe_storage` from `IMODE` (B, P, R or S), the block counts and the block mask table, which can leave blocks out | Field definitions name the items they provide, as before, now for more items |

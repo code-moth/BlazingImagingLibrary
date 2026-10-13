@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 1</p>
+      <p class="eyebrow">Manual · Version 2</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>1</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 68</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>2</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 68, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 69, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -455,13 +455,13 @@ image  = source.image(0)
 </tr>
 <tr>
 <td><code>access_pattern</code></td>
-<td><code>RandomAccess</code></td>
-<td>Say how you will move through the Source: <code>RandomAccess</code> or <code>SequentialAccess</code>. Chapter 12.</td>
+<td><code>Random</code></td>
+<td>Say how you will move through the Source: <code>Random</code> or <code>Sequential</code>. Chapter 12.</td>
 </tr>
 <tr>
 <td><code>read_ahead_bytes</code></td>
 <td>64 MB</td>
-<td>Bound what <code>SequentialAccess</code> reads ahead</td>
+<td>Bound what <code>Sequential</code> reads ahead</td>
 </tr>
 <tr>
 <td><code>untrusted</code></td>
@@ -522,7 +522,7 @@ image  = source.image(0)
 </table></div>
 <pre><code class="language-python">source = bil.open_source(
     &quot;s3://bucket/scene.tif&quot;,
-    access_pattern=bil.AccessPattern.SequentialAccess,
+    access_pattern=bil.AccessPattern.Sequential,
     remote_timeout=60,
 )
 </code></pre>
@@ -1053,7 +1053,7 @@ slice = luma.read_slice(&quot;video.planes.luma&quot;, bil.Window(0, 0, 1080, 19
 <p><strong>Nested cycles.</strong> A sensor that sweeps 50 range gates once a second can declare further indexes, such as <code>sweep</code> and <code>gate</code>. They resolve to a frame number through <code>resolve_frame</code>, and a Window still carries one <code>frame</code>.</p>
 <h2 id="12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. Access patterns and read-ahead are new in specification version 68, and their details are still open in its section 16.</p>
+<p><strong>Status:</strong> Specified. Access patterns and read-ahead are new in specification version 68, and their details were settled in version 69.</p>
 </blockquote>
 <p><strong>Readers hold decoder state.</strong> A thread that reads an Image gets its own Reader, made on first use. A Reader keeps its place in a stream, so reading the next frame decodes one frame, not the whole run from a key frame.</p>
 <pre><code class="language-python">second = image.open_reader()       # a further Reader, holding its own place
@@ -1157,30 +1157,30 @@ there  = second.read_slice(&quot;video.planes.luma&quot;, bil.Window(0, 0, 1080,
 </thead>
 <tbody>
 <tr>
-<td><code>RandomAccess</code>, the default</td>
+<td><code>Random</code>, the default</td>
 <td>Jump from place to place, as a viewer or a target search does</td>
 <td>Reads only the blocks each read needs, keeps the cache in order of last use, and tells the operating system the access is random, so it does not read ahead either</td>
 </tr>
 <tr>
-<td><code>SequentialAccess</code></td>
+<td><code>Sequential</code></td>
 <td>Move through adjacent blocks, normally forward in the order they are stored, as processing a whole Image Window by Window does</td>
 <td>Reads and decodes the next blocks ahead of you on a background thread, merges adjacent reads, drops blocks you have passed first, and tells the operating system the access is sequential</td>
 </tr>
 </tbody>
 </table></div>
 <pre><code class="language-python">batch = bil.open_source(&quot;mosaic.tif&quot;,
-                        access_pattern=bil.AccessPattern.SequentialAccess,
+                        access_pattern=bil.AccessPattern.Sequential,
                         read_ahead_bytes=256 * 2**20)
 image = batch.image(0)
 image.info().storage        # tiles of 512 × 512, stored row by row
 
-sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)  # one Reader only
+sweep = image.open_reader(access_pattern=bil.AccessPattern.Sequential)  # one Reader only
 </code></pre>
 <p><strong>What it never changes.</strong> Values, statuses, sizes and errors are the same under either pattern. Only time and the memory held between reads differ, so choosing wrongly is never a fault, only slower.</p>
 <p><strong>How read-ahead works</strong></p>
 <ul>
-<li><strong>It follows the storage.</strong> Each driver reports how its blocks lie in the file, as a <code>Storage</code>; <code>ImageInfo.storage</code> gives its block size, interleave and whether the order is known. After each read, BIL reads the blocks that follow the last one in that order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage it is proposed to read ahead along each component your last read used. Where the order is <code>Unknown</code>, BIL reads nothing ahead and gives the operating system the hint alone.</li>
-<li><strong>It is bounded.</strong> It stops at <code>read_ahead_bytes</code> and never takes the cache past its byte ceiling. As proposed, blocks read ahead also count against the cache's count, so with the cache off nothing is read ahead; that detail is still open.</li>
+<li><strong>It follows the storage.</strong> Each driver reports how its blocks lie in the file, as a <code>Storage</code>; <code>ImageInfo.storage</code> gives its block size, interleave and whether the order is known. After each read, BIL reads the blocks that follow the last one in that order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage it reads ahead along each component your last read used. It runs forward only. Where the order is <code>Unknown</code>, BIL reads nothing ahead and gives the operating system the hint alone.</li>
+<li><strong>It is bounded.</strong> It stops at <code>read_ahead_bytes</code> and never takes the cache past either of its limits: blocks read ahead count against the cache's count as well as its bytes, so with the cache off nothing is read ahead. With many small tiles, raise <code>set_cache_size</code> along with <code>read_ahead_bytes</code>.</li>
 <li><strong>It decodes too.</strong> Compressed blocks read ahead are decoded into the cache, so your next read finds them ready. Uncompressed blocks are only fetched, or for mapped files the operating system is asked to bring them in.</li>
 <li><strong>It respects the driver.</strong> Under <code>Serial</code> the background thread takes the library's one lock like any call, so it reads between your calls, not beside them.</li>
 <li><strong>Errors come with the read that needs them.</strong> A block that fails while read ahead is tried again when you ask for it, and any error is reported then.</li>
@@ -1199,19 +1199,19 @@ sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)  # 
 <tbody>
 <tr>
 <td>Processing a whole Image in Windows, top to bottom</td>
-<td><code>SequentialAccess</code>, with Windows that follow the storage: across a row of tiles, then down</td>
+<td><code>Sequential</code>, with Windows that follow the storage: across a row of tiles, then down</td>
 </tr>
 <tr>
 <td>Playing or processing video forward</td>
-<td><code>SequentialAccess</code></td>
+<td><code>Sequential</code></td>
 </tr>
 <tr>
 <td>A viewer, a search, or random sampling for training</td>
-<td><code>RandomAccess</code></td>
+<td><code>Random</code></td>
 </tr>
 <tr>
 <td>Both at once on one Source</td>
-<td>A Source with <code>RandomAccess</code>, and a Reader with <code>SequentialAccess</code> for the sweep</td>
+<td>A Source with <code>Random</code>, and a Reader with <code>Sequential</code> for the sweep</td>
 </tr>
 </tbody>
 </table></div>
@@ -1262,7 +1262,7 @@ sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)  # 
 <li><strong>Reuse buffers.</strong> <code>read_slice_into</code> allocates nothing per call.</li>
 <li><strong>Stream large outputs.</strong> <code>stream_slice</code> hands you row blocks sized for the processor cache, so the float32 form never fills main memory.</li>
 <li><strong>Use cheap relatives.</strong> <code>power</code> avoids the square root of <code>magnitude</code>, and both avoid the arctangent of <code>phase</code> and the logarithm of <code>power_db</code>.</li>
-<li><strong>Say how you move.</strong> <code>SequentialAccess</code> for sweeps, and Windows that follow the storage.</li>
+<li><strong>Say how you move.</strong> <code>Sequential</code> for sweeps, and Windows that follow the storage.</li>
 <li><strong>Look before you read.</strong> <code>plan</code> gives the sizes, the blocks, the access class and the remote requests.</li>
 <li><strong>Threads help up to a point.</strong> Large Windows are split across threads, and gains flatten after a few cores, when memory bandwidth becomes the limit.</li>
 </ul>
@@ -2154,10 +2154,10 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </code></pre>
 <p>CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM. <code>RESULTS-1b.md</code> beside the code has the full results.</p>
 <p><strong>What comes next</strong> in code: the <code>binomial5</code> level method; a NEON back end, which section 12 asks for; threads by bands of rows; <code>decimate</code> reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification version 68 changes in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What specification versions 68 and 69 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification version 68 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>
-<p><strong>Fixed in version 68 while writing</strong></p>
+<p>Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>
+<p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -2192,6 +2192,16 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 <td>The checking agent found that <code>ImageInfo.storage</code>, <code>describe_storage</code> and a scripted driver's <code>PixelLayout</code> described one thing three ways, and that a profile could not recommend another profile</td>
 <td>One <code>Storage</code> record, which BIL derives from a <code>PixelLayout</code> for scripted drivers; profiles named in a profile's required or recommended list, with no separate <code>includes</code></td>
 </tr>
+<tr>
+<td>F6</td>
+<td>M1 of version 1: the values <code>RandomAccess</code> and <code>SequentialAccess</code> repeated their type's name</td>
+<td>Renamed <code>Random</code> and <code>Sequential</code>, by the author's ruling (version 69)</td>
+</tr>
+<tr>
+<td>F7</td>
+<td>M10 of version 1: whether blocks read ahead count against <code>set_cache_size</code>, and the other details of read-ahead</td>
+<td>Accepted as proposed, by the author's ruling (version 69); with many small tiles, raise the count</td>
+</tr>
 </tbody>
 </table></div>
 <p><strong>Open, for the author</strong></p>
@@ -2205,12 +2215,6 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </tr>
 </thead>
 <tbody>
-<tr>
-<td>M1</td>
-<td><strong>The enum values repeat their type's name.</strong> <code>AccessPattern.SequentialAccess</code> reads twice; elsewhere values do not repeat the type (<code>LevelSource.Stored</code>, <code>MissingWeights.Equal</code>). The names follow the author's words.</td>
-<td>3.4, 4</td>
-<td><code>AccessPattern.Random</code> and <code>AccessPattern.Sequential</code>, if the author agrees</td>
-</tr>
 <tr>
 <td>M2</td>
 <td><strong>Whether an Image can have missing pixels</strong> is something "a driver states" (section 5), but <code>ImageInfo</code> has no field for it, so a caller cannot see whether the fast path applies</td>
@@ -2258,12 +2262,6 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 <td><strong>Access patterns on a live stream.</strong> A live stream has one position for every Reader, so neither pattern can change how it is read</td>
 <td>3.2, 4</td>
 <td>State that a live stream ignores the pattern, and <code>plan</code> reports it</td>
-</tr>
-<tr>
-<td>M10</td>
-<td><strong>Read-ahead and the count limit.</strong> As section 4 now proposes, blocks read ahead count against <code>set_cache_size</code> as well as the bytes, so with the default count of 16 a file of small tiles would read little ahead</td>
-<td>4, 16</td>
-<td>Open in section 16 with the other access pattern details; benchmarks to settle it</td>
 </tr>
 <tr>
 <td>M11</td>
@@ -2374,7 +2372,7 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 1, written beside the code against version 68 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 2, written beside the code against version 69 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

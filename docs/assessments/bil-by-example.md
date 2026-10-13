@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 68: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 69: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 68. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 69. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -88,7 +88,7 @@ print(plan)   # size 4096 × 4096, access class SinglePass, 16 blocks to decode
 Window independence (section 5) means processing tile by tile gives the same result as processing the whole image at once. Saying the work moves forward through the file lets BIL read and decode the next blocks while this one is processed (section 4).
 
 ```python
-source     = bil.open_source("scene.ntf", access_pattern=bil.AccessPattern.SequentialAccess)
+source     = bil.open_source("scene.ntf", access_pattern=bil.AccessPattern.Sequential)
 image      = source.image(0)
 info       = image.info()
 rows, cols = info.row_count, info.col_count
@@ -915,10 +915,10 @@ source.set_cache_size(0)     # no cache and no read-ahead, for random reads that
 ### 13.2 Say how you will move through the file
 
 ```python
-viewer = bil.open_source("mosaic.tif")    # RandomAccess, the default: nothing read that was not asked for
+viewer = bil.open_source("mosaic.tif")    # Random, the default: nothing read that was not asked for
 
 batch  = bil.open_source("mosaic.tif",
-                         access_pattern=bil.AccessPattern.SequentialAccess,
+                         access_pattern=bil.AccessPattern.Sequential,
                          read_ahead_bytes=256 * 2**20)
 image  = batch.image(0)
 image.info().storage                      # block size, interleave and order: here tiles, row by row
@@ -927,7 +927,7 @@ plan = image.plan_slice("pixel.raw.intensity", window)   # blocks found read ahe
 batch.describe_held()                     # includes the bytes read ahead
 
 # One Reader can differ from its Source: a sequential sweep beside random lookups.
-sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)
+sweep = image.open_reader(access_pattern=bil.AccessPattern.Sequential)
 ```
 
 The pattern changes only speed and memory, never a value or a status.

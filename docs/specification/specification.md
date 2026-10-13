@@ -447,8 +447,8 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `remote_retries` | 3 | How many times a failed remote request is tried again |
 | `remote_merge_gap` | 1 MB | Byte ranges closer than this are read in one request |
 | `trust_companion` | True, or False when `untrusted` is set | Read the companion file's values (section 14.2) |
-| `access_pattern` | `RandomAccess` | How the caller will move through the Source: `RandomAccess` or `SequentialAccess` (section 4) |
-| `read_ahead_bytes` | 64 MB | Under `SequentialAccess`, the most bytes of blocks read ahead of the caller, within the cache's limits |
+| `access_pattern` | `Random` | How the caller will move through the Source: `Random` or `Sequential` (section 4) |
+| `read_ahead_bytes` | 64 MB | Under `Sequential`, the most bytes of blocks read ahead of the caller, within the cache's limits |
 
 **`SliceOptions`**, given to any read
 
@@ -578,7 +578,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 - **What it saves.** Adjacent Windows that share a block, the margins BIL reads around a Window, and video frames that are read more than once.
 - **Sized by count, with a ceiling in bytes.** The caller sets how many Fragments are kept. Zero turns the cache off, and the default is 16. A second limit, `set_cache_bytes`, caps the bytes held, by default a quarter of physical memory. Whichever limit is reached first applies, so very large blocks, such as wide-area motion imagery frames, cannot exhaust memory.
 - **One cache for each Source.** Every Reader of the Source shares it, and it is freed when the Source is closed.
-- **Least recently used goes first.** When the cache is full, the Fragment that has gone longest without use is dropped. Under `SequentialAccess`, blocks the reading has passed go before that (below).
+- **Least recently used goes first.** When the cache is full, the Fragment that has gone longest without use is dropped. Under `Sequential`, blocks the reading has passed go before that (below).
 - **Memory follows the block size.** A count does not fix the memory used. `describe_cache` reports the bytes held, and `plan_slice` reports the size of the blocks a read will decode.
 - **Borrowed data is never cached.** Uncompressed data that meets the zero-copy rule has nothing to decode.
 - **Safe to hold.** A Fragment handed to a caller stays valid after its block has left the cache.
@@ -594,8 +594,8 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 
 | `AccessPattern` | The caller | What BIL does |
 | --- | --- | --- |
-| `RandomAccess` | Jumps from place to place, as a viewer or a search for targets does | Reads only the blocks a read needs, keeps the cache in order of last use, and tells the operating system the access is random, so it does not read ahead either |
-| `SequentialAccess` | Moves through adjacent blocks, normally forward in the order they are stored, as processing a whole Image Window by Window does | Reads and decodes the next blocks ahead of the caller, merges adjacent byte ranges into larger reads, drops passed blocks first, and tells the operating system the access is sequential |
+| `Random` | Jumps from place to place, as a viewer or a search for targets does | Reads only the blocks a read needs, keeps the cache in order of last use, and tells the operating system the access is random, so it does not read ahead either |
+| `Sequential` | Moves through adjacent blocks, normally forward in the order they are stored, as processing a whole Image Window by Window does | Reads and decodes the next blocks ahead of the caller, merges adjacent byte ranges into larger reads, drops passed blocks first, and tells the operating system the access is sequential |
 
 - **A hint, never a change of result.** Values, statuses, sizes and errors are the same under either pattern. Only the time a read takes and the memory held between reads differ.
 - **The storage order comes from the driver.** Each driver reports how its blocks lie in the file as a `Storage`, through `describe_storage`. Its first three parts are also the `storage` of `ImageInfo`, known when the Source is opened. Read-ahead follows its order. Where the order is `Unknown`, BIL reads nothing ahead and gives the operating system the hint alone.
@@ -608,12 +608,12 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 | `blocks` | Where the order is known, the blocks in the order they lie in the file: each with its Image, stored level, frame, block row and column, the components it holds, and its byte offset and length. For video, only the frames the frame index already covers, since opening never scans (section 3.2). |
 
 - **One record for every kind of driver.** A compiled driver fills it from its format's own tables. For a scripted driver, BIL derives it from the `PixelLayout`, whose `interleave` and `blocks` already say the same things.
-- **What is read ahead.** After each read, BIL reads the blocks that follow the last block read in storage order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage, where each component's blocks lie apart, it reads ahead along each component the last read used, as proposed (section 16). It stops at `read_ahead_bytes`, and never takes the cache past its byte ceiling. As proposed, blocks read ahead also count against `set_cache_size`, so with the cache turned off nothing is read ahead; that is still open (section 16).
+- **What is read ahead.** After each read, BIL reads the blocks that follow the last block read in storage order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage, where each component's blocks lie apart, it reads ahead along each component the last read used. It stops at `read_ahead_bytes`, and never takes the cache past either of its limits: blocks read ahead count against `set_cache_size` as well as the byte ceiling, so with the cache turned off nothing is read ahead. It runs forward only, in storage order.
 - **Decoded ahead too.** Blocks read ahead are decoded on a background thread into the Fragment cache, so the caller's next read finds them ready. Uncompressed blocks, which have nothing to decode, are only fetched, or for mapped files the operating system is asked to bring them into memory.
 - **Within the driver's concurrency.** The background thread uses a Reader of its own under `Parallel` and `OneHandlePerThread`. Under `Serial` it takes the library's one lock like any other call, so it reads between the caller's calls rather than beside them.
-- **Passed blocks go first.** Under `SequentialAccess`, when the cache is full, a block that lies wholly before the last read in storage order is dropped before any other. Where several Readers of the Source read ahead, a block counts as passed only when every one of them has passed it, since the cache is shared. Blocks the last read shares with the next, such as a block row under adjacent Windows, are kept.
-- **Errors arrive with the read that needs them.** A block that fails while read ahead is not reported then. It is read again when the caller asks for it, and any error is reported by that read, as it would be under `RandomAccess`.
-- **Larger requests for remote Sources.** Under `SequentialAccess`, byte ranges read ahead are merged as `remote_merge_gap` allows, and each request still counts against `remote_timeout` and `remote_retries` (section 10.3). Read-ahead reaches only the Source being read.
+- **Passed blocks go first.** Under `Sequential`, when the cache is full, a block that lies wholly before the last read in storage order is dropped before any other. Where several Readers of the Source read ahead, a block counts as passed only when every one of them has passed it, since the cache is shared. Blocks the last read shares with the next, such as a block row under adjacent Windows, are kept.
+- **Errors arrive with the read that needs them.** A block that fails while read ahead is not reported then. It is read again when the caller asks for it, and any error is reported by that read, as it would be under `Random`.
+- **Larger requests for remote Sources.** Under `Sequential`, byte ranges read ahead are merged as `remote_merge_gap` allows, and each request still counts against `remote_timeout` and `remote_retries` (section 10.3). Read-ahead reaches only the Source being read.
 - **Reported.** `plan` reports the blocks a read will find read ahead and those it will read itself. `describe_held` and `describe_cache` report the bytes read ahead and how many reads they served.
 - **It stops when it is not wanted.** Read-ahead stops when the Source is closed, when the Reader it reads ahead for is dropped, and when a read is canceled.
 - **With external decoding.** Where a decoder process serves the Source (section 10.2), read-ahead asks it for the next blocks over the control channel, and it decodes them into free slots. A slot a reader has marked is never taken for read-ahead.
@@ -1710,7 +1710,7 @@ A driver is finished when it passes one suite of tests, which is the same for ev
 | Uniformity | Code written against another driver reads this driver's Sources without change |
 | Geocoding | Each step the driver supplies passes the validation tests of section 13.8 |
 | Declared concurrency | Reads on many threads give the same values as the same reads on one, under the driver's declared `concurrency` |
-| Access patterns | Every read gives the same values and statuses under `RandomAccess` and `SequentialAccess`, and the storage order reported matches the file |
+| Access patterns | Every read gives the same values and statuses under `Random` and `Sequential`, and the storage order reported matches the file |
 | Deferred decoding | A deferred Fragment's native pixels equal those of the same Fragment decoded at once |
 | Status | Files built with known gaps and damage report `Partial` and `Missing` where they should, and `Complete` elsewhere |
 | Field names | Names with escaped dots and numbered repeats are listed and read back correctly |
@@ -1881,7 +1881,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 - The cost of reading a Window depends on the Window, its Level and its slice function, not on the size of the Image around it.
 - An Image of any size can be processed within a fixed memory budget, by Window or by stream.
 - Where a format's own structure prevents this, such as one compressed block covering a whole image, `plan_slice` reports the real cost before the read.
-- Blocks read ahead under `SequentialAccess` are held within `read_ahead_bytes` and the cache's limits.
+- Blocks read ahead under `Sequential` are held within `read_ahead_bytes` and the cache's limits.
 
 **The pass itself**
 
@@ -1895,7 +1895,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 8. **Cheap variants offered.** Where a Slice needs costly arithmetic, a cheaper relative is provided: `power` avoids the square root in `magnitude`, and both avoid the arctangent in `phase` and the logarithm in `power_db`.
 9. **No-copy hand-off to Python.** Slices and Fragments are exposed as NumPy arrays over the same memory, including strided and borrowed ones. Borrowed arrays are read-only. The interpreter lock is released during every read.
 10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window, and against its own arithmetic alone on data already in memory. The aim is the least cost each function's arithmetic allows: a function that only converts should run near the speed of a copy, and one that needs an arctangent or a square root for every pixel should run near the speed of that arithmetic. The figures guide the design, and no single factor applies to every function. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release. The round trip to the interpreter's helper process is benchmarked in the same way (section 10.1).
-11. **Reads follow the storage.** One request reads its blocks in the order they are stored. Between requests, `SequentialAccess` reads and decodes ahead in that order, so a caller working through an Image finds its next blocks ready, and `RandomAccess` reads nothing it was not asked for (section 4). Both are benchmarked on files stored in strips, in tiles and band by band, locally and remotely.
+11. **Reads follow the storage.** One request reads its blocks in the order they are stored. Between requests, `Sequential` reads and decodes ahead in that order, so a caller working through an Image finds its next blocks ready, and `Random` reads nothing it was not asked for (section 4). Both are benchmarked on files stored in strips, in tiles and band by band, locally and remotely.
 
 ## 13. Geocoding
 
@@ -2408,7 +2408,7 @@ The mapping lives in the native field's definition, which names the dictionary i
 | `medical` | `modality`, `sample_spacing`, `image_orientation`, `image_position` | `slice_thickness`, `units`, `sensor_name` |
 | `depth_sensing` | `depth_scale`, `camera_intrinsics`, `units` | `collection_time`, `sensor_position`, `sensor_attitude` |
 
-Every item above is in the `common` namespace, and a profile named in a list stands for its items. Where an item is reached twice, the stronger need applies. A profile that names itself, directly or through others, is refused by `add_profile` and `load_profiles`, as proposed. A profile holds no identity field and no marking: `medical` says what the data is, never whom it is of.
+Every item above is in the `common` namespace, and a profile named in a list stands for its items. Where an item is reached twice, the stronger need applies. A profile that names itself, directly or through others, is refused by `add_profile` and `load_profiles`. A profile holds no identity field and no marking: `medical` says what the data is, never whom it is of.
 
 **The form of a profile.** Profiles are records with these parts, kept as JSON when they are in a file, as field definitions are.
 
@@ -2523,7 +2523,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Three points are not yet settled, and seventy have been decided. Each lists the current proposal.
+Two points are not yet settled, and seventy-one have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2532,8 +2532,8 @@ Three points are not yet settled, and seventy have been decided. Each lists the 
 - [x] **Indexes and coordinates.** Decided: data is addressed by index and described by coordinate. Frame is an index, and time is a coordinate linked to it (section 3.1).
 - [x] **External decoding.** Decided: an optional, built-in layer in which a separate process decodes into BIL's memory-mapped format and a mapped driver reads it (section 10.2).
 - [x] **Fragment cache.** Decided: decoded blocks and video frames are kept in a cache for each Source, sized by the number of Fragments kept. Decoder state is held in a Reader for each thread (section 4).
-- [x] **Access patterns.** Decided: the caller declares `RandomAccess` or `SequentialAccess`, for a Source or for one Reader. Under `SequentialAccess`, BIL reads and decodes ahead in the storage order each driver reports, merges adjacent reads and drops passed blocks first. The pattern never changes a result (section 4).
-- [ ] **Access pattern details.** Proposed: `RandomAccess` is the default, since reading ahead wrongly costs more than not reading ahead; `read_ahead_bytes` is 64 MB; read-ahead runs forward only, in storage order; in band-sequential storage it follows each component the last read used; and blocks read ahead count against `set_cache_size` as well as the byte ceiling. Still open: whether that count is right, since a count sized for reuse can hold few small tiles; whether BIL should follow a caller moving backward; whether an `Automatic` pattern that detects sequential reads is worth its complexity, and the default size, which benchmarks will settle (section 4).
+- [x] **Access patterns.** Decided: the caller declares `Random` or `Sequential`, for a Source or for one Reader. Under `Sequential`, BIL reads and decodes ahead in the storage order each driver reports, merges adjacent reads and drops passed blocks first. The pattern never changes a result (section 4).
+- [x] **Access pattern details.** Decided: `Random` and `Sequential`, which do not repeat their type's name. `Random` is the default, since reading ahead wrongly costs more than not reading ahead. `read_ahead_bytes` is 64 MB. Read-ahead runs forward only, in storage order, and in band-sequential storage follows each component the last read used. Blocks read ahead count against `set_cache_size` as well as the byte ceiling. There is no automatic pattern. The default sizes are revisited when benchmarks on real files are run (section 4).
 - [x] **Video chroma.** Decided: luma and reduced chroma are two related Images. Chroma upsampling is part of the local slice functions `video.planes` and `video.rgb`, which read both, because every Slice at one Level shares one grid (sections 3, 5 and 9.3).
 - [x] **One resolution for every Slice.** Decided: the Level sets the grid. At a given Level every Slice of an Image has the same size, whichever slice function made it. Data stored at lower resolution, such as video chroma, mosaic sites, polarizer angles and video fields, is interpolated onto that grid (section 5).
 - [x] **Frame count and index.** Decided: a frame count is `Known`, `AtLeast` or `Unknown`, and the frame index is built on first need, never when a Source is opened (section 3.2).
@@ -2559,7 +2559,7 @@ Three points are not yet settled, and seventy have been decided. Each lists the 
 - [x] **Stored levels and the Level grid.** Decided: a stored level is used to make a Level only when it is aligned with the Level grid. A misaligned one can be read as it stands, with its true origin and scale, but never makes a Level (section 5).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, the formula for each derived one, and the items of each domain profile. The first entries and first profiles are in section 14.2, and both are settled as drivers are built.
-- [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).
+- [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, and a profile that names itself, directly or through others, is refused. They are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).
 - [x] **Sensor geometry.** Decided: geocoding is a chain of steps between named coordinate spaces, covering affine, RPC, SAR and camera models, with Community Sensor Model plugins as one kind of step (section 13).
 - [x] **Geocoding validation.** Decided: BIL implements rigorous sensor models itself and tests each step against an established implementation, in both directions (section 13.8).
 - [x] **Geocoding without a clean answer.** Decided: a line of sight stops at the first surface it meets, every position carries a status, and longitude wraps (section 13.3).

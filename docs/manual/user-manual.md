@@ -1,4 +1,4 @@
-This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 68, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.
+This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 69, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.
 
 ## 1. About this manual
 
@@ -153,8 +153,8 @@ To choose the driver yourself, call `open_source_with`. `describe_decoding()` on
 | Option | Default | Use it to |
 | --- | --- | --- |
 | `mapping` | `Shared` | Choose how files are mapped into memory: `Shared`, `Private` (copy-on-write, so a borrowed array can be changed) or `Off` (for network file systems where mapping is unreliable). Chapter 10. |
-| `access_pattern` | `RandomAccess` | Say how you will move through the Source: `RandomAccess` or `SequentialAccess`. Chapter 12. |
-| `read_ahead_bytes` | 64 MB | Bound what `SequentialAccess` reads ahead |
+| `access_pattern` | `Random` | Say how you will move through the Source: `Random` or `Sequential`. Chapter 12. |
+| `read_ahead_bytes` | 64 MB | Bound what `Sequential` reads ahead |
 | `untrusted` | False | Open a file from outside with default limits, and isolate it where the installation says so. Chapter 19. |
 | `max_image_pixels`, `max_decoded_bytes`, `max_field_group_bytes` | None | Refuse an Image, a compressed block or a metadata group larger than this |
 | `corrupt_as_missing` | False | Deliver a corrupt block as missing pixels, with status `Partial`, instead of an error |
@@ -170,7 +170,7 @@ To choose the driver yourself, call `open_source_with`. `describe_decoding()` on
 ```python
 source = bil.open_source(
     "s3://bucket/scene.tif",
-    access_pattern=bil.AccessPattern.SequentialAccess,
+    access_pattern=bil.AccessPattern.Sequential,
     remote_timeout=60,
 )
 ```
@@ -519,7 +519,7 @@ slice = luma.read_slice("video.planes.luma", bil.Window(0, 0, 1080, 1920, frame=
 
 ## 12. Readers, the cache and access patterns
 
-> **Status:** Specified. Access patterns and read-ahead are new in specification version 68, and their details are still open in its section 16.
+> **Status:** Specified. Access patterns and read-ahead are new in specification version 68, and their details were settled in version 69.
 
 **Readers hold decoder state.** A thread that reads an Image gets its own Reader, made on first use. A Reader keeps its place in a stream, so reading the next frame decodes one frame, not the whole run from a key frame.
 
@@ -570,25 +570,25 @@ In Python the interpreter lock is released during every read, so a thread pool r
 
 | `AccessPattern` | You | BIL |
 | --- | --- | --- |
-| `RandomAccess`, the default | Jump from place to place, as a viewer or a target search does | Reads only the blocks each read needs, keeps the cache in order of last use, and tells the operating system the access is random, so it does not read ahead either |
-| `SequentialAccess` | Move through adjacent blocks, normally forward in the order they are stored, as processing a whole Image Window by Window does | Reads and decodes the next blocks ahead of you on a background thread, merges adjacent reads, drops blocks you have passed first, and tells the operating system the access is sequential |
+| `Random`, the default | Jump from place to place, as a viewer or a target search does | Reads only the blocks each read needs, keeps the cache in order of last use, and tells the operating system the access is random, so it does not read ahead either |
+| `Sequential` | Move through adjacent blocks, normally forward in the order they are stored, as processing a whole Image Window by Window does | Reads and decodes the next blocks ahead of you on a background thread, merges adjacent reads, drops blocks you have passed first, and tells the operating system the access is sequential |
 
 ```python
 batch = bil.open_source("mosaic.tif",
-                        access_pattern=bil.AccessPattern.SequentialAccess,
+                        access_pattern=bil.AccessPattern.Sequential,
                         read_ahead_bytes=256 * 2**20)
 image = batch.image(0)
 image.info().storage        # tiles of 512 × 512, stored row by row
 
-sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)  # one Reader only
+sweep = image.open_reader(access_pattern=bil.AccessPattern.Sequential)  # one Reader only
 ```
 
 **What it never changes.** Values, statuses, sizes and errors are the same under either pattern. Only time and the memory held between reads differ, so choosing wrongly is never a fault, only slower.
 
 **How read-ahead works**
 
-- **It follows the storage.** Each driver reports how its blocks lie in the file, as a `Storage`; `ImageInfo.storage` gives its block size, interleave and whether the order is known. After each read, BIL reads the blocks that follow the last one in that order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage it is proposed to read ahead along each component your last read used. Where the order is `Unknown`, BIL reads nothing ahead and gives the operating system the hint alone.
-- **It is bounded.** It stops at `read_ahead_bytes` and never takes the cache past its byte ceiling. As proposed, blocks read ahead also count against the cache's count, so with the cache off nothing is read ahead; that detail is still open.
+- **It follows the storage.** Each driver reports how its blocks lie in the file, as a `Storage`; `ImageInfo.storage` gives its block size, interleave and whether the order is known. After each read, BIL reads the blocks that follow the last one in that order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage it reads ahead along each component your last read used. It runs forward only. Where the order is `Unknown`, BIL reads nothing ahead and gives the operating system the hint alone.
+- **It is bounded.** It stops at `read_ahead_bytes` and never takes the cache past either of its limits: blocks read ahead count against the cache's count as well as its bytes, so with the cache off nothing is read ahead. With many small tiles, raise `set_cache_size` along with `read_ahead_bytes`.
 - **It decodes too.** Compressed blocks read ahead are decoded into the cache, so your next read finds them ready. Uncompressed blocks are only fetched, or for mapped files the operating system is asked to bring them in.
 - **It respects the driver.** Under `Serial` the background thread takes the library's one lock like any call, so it reads between your calls, not beside them.
 - **Errors come with the read that needs them.** A block that fails while read ahead is tried again when you ask for it, and any error is reported then.
@@ -600,10 +600,10 @@ sweep = image.open_reader(access_pattern=bil.AccessPattern.SequentialAccess)  # 
 
 | You are | Use |
 | --- | --- |
-| Processing a whole Image in Windows, top to bottom | `SequentialAccess`, with Windows that follow the storage: across a row of tiles, then down |
-| Playing or processing video forward | `SequentialAccess` |
-| A viewer, a search, or random sampling for training | `RandomAccess` |
-| Both at once on one Source | A Source with `RandomAccess`, and a Reader with `SequentialAccess` for the sweep |
+| Processing a whole Image in Windows, top to bottom | `Sequential`, with Windows that follow the storage: across a row of tiles, then down |
+| Playing or processing video forward | `Sequential` |
+| A viewer, a search, or random sampling for training | `Random` |
+| Both at once on one Source | A Source with `Random`, and a Reader with `Sequential` for the sweep |
 
 **Work with the storage, not against it.** `ImageInfo.storage` says how the file is laid out. A file stored in strips reads fastest in Windows the full width of the Image. A tiled file reads fastest in Windows that are whole tiles, or whole rows of tiles. A band-sequential file stores each band apart, so a request for every band of a Window touches as many places in the file as there are bands.
 
@@ -636,7 +636,7 @@ A local function or a filtered Level always computes new values, so it is never 
 - **Reuse buffers.** `read_slice_into` allocates nothing per call.
 - **Stream large outputs.** `stream_slice` hands you row blocks sized for the processor cache, so the float32 form never fills main memory.
 - **Use cheap relatives.** `power` avoids the square root of `magnitude`, and both avoid the arctangent of `phase` and the logarithm of `power_db`.
-- **Say how you move.** `SequentialAccess` for sweeps, and Windows that follow the storage.
+- **Say how you move.** `Sequential` for sweeps, and Windows that follow the storage.
 - **Look before you read.** `plan` gives the sizes, the blocks, the access class and the remote requests.
 - **Threads help up to a point.** Large Windows are split across threads, and gains flatten after a few cores, when memory bandwidth becomes the limit.
 ## 14. The slice functions
@@ -1180,13 +1180,13 @@ CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM. `RE
 
 **What comes next** in code: the `binomial5` level method; a NEON back end, which section 12 asks for; threads by bands of rows; `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
-**What specification version 68 changes in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
+**What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 
 ## 24. Gaps and inconsistencies found while writing
 
-Writing this manual against specification version 68 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.
+Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.
 
-**Fixed in version 68 while writing**
+**Fixed while writing, or ruled on by the author**
 
 | | Found | Done |
 | --- | --- | --- |
@@ -1195,12 +1195,13 @@ Writing this manual against specification version 68 found the points below. Eac
 | F3 | With the cache turned off, read-ahead would have had nowhere to go | Stated: with the cache off, nothing is read ahead |
 | F4 | A profile report's items had no field names, and the profile calls belonged to no object | Items have `name`, `need`, `status`, `origin` and `basis`; the profile calls are BIL's own, beside `list_drivers`, and `check_profile` is on a Source or Image |
 | F5 | The checking agent found that `ImageInfo.storage`, `describe_storage` and a scripted driver's `PixelLayout` described one thing three ways, and that a profile could not recommend another profile | One `Storage` record, which BIL derives from a `PixelLayout` for scripted drivers; profiles named in a profile's required or recommended list, with no separate `includes` |
+| F6 | M1 of version 1: the values `RandomAccess` and `SequentialAccess` repeated their type's name | Renamed `Random` and `Sequential`, by the author's ruling (version 69) |
+| F7 | M10 of version 1: whether blocks read ahead count against `set_cache_size`, and the other details of read-ahead | Accepted as proposed, by the author's ruling (version 69); with many small tiles, raise the count |
 
 **Open, for the author**
 
 | | Gap or inconsistency | Where | Proposal |
 | --- | --- | --- | --- |
-| M1 | **The enum values repeat their type's name.** `AccessPattern.SequentialAccess` reads twice; elsewhere values do not repeat the type (`LevelSource.Stored`, `MissingWeights.Equal`). The names follow the author's words. | 3.4, 4 | `AccessPattern.Random` and `AccessPattern.Sequential`, if the author agrees |
 | M2 | **Whether an Image can have missing pixels** is something "a driver states" (section 5), but `ImageInfo` has no field for it, so a caller cannot see whether the fast path applies | 3, 5 | Add `may_have_missing` to `ImageInfo` |
 | M3 | **How a Source is closed** is stated for C (`bil_close_source`) but not for Rust or Python. This manual says a Source closes when the last reference goes. | 2, 4 | State that, and add `close()` in Python for callers who want to free memory at a known point |
 | M4 | **The configuration** names plugin locations, the decoder's place, `isolation` and the driver order, but its form and where it lives are not specified | 10.2, 10.3 | A file in a stated place, with an environment variable to point elsewhere and a call to read it, settled when Tier 2 starts |
@@ -1209,7 +1210,6 @@ Writing this manual against specification version 68 found the points below. Eac
 | M7 | **`common.units` and a Slice's unit.** A Slice's unit is part of its definition; `common.units` gives the unit of the calibrated value per component. They can disagree for a function that converts units. | 5, 14.2 | Define `common.units` as the unit of the calibration that `radiometric_gain` and `radiometric_offset` produce, and nothing else |
 | M8 | **`common.sample_spacing` beside `common.ground_sample_distance`.** One is in the image plane, such as slant range, and the other on the ground, but the definitions do not yet say so | 14.2 | State it in both definitions |
 | M9 | **Access patterns on a live stream.** A live stream has one position for every Reader, so neither pattern can change how it is read | 3.2, 4 | State that a live stream ignores the pattern, and `plan` reports it |
-| M10 | **Read-ahead and the count limit.** As section 4 now proposes, blocks read ahead count against `set_cache_size` as well as the bytes, so with the default count of 16 a file of small tiles would read little ahead | 4, 16 | Open in section 16 with the other access pattern details; benchmarks to settle it |
 | M11 | **The four proposals of experiment 1b:** one 2D average rather than rescaling after each pass; stored NaN counted as missing; `valid_fraction` weighted by the filter; and `valid` following the averaged mask beside kinds that are not averaged | 5 | As the experiment does, set out in `RESULTS-1b.md` |
 
 **How this list is kept.** Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.
