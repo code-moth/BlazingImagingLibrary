@@ -10,8 +10,8 @@ use bil_exp1::testing::{
     bit_diffs, full, make, masked_reference, random_window, reference, with_holes, Rng,
 };
 use bil_exp1::{
-    hsv0, plan_outputs, polar0, read_levels, read_levels_into, Func, Image, LevelMethod,
-    MissingWeights, Pass, ReadOptions, Slice, Window,
+    hsv0, plan_outputs, polar0, read_levels, read_levels_into, BandedPass, Func, Image,
+    LevelMethod, MissingWeights, Pass, ReadOptions, Slice, Window,
 };
 use std::time::Instant;
 
@@ -111,6 +111,7 @@ fn main() {
     all_ok &= missing_data(&isas, &cases, rows, cols);
     all_ok &= other_kinds(&isas, rows, cols);
     all_ok &= binomial(&isas, &cases, rows, cols);
+    all_ok &= bands(&isas, &cases, rows, cols);
 
     if std::env::args().any(|a| a == "--check") {
         if !all_ok {
@@ -888,6 +889,198 @@ fn benchmarks(isas: &[Isa]) {
     missing_speed(isas);
     other_speed(isas);
     binomial_speed(isas);
+    bands_speed(isas);
+}
+
+/// A read split into bands of rows, one thread each, into freshly planned buffers.
+fn banded(
+    img: &Image,
+    func: Func,
+    isa: Isa,
+    window: Window,
+    top: u32,
+    options: ReadOptions,
+    threads: usize,
+) -> Vec<Vec<Slice>> {
+    banded_counted(img, func, isa, window, top, options, threads).0
+}
+
+/// `banded`, with the number of bands the read used. The Slices are filled with NaN first, so a
+/// row that no band writes cannot pass for one that holds a value.
+fn banded_counted(
+    img: &Image,
+    func: Func,
+    isa: Isa,
+    window: Window,
+    top: u32,
+    options: ReadOptions,
+    threads: usize,
+) -> (Vec<Vec<Slice>>, usize) {
+    let mut pass = BandedPass::new(img, func, window, top, options.level_method, threads);
+    let mut out = pass.outputs();
+    for s in out.iter_mut().flatten() {
+        s.data.fill(f32::NAN);
+    }
+    pass.run(img, isa, options, &mut out);
+    (out, pass.band_count())
+}
+
+/// Threads by bands of rows (section 12, rule 7): every value the same, bit for bit, as one
+/// thread's, for every function, kind, level method and mask, over random Windows and every
+/// Window of small Images.
+fn bands(isas: &[Isa], cases: &[(Func, &str)], rows: usize, cols: usize) -> bool {
+    println!("## 8. Threads by bands of rows\n");
+    println!("Each read is split into bands of whole rows, every band but the first starting on a multiple of 2^4 rows, and each band runs on its own thread into its rows of the same Slices. 100 random Windows for each case, read with 2, 3, 4 and 7 threads into Slices filled with NaN first, compared with one thread.\n");
+    println!("| Function | Sample type | Mask | Level method | Instruction set | Reads | Bands used | Values compared | Differing bits |");
+    println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    let mut ok = true;
+    let methods = [
+        LevelMethod::Bilinear,
+        LevelMethod::Binomial5,
+        LevelMethod::Decimate,
+    ];
+    let mut all: Vec<(Func, &str)> = cases.to_vec();
+    all.extend([
+        (Func::Labels, "U16"),
+        (Func::Range, "F32"),
+        (Func::Mask, "U16"),
+    ]);
+    for (case_no, (func, kind)) in all.iter().enumerate() {
+        let plain = make(kind, rows, cols, 7 + case_no as u64);
+        let holes = with_holes(
+            make(kind, rows, cols, 7 + case_no as u64),
+            100 + case_no as u64,
+        );
+        for (img, mask) in [(&plain, "none"), (&holes, "holes")] {
+            for method in methods {
+                let options = ReadOptions {
+                    level_method: method,
+                    missing_weights: if case_no % 2 == 0 {
+                        MissingWeights::Equal
+                    } else {
+                        MissingWeights::PixelCount
+                    },
+                    missing_value: (case_no % 3 == 0 && img.valid.is_some()).then_some(-1.0),
+                };
+                for isa in isas {
+                    let mut rng = Rng(200 + case_no as u64);
+                    let (mut reads, mut compared, mut diffs) = (0usize, 0usize, 0usize);
+                    let (mut fewest, mut most) = (usize::MAX, 0);
+                    for t in 0..100 {
+                        let win = random_window(&mut rng, rows, cols, t);
+                        let one = rolling_with(img, *func, *isa, win, TOP, options);
+                        compared += one.iter().flatten().map(|s| s.data.len()).sum::<usize>();
+                        for threads in [2, 3, 4, 7] {
+                            let (got, used) =
+                                banded_counted(img, *func, *isa, win, TOP, options, threads);
+                            diffs += differ(&got, &one);
+                            (fewest, most) = (fewest.min(used), most.max(used));
+                            reads += 1;
+                        }
+                    }
+                    ok &= diffs == 0;
+                    println!(
+                        "| `{}` | {kind} | {mask} | `{}` | {isa:?} | {reads} | {fewest} to {most} | {compared} | {diffs} |",
+                        func.name(),
+                        method_name(method)
+                    );
+                }
+            }
+        }
+    }
+    // Every Window of small Images, where bands of one row and Levels of one point meet.
+    let (mut reads, mut diffs) = (0usize, 0usize);
+    let sizes = [1, 2, 3, 5, 9, 17];
+    for &hh in &sizes {
+        for &ww in &[1, 3, 9] {
+            let mut rng = Rng((hh * 19 + ww) as u64);
+            let mask: Vec<u8> = (0..hh * ww).map(|_| u8::from(rng.below(5) >= 2)).collect();
+            for (func, kind, method) in [
+                (Func::Raw, "U16", LevelMethod::Bilinear),
+                (Func::Polar, "ComplexF32", LevelMethod::Binomial5),
+                (Func::Range, "F32", LevelMethod::Bilinear),
+            ] {
+                let mut img = make(kind, hh, ww, (hh * 41 + ww) as u64);
+                img.valid = Some(mask.clone());
+                let options = ReadOptions {
+                    level_method: method,
+                    ..ReadOptions::default()
+                };
+                for top in [0, 1, 2, 4] {
+                    for r0 in 0..hh {
+                        for rc in 1..=hh - r0 {
+                            for c0 in 0..ww {
+                                let win = Window {
+                                    row_start: r0,
+                                    col_start: c0,
+                                    row_count: rc,
+                                    col_count: ww - c0,
+                                };
+                                let isa = Isa::best();
+                                let one = rolling_with(&img, func, isa, win, top, options);
+                                for threads in [2, 5] {
+                                    diffs += differ(
+                                        &banded(&img, func, isa, win, top, options, threads),
+                                        &one,
+                                    );
+                                    reads += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let small_ok = diffs == 0;
+    ok &= small_ok;
+    println!("\nSmall Images of 1 to 17 rows by 1, 3 and 9 columns, with masks, every Window by its rows and first column, Levels 0 to 0 up to 0 to 4, with 2 and 5 threads: {reads} reads, {diffs} values differing from one thread. Passed: **{small_ok}**\n");
+    println!("All checks of threads by bands passed: **{ok}**\n");
+    ok
+}
+
+/// What bands of rows gain: the whole Image read by 1 to the available number of threads.
+fn bands_speed(isas: &[Isa]) {
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    println!("### Threads by bands of rows\n");
+    println!("The whole Image, Levels 0 to 4, best of five, on the fastest instruction set. This machine offers {cores} threads. Each read starts its threads afresh.\n");
+    println!("| Function | Sample type | Image | Threads | Time | Speed-up | Times a copy |");
+    println!("| --- | --- | --- | --- | --- | --- | --- |");
+    let isa = *isas.last().unwrap();
+    for (func, kind, n) in [
+        (Func::Raw, "U16", 8192),
+        (Func::Polar, "ComplexI16", 4096),
+        (Func::Hsv, "U8x3", 4096),
+    ] {
+        let img = make(kind, n, n, 11);
+        let src = vec![1f32; n * n];
+        let mut dst = vec![0f32; n * n];
+        let copy = time(|| {
+            dst.copy_from_slice(&src);
+            std::hint::black_box(&mut dst);
+        });
+        let mut one = 0.0;
+        for threads in 1..=cores.max(2) {
+            let mut pass =
+                BandedPass::new(&img, func, full(&img), TOP, LevelMethod::Bilinear, threads);
+            let mut out = pass.outputs();
+            let t = time(|| {
+                pass.run(&img, isa, ReadOptions::default(), &mut out);
+                std::hint::black_box(&mut out);
+            });
+            if threads == 1 {
+                one = t;
+            }
+            println!(
+                "| `{}` | {kind} | {n} × {n} | {} | {t:.3} s | {:.2} | {:.1} |",
+                func.name(),
+                pass.band_count(),
+                one / t,
+                t / copy
+            );
+        }
+    }
+    println!();
 }
 
 /// The level method's name in the specification.

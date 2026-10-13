@@ -9,6 +9,7 @@ Experiment 1b replaces experiment 1's whole planes with the rolling buffer of sp
 - **Missing data, for section 5.** A missing pixel is NaN in every Slice. Each halving leaves NaN out and rescales the weights, and a value is NaN only when nothing that would contribute is present. `missing_value` is applied last. `missing_weights` chooses how a Level weights the values below it: `Equal`, the default, or `PixelCount`, by the share of present full-resolution pixels behind each, as the author ruled in version 67. Both agree bitwise with an independent reference, between Windows and the whole Image, and between instruction sets. The rule itself agrees with a float64 computation to 5.6 × 10⁻⁸, and `PixelCount` equals the pyramid of the masked data over the pyramid of the mask to 2.7 × 10⁻⁷. Three details the specification leaves open are proposals, set out below.
 - **The other kinds of Slice, and `decimate`.** Labels keep every second value, range takes the least present value of each 3 × 3 block, and `pixel.mask` gives `valid` and `valid_fraction`. `decimate` keeps the value at each grid point for every kind. Each agrees with its definition, between Windows and the whole Image, and across instruction sets, with and without missing data.
 - **`binomial5`, the second level method.** Weights 1 4 6 4 1 at each halving, with a radius of 2, so each Level keeps a ring of five rows and the margins are wider. It agrees bitwise with a whole-plane reference, with and without missing data and under both weightings, between Windows and the whole Image, across instruction sets, and on every Window of 36 small Images. Its arithmetic agrees with float64 to 1.9 × 10⁻⁷, and a wave at the highest frequency the halved grid holds comes through at a quarter of its amplitude, against half for `bilinear`, as section 5 states. It costs about what `bilinear` costs: 0.9 to 1.3 times over two runs, probably because the halvings are limited by memory rather than arithmetic.
+- **Threads by bands of rows.** `BandedPass` splits a read into bands of whole rows, each starting on a multiple of 2^top so that every grid point of every Level falls in one band, and runs each band's own `Pass` on its own thread, straight into its rows of the caller's Slices. With 2 to 7 threads, every value equals one thread's, bit for bit, for every function, kind, level method and mask. On this machine's two threads, a whole read runs 1.65 to 1.84 times as fast over two runs.
 - **No cost where nothing is missing.** An Image without a mask makes no checks. A mask with nothing missing gives exactly the values of no mask, including values near the top of the float32 range.
 - **Nothing allocated per read.** A `Pass` is planned once, and running it again writes into the same Slice buffers and working rows.
 - **3 to 5 times faster than experiment 1,** on the fastest instruction set. `pixel.raw` takes 1.7 times a copy into warm memory at Level 0, and 2.7 times for Levels 0 to 4. `complex.polar` and `color.hsv` take 1.4 to 1.7 times their own arithmetic at Level 0, and 2.2 to 2.8 times for Levels 0 to 4.
@@ -49,6 +50,13 @@ Section 5 gives each kind of Slice its own reduction. Each `Func` declares one, 
 - **Planned for its method.** The radius sets the margins, so a `Pass` is planned for its level method with `Pass::for_method`, as `plan` takes the whole request. Running it with a method of another radius is refused.
 - **The arithmetic.** `((a + e) / 16 + (b + d) / 4) + 3c / 8`, in that order. Each scale is a power of two or 3/8, so weights of exactly 1 give exactly 1 and the weighted path keeps the bits of the unweighted one, as for `bilinear`; a sum overflows only where `bilinear`'s would.
 - **Kernels.** `blur5`, `blur5_row`, `blur5_weighted`, `blur5_row_weighted` and `blur5_over` in the `bil` crate, beside their `bilinear` counterparts. Reading five taps from the row itself takes three even-and-odd loads; `row_taps` serves three taps and five alike.
+
+### Threads by bands of rows
+
+- **Bands aligned to the coarsest Level.** Every band but the first starts on a row that is a multiple of 2^top, so a grid row of any Level up to `top` lies in exactly one band, and the bands' outputs partition the request's at every Level.
+- **Each band its own `Pass`.** Planned once, with its own rings and margins. The rows a band needs beyond its edges are made by both neighbors, and Window independence makes every value the one a single `Pass` makes.
+- **Straight into the caller's rows.** A `Pass` now writes into views of its rows of each Slice, kept on the stack. A band's view is the run of rows it owns, split from the Slice's data, so no band touches another's rows and nothing is copied after.
+- **What it still allocates.** Starting the threads allocates for each read: each thread's handle, result and stack. A pool kept between reads would remove that, and is left for the library.
 
 ### NEON
 
@@ -133,6 +141,18 @@ The six cases of the bitwise table, each with and without the mask of the missin
 
 At Levels 0 to 4, on the vector instruction sets, `binomial5` took 0.94 to 1.13 times as long as `bilinear` in one run and 0.90 to 1.26 in another: in the first, 1.04 for `pixel.raw` on 8,192 × 8,192, 0.98 to 1.13 for `complex.polar` and 0.94 to 0.95 for `color.hsv` on 4,096 × 4,096. The difference is mostly within the variation of this shared two-core machine. The extra arithmetic of each halving is probably hidden behind the memory it reads.
 
+### Threads by bands of rows
+
+Every case of the bitwise table, plus labels, range and the mask Slices, each with and without the mask, with `bilinear`, `binomial5` and `decimate`, on scalar, AVX2 and AVX-512: 100 random Windows each, read with 2, 3, 4 and 7 threads into Slices filled with NaN first, using 1 to 7 bands, no value differing from one thread. Every Window, by its rows and first column, of 18 small Images of 1 to 17 rows by 1, 3 and 9 columns, with masks, at Levels 0 to 0 up to 0 to 4, with 2 and 5 threads: 69,576 reads, no value differing.
+
+| Function | Image | Levels | 1 thread | 2 threads | Speed-up |
+| --- | --- | --- | --- | --- | --- |
+| `pixel.raw`, U16 | 8,192 × 8,192 | 0 to 4 | 0.068 s | 0.039 s | 1.73 |
+| `complex.polar`, ComplexI16 | 4,096 × 4,096 | 0 to 4 | 0.061 s | 0.033 s | 1.84 |
+| `color.hsv`, U8 color | 4,096 × 4,096 | 0 to 4 | 0.091 s | 0.050 s | 1.82 |
+
+On AVX-512, one run, on this machine's two threads, which share the machine with other work; a second run gave 1.65 for `pixel.raw`. Two threads bring `pixel.raw` to 1.4 to 1.8 times a single-threaded copy. Section 12 expects the gains to flatten after a few cores, as memory bandwidth becomes the limit; that needs a larger machine to see.
+
 ### Reused buffers
 
 The buffers of a first read were filled with NaN and read into again. Every value was rewritten, with the same bits as the first read, on every instruction set.
@@ -175,7 +195,7 @@ The fastest instruction set is shown; the copy took 0.026 s in that run. `pixel.
 - **The mask at Level 0** is converted to weights in a plain loop, then applied by a select. For `pixel.raw` it could be applied during conversion instead.
 - **`decimate` reads every pixel here.** A request in this experiment always includes Level 0, which needs every pixel, so `decimate` costs what `bilinear` does. Section 5 has `decimate` stride across the storage and touch only the pixels kept; that needs a request for coarser Levels alone.
 - **Keeping copies by index.** The kept row is copied value by value; the even-column load of `halve_row` could do it in vector code.
-- **Threads.** Each thread would take a band of rows with its own rings, and the rows a band shares with its neighbor would be made twice.
+- **A thread pool.** Bands start their threads for each read; a pool kept between reads would make a threaded read allocate nothing, as a single `Pass` does.
 - **Not covered,** as in experiment 1: stored levels, local functions such as demosaicing, and `pixel.mask.saturated`.
 
 ## Running it

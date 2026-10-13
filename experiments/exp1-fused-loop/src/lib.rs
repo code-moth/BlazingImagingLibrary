@@ -23,7 +23,9 @@ pub use bil::{kernels, simd};
 
 /// Experiment 1b: the same pass on a rolling buffer of a few rows, into the caller's buffers.
 pub mod rolling;
-pub use rolling::{plan_outputs, read_levels_into, LevelMethod, MissingWeights, Pass, ReadOptions};
+pub use rolling::{
+    plan_outputs, read_levels_into, BandedPass, LevelMethod, MissingWeights, Pass, ReadOptions,
+};
 
 /// Test images and comparisons for the experiment programs.
 pub mod testing;

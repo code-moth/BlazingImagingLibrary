@@ -1157,6 +1157,7 @@ level2.at(10, 20);                                        // the value at grid r
 | `Func`: `Raw`, `Polar`, `Hsv`, `Mask`, `Labels`, `Range` | `pixel.raw`, `complex.polar`, `color.hsv`, `pixel.mask`, `class.labels`, `depth.sensor` (its range) | Six functions, by enum rather than by name |
 | `Window { row_start, col_start, row_count, col_count }` | `Window` | No `step` and no `frame` |
 | `Pass::new`, `Pass::outputs`, `Pass::run` | `plan`, `read` with `IntoBuffers` | The plan is an object the caller keeps |
+| `BandedPass::new(..., threads)`, `outputs`, `run` | A read split across threads (section 12, rule 7) | Bands of rows, each its own `Pass` on its own thread; starting the threads allocates for each read |
 | `ReadOptions { level_method, missing_value, missing_weights }` | `SliceOptions` | No `level_source` or `decimate_first`; `LevelMethod` is `Bilinear`, `Binomial5` or `Decimate`. A `Pass` is planned for its method, since `binomial5` reaches further. |
 | `Slice { name, level, rows, cols, data }` | `Slice` | `rows` and `cols` are the Level's grid indices covered, not an `origin` and `scale` |
 | `Vec<Vec<Slice>>`, by Level then Slice | `read_slice_levels` | Levels 0 to `top` always, not chosen by name |
@@ -1166,6 +1167,7 @@ level2.at(10, 20);                                        // the value at grid r
 - **The same bits as the whole Image.** About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code here and NEON in CI, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.
 - **Missing data as the specification states it,** with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.
 - **Each kind of Slice** reduced by its own rule, and `decimate` for every kind.
+- **Threads by bands of rows,** with every value equal to one thread's, bit for bit; 1.65 to 1.84 times as fast on two threads, over two runs.
 - **`binomial5`,** bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against `bilinear`'s half, as the specification states. It cost 0.9 to 1.3 times `bilinear`.
 - **Speed.** On the fastest instruction set, `pixel.raw` takes 1.7 times a copy into warm memory at Level 0, and `complex.polar` and `color.hsv` 1.4 to 1.7 times their own arithmetic alone. Missing data costs 1.2 to 1.8 times an unmasked read, and nothing at all where no mask exists.
 
@@ -1180,7 +1182,7 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 
 CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. `RESULTS-1b.md` beside the code has the full results.
 
-**What comes next** in code: threads by bands of rows; `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
+**What comes next** in code: `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
 **What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 

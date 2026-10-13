@@ -48,6 +48,10 @@ struct Plan {
 
 impl Plan {
     fn new(img: &Image, window: Window, top: u32, radius: i64) -> Plan {
+        assert!(
+            (top as usize) < MAX_LEVELS,
+            "at most {MAX_LEVELS} Levels, Level 0 included"
+        );
         let (row_out, row_need) = axis_plan_radius(
             img.rows,
             window.row_start,
@@ -302,6 +306,23 @@ impl Pass {
     /// Runs the read into `out`, which must have the shape `outputs` gives. Missing positions
     /// are NaN, or the `missing_value` of `options` where the caller gives one.
     pub fn run(&mut self, img: &Image, isa: Isa, options: ReadOptions, out: &mut [Vec<Slice>]) {
+        self.check_shape(out);
+        let mut views = empty_views();
+        for (v, level) in views.iter_mut().zip(out.iter_mut()) {
+            for (d, s) in v.iter_mut().zip(level.iter_mut()) {
+                *d = &mut s.data[..];
+            }
+        }
+        self.run_views(img, isa, options, &mut views);
+    }
+
+    /// `run`, into the rows of each Slice that this read's Window owns, given as views: for each
+    /// Level, one view for each Slice, holding the rows of `row_out` and the columns of `col_out`.
+    fn run_views(&mut self, img: &Image, isa: Isa, options: ReadOptions, views: &mut Views) {
+        assert!(
+            self.plan.levels() <= MAX_LEVELS,
+            "more Levels than a read can hold"
+        );
         assert!(
             isa == Isa::Scalar || Isa::available().contains(&isa),
             "{isa:?} is not available"
@@ -315,7 +336,6 @@ impl Pass {
             self.taps,
             "the read was planned for another level method"
         );
-        self.check_shape(out);
         for level in &mut self.levels {
             level.next = level.rows.0;
             level.tags.fill(i64::MIN);
@@ -438,7 +458,7 @@ impl Pass {
                 }
             }
             self.levels[0].next = r + 1;
-            self.emit(isa, options, reduce, 0, r, out);
+            self.emit(isa, options, reduce, 0, r, views);
         }
         for (k, level) in self.levels.iter().enumerate() {
             assert_eq!(level.next, level.rows.1 + 1, "Level {k} was not finished");
@@ -482,7 +502,7 @@ impl Pass {
         reduce: Reduce,
         k: usize,
         r: i64,
-        out: &mut [Vec<Slice>],
+        views: &mut Views,
     ) {
         let fill = options.missing_value;
         write_out(
@@ -495,7 +515,7 @@ impl Pass {
             &self.levels[k],
             k,
             r,
-            &mut out[k],
+            &mut views[k],
         );
         if k + 1 >= self.levels.len() {
             return;
@@ -520,10 +540,10 @@ impl Pass {
                 next.next += 1;
                 next.next - 1
             };
-            return self.emit(isa, options, reduce, k + 1, i, out);
+            return self.emit(isa, options, reduce, k + 1, i, views);
         }
         if reduce == Reduce::Min3 {
-            return self.emit_min3(isa, options, k, r, out);
+            return self.emit_min3(isa, options, k, r, views);
         }
         let taps = self.taps;
         let radius = (taps / 2) as i64;
@@ -666,20 +686,13 @@ impl Pass {
                 next.next = i + 1;
                 i
             };
-            self.emit(isa, options, reduce, k + 1, i, out);
+            self.emit(isa, options, reduce, k + 1, i, views);
         }
     }
 
     /// As `emit`'s averaging, for range: the least present value of each 3 × 3 block, along the
     /// row into the ring and then down the column.
-    fn emit_min3(
-        &mut self,
-        isa: Isa,
-        options: ReadOptions,
-        k: usize,
-        r: i64,
-        out: &mut [Vec<Slice>],
-    ) {
+    fn emit_min3(&mut self, isa: Isa, options: ReadOptions, k: usize, r: i64, views: &mut Views) {
         {
             let (here, above) = self.levels.split_at_mut(k + 1);
             let (cur, next) = (&here[k], &mut above[0]);
@@ -734,8 +747,110 @@ impl Pass {
                 next.next = i + 1;
                 i
             };
-            self.emit(isa, options, Reduce::Min3, k + 1, i, out);
+            self.emit(isa, options, Reduce::Min3, k + 1, i, views);
         }
+    }
+}
+
+/// The most bands a read is split into.
+const MAX_BANDS: usize = 16;
+
+/// A read split across threads by bands of rows (section 12, rule 7).
+///
+/// Each band is a Window of whole rows of the request's Window, and every band but the first
+/// starts on a row that is a multiple of 2^top, so every grid point of every Level falls in
+/// exactly one band. Each band runs its own `Pass`, with its own rings, and writes straight into
+/// its own rows of the caller's Slices. The rows a band needs from beyond its edges, for the
+/// halvings, are made by both neighbors. Window independence makes every value the one a single
+/// `Pass` makes, and the checks confirm it bit for bit.
+///
+/// The working rows of every band are planned once. Starting the threads allocates for each read;
+/// a pool kept between reads would remove that. The views of every band are held on the calling
+/// thread's stack, about 48 KB.
+pub struct BandedPass {
+    whole: Pass,
+    bands: Vec<Pass>,
+}
+
+impl BandedPass {
+    /// Plans a read as `Pass::for_method` does, split into at most `threads` bands, never more
+    /// than 16, and fewer where the Window has fewer rows of Level `top`.
+    pub fn new(
+        img: &Image,
+        func: Func,
+        window: Window,
+        top: u32,
+        method: LevelMethod,
+        threads: usize,
+    ) -> BandedPass {
+        let whole = Pass::for_method(img, func, window, top, method);
+        let first = window.row_start;
+        let end = window.row_start + window.row_count;
+        // `Pass::for_method` has checked that `top` is below `MAX_LEVELS`, so the shift is sound.
+        let step = 1usize << top;
+        let mut starts = vec![first];
+        for j in 1..threads.clamp(1, MAX_BANDS) {
+            let target = first + window.row_count * j / threads.clamp(1, MAX_BANDS);
+            let start = target.div_ceil(step).saturating_mul(step);
+            if start > *starts.last().unwrap() && start < end {
+                starts.push(start);
+            }
+        }
+        starts.push(end);
+        let bands = starts
+            .windows(2)
+            .map(|b| {
+                let band = Window {
+                    row_start: b[0],
+                    row_count: b[1] - b[0],
+                    ..window
+                };
+                Pass::for_method(img, func, band, top, method)
+            })
+            .collect();
+        BandedPass { whole, bands }
+    }
+
+    /// How many bands, and so threads, a read uses.
+    pub fn band_count(&self) -> usize {
+        self.bands.len()
+    }
+
+    /// Allocates the Slices this read makes, as `Pass::outputs` does for the whole Window.
+    pub fn outputs(&self) -> Vec<Vec<Slice>> {
+        self.whole.outputs()
+    }
+
+    /// Runs every band on its own thread, the first on the calling thread, into `out`, which must
+    /// have the shape `outputs` gives.
+    pub fn run(&mut self, img: &Image, isa: Isa, options: ReadOptions, out: &mut [Vec<Slice>]) {
+        self.whole.check_shape(out);
+        let mut views: [Views; MAX_BANDS] = std::array::from_fn(|_| empty_views());
+        for (k, level) in out.iter_mut().enumerate() {
+            for (s, slice) in level.iter_mut().enumerate() {
+                let w = slice.width();
+                let mut rest: &mut [f32] = &mut slice.data[..];
+                for (band, view) in self.bands.iter().zip(views.iter_mut()) {
+                    let plan = &band.plan;
+                    let rows = match (plan.row_out.get(k), plan.col_out.get(k)) {
+                        (Some(Some(r)), Some(Some(_))) => (r.1 - r.0 + 1) as usize,
+                        _ => 0,
+                    };
+                    let (mine, after) = std::mem::take(&mut rest).split_at_mut(rows * w);
+                    view[k][s] = mine;
+                    rest = after;
+                }
+                assert!(rest.is_empty(), "the bands do not cover Level {k}");
+            }
+        }
+        std::thread::scope(|scope| {
+            let mut work = self.bands.iter_mut().zip(views.iter_mut());
+            let (first, first_views) = work.next().expect("a read has at least one band");
+            for (pass, view) in work {
+                scope.spawn(move || pass.run_views(img, isa, options, view));
+            }
+            first.run_views(img, isa, options, first_views);
+        });
     }
 }
 
@@ -894,7 +1009,7 @@ fn write_out(
     level: &LevelState,
     k: usize,
     r: i64,
-    slices: &mut [Slice],
+    slices: &mut [&mut [f32]; 3],
 ) {
     let (Some(rows), Some(cols)) = (plan.row_out[k], plan.col_out[k]) else {
         return;
@@ -906,10 +1021,10 @@ fn write_out(
     let o = (cols.0 - level.cols.0) as usize;
     let at = ((r - rows.0) as usize) * w;
     let plane = |p: usize| &level.row[p][o..o + w];
-    let mut put = |s: usize, p: usize| slices[s].data[at..at + w].copy_from_slice(plane(p));
+    let mut put = |s: usize, p: usize| slices[s][at..at + w].copy_from_slice(plane(p));
     // An angle made from an averaged unit vector, NaN where the vector is missing.
-    let angle = |slices: &mut [Slice], s: usize, x: usize, y: usize, f: DeriveFn| {
-        let dst = slices[s].data[at..at + w].as_mut_ptr();
+    let angle = |slices: &mut [&mut [f32]; 3], s: usize, x: usize, y: usize, f: DeriveFn| {
+        let dst = slices[s][at..at + w].as_mut_ptr();
         // Both planes and the output row hold w values.
         unsafe {
             f(isa, w, plane(x).as_ptr(), plane(y).as_ptr(), dst);
@@ -924,7 +1039,7 @@ fn write_out(
         Func::Raw | Func::Labels | Func::Range => put(0, 0),
         Func::Mask => {
             put(1, 0);
-            let dst = slices[0].data[at..at + w].as_mut_ptr();
+            let dst = slices[0][at..at + w].as_mut_ptr();
             // The plane and the output row hold w values.
             unsafe { present_one(isa, w, plane(0).as_ptr(), dst) };
         }
@@ -948,14 +1063,27 @@ fn write_out(
     }
     // The caller's number in place of NaN, applied last.
     if let (Some(v), true) = (fill, masked) {
-        for s in slices.iter_mut() {
-            for x in &mut s.data[at..at + w] {
+        for s in slices.iter_mut().take(func.slice_names().len()) {
+            for x in &mut s[at..at + w] {
                 if x.is_nan() {
                     *x = v;
                 }
             }
         }
     }
+}
+
+/// The most Levels one read makes: a halving of every Image dimension BIL can address.
+const MAX_LEVELS: usize = 64;
+
+/// Where a read writes: for each Level, one view for each of up to three Slices, each holding the
+/// rows and columns the read's Window owns at that Level. Kept on the stack, so that a read
+/// allocates nothing.
+type Views<'a> = [[&'a mut [f32]; 3]; MAX_LEVELS];
+
+/// Views that hold nothing, to be pointed at the Slices of a read.
+fn empty_views<'a>() -> Views<'a> {
+    std::array::from_fn(|_| -> [&'a mut [f32]; 3] { [&mut [], &mut [], &mut []] })
 }
 
 /// A kernel that makes one plane from two.
