@@ -322,7 +322,7 @@ Streamed blocks of one Slice and Level arrive in row order. Blocks of different 
 
 ## 8. Levels
 
-> **Status:** Prototyped for `bilinear`, `binomial5` and the values of `decimate`, every kind of Slice, and Levels 0 to 4 in one pass. A `decimate` that reads only the pixels kept, `decimate_first` and stored levels are specified.
+> **Status:** Prototyped for `bilinear`, `binomial5` and `decimate`, every kind of Slice, Levels 0 to 4 in one pass, and coarse Levels alone, where `decimate` reads only the pixels kept, in an Image in memory. `decimate_first` and stored levels are specified.
 
 **What a Level is.** Level 0 is full resolution. Level n holds the Image pixels whose row and column are multiples of 2ⁿ, each made from the Level below by the level method. The grid is anchored to the Image origin, not to the Window, which is why a Window gives the same values as the whole.
 
@@ -1160,13 +1160,15 @@ level2.at(10, 20);                                        // the value at grid r
 | `BandedPass::new(..., threads)`, `outputs`, `run` | A read split across threads (section 12, rule 7) | Bands of rows, each its own `Pass` on its own thread; starting the threads allocates for each read |
 | `ReadOptions { level_method, missing_value, missing_weights }` | `SliceOptions` | No `level_source` or `decimate_first`; `LevelMethod` is `Bilinear`, `Binomial5` or `Decimate`. A `Pass` is planned for its method, since `binomial5` reaches further. |
 | `Slice { name, level, rows, cols, data }` | `Slice` | `rows` and `cols` are the Level's grid indices covered, not an `origin` and `scale` |
-| `Vec<Vec<Slice>>`, by Level then Slice | `read_slice_levels` | Levels 0 to `top` always, not chosen by name |
+| `Vec<Vec<Slice>>`, by Level then Slice | `read_slice_levels` | Levels 0 to `top`, or `first` to `top` with `Pass::for_levels`, not chosen by name |
+| `Pass::pixels_read()` | What `plan` reports of a read's cost | The pixels the last run converted |
 
 **What it shows**
 
 - **The same bits as the whole Image.** About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code here and NEON in CI, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.
 - **Missing data as the specification states it,** with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.
 - **Each kind of Slice** reduced by its own rule, and `decimate` for every kind.
+- **Coarse Levels alone.** `decimate` at Level 4 alone reads 1 pixel in 256 and takes 0.017 times a copy; every value equals the same Level of a full read.
 - **Threads by bands of rows,** with every value equal to one thread's, bit for bit; 1.65 to 1.84 times as fast on two threads, over two runs.
 - **`binomial5`,** bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against `bilinear`'s half, as the specification states. It cost 0.9 to 1.3 times `bilinear`.
 - **Speed.** On the fastest instruction set, `pixel.raw` takes 1.7 times a copy into warm memory at Level 0, and `complex.polar` and `color.hsv` 1.4 to 1.7 times their own arithmetic alone. Missing data costs 1.2 to 1.8 times an unmasked read, and nothing at all where no mask exists.
@@ -1182,7 +1184,7 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 
 CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. `RESULTS-1b.md` beside the code has the full results.
 
-**What comes next** in code: `decimate` reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
+**What comes next** in code: a thread pool for the bands; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
 **What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 
@@ -1215,6 +1217,7 @@ Writing this manual against specification versions 68 and 69 found the points be
 | M8 | **`common.sample_spacing` beside `common.ground_sample_distance`.** One is in the image plane, such as slant range, and the other on the ground, but the definitions do not yet say so | 14.2 | State it in both definitions |
 | M9 | **Access patterns on a live stream.** A live stream has one position for every Reader, so neither pattern can change how it is read | 3.2, 4 | State that a live stream ignores the pattern, and `plan` reports it |
 | M11 | **The four proposals of experiment 1b:** one 2D average rather than rescaling after each pass; stored NaN counted as missing; `valid_fraction` weighted by the filter; and `valid` following the averaged mask beside kinds that are not averaged | 5 | As the experiment does, set out in `RESULTS-1b.md` |
+| M12 | **Labels at coarse Levels alone.** A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window | 5 | Labels read only their grid points under any method, as the experiment does; state it in section 5 |
 
 **How this list is kept.** Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.
 

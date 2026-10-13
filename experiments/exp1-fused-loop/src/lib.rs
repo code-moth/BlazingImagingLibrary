@@ -330,6 +330,52 @@ impl Planes {
 
 // ---------------------------------------------------------------- the pass
 
+/// Converts every `step`-th column of row `r`, from column `c0` to column `c1`, which is one of
+/// them, to f32 component rows. With a step of 1 it is `convert_row`.
+fn convert_row_step(
+    img: &Image,
+    r: usize,
+    c0: usize,
+    c1: usize,
+    step: usize,
+    bufs: &mut [Vec<f32>],
+) {
+    if step == 1 {
+        return convert_row(img, r, c0, c1, bufs);
+    }
+    let n = (c1 - c0) / step + 1;
+    let per = match img.samples {
+        Samples::ComplexI16(_) | Samples::ComplexF32(_) => 2,
+        _ => img.comps,
+    };
+    for b in bufs.iter_mut() {
+        b.resize(n, 0.0);
+    }
+    #[inline(always)]
+    fn gather<T: Copy>(
+        src: &[T],
+        at: usize,
+        step: usize,
+        per: usize,
+        bufs: &mut [Vec<f32>],
+        conv: impl Fn(T) -> f32,
+    ) {
+        for (k, b) in bufs.iter_mut().enumerate() {
+            for (j, d) in b.iter_mut().enumerate() {
+                *d = conv(src[at + j * step * per + k]);
+            }
+        }
+    }
+    let at = (r * img.cols + c0) * per;
+    match &img.samples {
+        Samples::U8(v) => gather(v, at, step, per, bufs, |x| x as f32),
+        Samples::U16(v) => gather(v, at, step, per, bufs, |x| x as f32),
+        Samples::F32(v) => gather(v, at, step, per, bufs, |x| x),
+        Samples::ComplexI16(v) => gather(v, at, step, per, bufs, |x| x as f32),
+        Samples::ComplexF32(v) => gather(v, at, step, per, bufs, |x| x),
+    }
+}
+
 /// Converts one row's columns [c0, c1] of native samples to f32 component rows. Exact for every
 /// sample type here.
 fn convert_row(img: &Image, r: usize, c0: usize, c1: usize, bufs: &mut [Vec<f32>]) {

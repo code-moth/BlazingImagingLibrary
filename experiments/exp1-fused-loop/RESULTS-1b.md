@@ -10,6 +10,7 @@ Experiment 1b replaces experiment 1's whole planes with the rolling buffer of sp
 - **The other kinds of Slice, and `decimate`.** Labels keep every second value, range takes the least present value of each 3 × 3 block, and `pixel.mask` gives `valid` and `valid_fraction`. `decimate` keeps the value at each grid point for every kind. Each agrees with its definition, between Windows and the whole Image, and across instruction sets, with and without missing data.
 - **`binomial5`, the second level method.** Weights 1 4 6 4 1 at each halving, with a radius of 2, so each Level keeps a ring of five rows and the margins are wider. It agrees bitwise with a whole-plane reference, with and without missing data and under both weightings, between Windows and the whole Image, across instruction sets, and on every Window of 36 small Images. Its arithmetic agrees with float64 to 1.9 × 10⁻⁷, and a wave at the highest frequency the halved grid holds comes through at a quarter of its amplitude, against half for `bilinear`, as section 5 states. It costs about what `bilinear` costs: 0.9 to 1.3 times over two runs, probably because the halvings are limited by memory rather than arithmetic.
 - **Threads by bands of rows.** `BandedPass` splits a read into bands of whole rows, each starting on a multiple of 2^top so that every grid point of every Level falls in one band, and runs each band's own `Pass` on its own thread, straight into its rows of the caller's Slices. With 2 to 7 threads, every value equals one thread's, bit for bit, for every function, kind, level method and mask. On this machine's two threads, a whole read runs 1.65 to 1.84 times as fast over two runs.
+- **Coarser Levels alone.** `Pass::for_levels` asks for Levels `first` to `top`, and makes no Slices below `first`. Where values are kept, for `decimate` and for labels, Level `first` is read straight from the Image at its grid points and no other pixel is read: Level 4 alone with `decimate` converts 0.39 percent of the pixels, 1 in 256, and takes 0.017 times a copy of the Image. Every value equals the same Level of a read of Levels 0 to 4, for every function, kind, method and mask.
 - **No cost where nothing is missing.** An Image without a mask makes no checks. A mask with nothing missing gives exactly the values of no mask, including values near the top of the float32 range.
 - **Nothing allocated per read.** A `Pass` is planned once, and running it again writes into the same Slice buffers and working rows.
 - **3 to 5 times faster than experiment 1,** on the fastest instruction set. `pixel.raw` takes 1.7 times a copy into warm memory at Level 0, and 2.7 times for Levels 0 to 4. `complex.polar` and `color.hsv` take 1.4 to 1.7 times their own arithmetic at Level 0, and 2.2 to 2.8 times for Levels 0 to 4.
@@ -58,19 +59,29 @@ Section 5 gives each kind of Slice its own reduction. Each `Func` declares one, 
 - **Straight into the caller's rows.** A `Pass` now writes into views of its rows of each Slice, kept on the stack. A band's view is the run of rows it owns, split from the Slice's data, so no band touches another's rows and nothing is copied after.
 - **What it still allocates.** Starting the threads allocates for each read: each thread's handle, result and stack. A pool kept between reads would remove that, and is left for the library.
 
+### Coarser Levels alone
+
+- **Planned for the Levels asked for.** `Pass::for_levels(img, func, window, first, top, method)`. The plan is the usual one, with no output at Levels below `first`, so those Slices are empty and nothing is written for them.
+- **Kept values start at the first Level.** A halving that keeps has one tap, the grid point, so its plan has no margins, and the first Level asked for is the base: each of its rows is image row i × 2^first, converted at every 2^first-th column by `convert_row_step`, and its mask read at the same points. The Levels above are kept from it as before.
+- **Averaged values still read everything.** A filtering method needs every pixel under the Window, as section 5 says; asking for coarse Levels alone saves only the writing of the finer ones.
+- **Nothing where nothing is asked.** A Window that holds no grid point of any Level asked for reads nothing.
+- **Counted.** `Pass::pixels_read` gives the pixels whose samples the last run converted, so a test can hold a read to what section 5 promises.
+- **Not yet for bands.** `BandedPass` reads Levels 0 to `top`.
+
 ### NEON
 
 The `bil` crate has a NEON back end for 64-bit ARM since 13 October 2026: four lanes, with minimum and maximum made from a compare and a select so that NaN and signed zeros behave as in scalar code, and the deinterleaving load for even and odd values. This workspace has no ARM target, so CI is the test: on Linux and macOS on ARM, every check of this report and of experiment 1 passes with NEON, bitwise against scalar code on the same machine, and on Linux no vector instruction is left as a call. Its speed has not been measured, since CI machines are shared and section 12 runs benchmarks elsewhere.
 
 ### Proposals awaiting the author
 
-Section 5 left four details open, and the code raised a fifth. The author settled one in version 67, and for the other four the code makes these choices.
+Section 5 left four details open, and the code raised two more. The author settled one in version 67, and for the other five the code makes these choices.
 
 | Detail | Choice made | The other reading |
 | --- | --- | --- |
 | Rescaling a 3 × 3 halving | Once, over the 3 × 3 weights of the values present: a true two-dimensional average | Rescaled after the row pass and again after the column pass, which weights rows with fewer present values more |
 | NaN stored in float data | On the masked path, any NaN counts as missing, so it is skipped and filled like a masked pixel | Only the mask decides, and a stored NaN at a valid pixel spreads as it does without a mask |
 | `pixel.mask.valid_fraction` | The share of contributing pixels that were valid, each counted with its filter weight: the `PixelCount` weight | Each contributing pixel counted once, whatever its weight |
+| Labels under a filtering method, at coarse Levels alone | Read at their grid points only, as with `decimate`, since a label is kept and needs no other pixel: 1 in 256 at Level 4 | Every pixel under the Window, as section 5's table of costs gives for a filtering method |
 | `pixel.mask.valid` beside a kind not averaged | Follows the averaged mask, whatever kind of Slice it is read beside, so beside labels at a coarse Level it can be 1.0 where the label is NaN | Follows the reduction of the Slice it goes with: the grid-point pixel for labels and `decimate`, any of nine for range |
 
 The settled detail, how coarser Levels weight the values below, is now the `missing_weights` option.
@@ -153,6 +164,19 @@ Every case of the bitwise table, plus labels, range and the mask Slices, each wi
 
 On AVX-512, one run, on this machine's two threads, which share the machine with other work; a second run gave 1.65 for `pixel.raw`. Two threads bring `pixel.raw` to 1.4 to 1.8 times a single-threaded copy. Section 12 expects the gains to flatten after a few cores, as memory bandwidth becomes the limit; that needs a larger machine to see.
 
+### Coarser Levels alone
+
+Every case of the bitwise table, plus labels, range and the mask Slices, with and without the mask, with `decimate`, `bilinear` and `binomial5`, on every instruction set: 100 random Windows, each read for Levels 1 to 4, 2 to 4, 3 to 4 and 4 alone into Slices filled with NaN, and compared with the same Levels of a read of Levels 0 to 4. No value differed, no Slice below the first Level was made, every kept value equaled the Level 0 value at its grid point, and every kept read converted exactly the grid points of its first Level that the Window holds.
+
+| Read of `pixel.raw`, U16, 8,192 × 8,192 | Pixels read | Time | Times a copy |
+| --- | --- | --- | --- |
+| `decimate`, Levels 0 to 4 | All | 0.079 s | 2.8 to 3.0 |
+| `decimate`, Level 4 alone | 1 in 256 | 0.0004 s | 0.017 |
+| `bilinear`, Levels 0 to 4 | All | 0.073 s | 2.5 to 2.8 |
+| `bilinear`, Level 4 alone | All | 0.031 s | 1.1 to 1.2 |
+
+Times from one run on AVX-512, and ratios to a copy over two. `decimate` at Level 4 alone takes about four times its 1-in-256 share of a copy, because each kept value is a separate access to memory. `bilinear` at Level 4 alone still reads every pixel, but writes no Level 0 Slice, which is most of what a read of Levels 0 to 4 writes.
+
 ### Reused buffers
 
 The buffers of a first read were filled with NaN and read into again. Every value was rewritten, with the same bits as the first read, on every instruction set.
@@ -193,7 +217,7 @@ The fastest instruction set is shown; the copy took 0.026 s in that run. `pixel.
 
 - **Conversion from native samples** is a plain loop that the compiler vectorizes as it can. For interleaved complex and color samples, a vector shuffle could separate the components directly.
 - **The mask at Level 0** is converted to weights in a plain loop, then applied by a select. For `pixel.raw` it could be applied during conversion instead.
-- **`decimate` reads every pixel here.** A request in this experiment always includes Level 0, which needs every pixel, so `decimate` costs what `bilinear` does. Section 5 has `decimate` stride across the storage and touch only the pixels kept; that needs a request for coarser Levels alone.
+- **Striding is over memory here.** `decimate` for coarse Levels alone touches only the pixels kept, in an Image already in memory. Over a file, the same plan means reading only the rows and blocks that hold kept pixels, which is the reader's work (section 5).
 - **Keeping copies by index.** The kept row is copied value by value; the even-column load of `halve_row` could do it in vector code.
 - **A thread pool.** Bands start their threads for each read; a pool kept between reads would make a threaded read allocate nothing, as a single `Pass` does.
 - **Not covered,** as in experiment 1: stored levels, local functions such as demosaicing, and `pixel.mask.saturated`.

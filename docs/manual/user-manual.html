@@ -780,7 +780,7 @@ image.stream_slice(&quot;pixel.raw.intensity&quot;, window, take)
 <p><strong>Where a Slice sits.</strong> Every Slice carries its <code>origin</code>, the Image position of its first value, and its <code>scale</code>, the spacing of its values, both in pixels and 64-bit. Geocoding reads them, so a Slice from any Window, Level or stored level is located without adjustment (chapter 17).</p>
 <h2 id="8-levels">8. Levels</h2>
 <blockquote>
-<p><strong>Status:</strong> Prototyped for <code>bilinear</code>, <code>binomial5</code> and the values of <code>decimate</code>, every kind of Slice, and Levels 0 to 4 in one pass. A <code>decimate</code> that reads only the pixels kept, <code>decimate_first</code> and stored levels are specified.</p>
+<p><strong>Status:</strong> Prototyped for <code>bilinear</code>, <code>binomial5</code> and <code>decimate</code>, every kind of Slice, Levels 0 to 4 in one pass, and coarse Levels alone, where <code>decimate</code> reads only the pixels kept, in an Image in memory. <code>decimate_first</code> and stored levels are specified.</p>
 </blockquote>
 <p><strong>What a Level is.</strong> Level 0 is full resolution. Level n holds the Image pixels whose row and column are multiples of 2ⁿ, each made from the Level below by the level method. The grid is anchored to the Image origin, not to the Window, which is why a Window gives the same values as the whole.</p>
 <pre><code class="language-python">overview = image.read_slice(&quot;pixel.raw.intensity&quot;, window, level=3)
@@ -2141,7 +2141,12 @@ level2.at(10, 20);                                        // the value at grid r
 <tr>
 <td><code>Vec&lt;Vec&lt;Slice&gt;&gt;</code>, by Level then Slice</td>
 <td><code>read_slice_levels</code></td>
-<td>Levels 0 to <code>top</code> always, not chosen by name</td>
+<td>Levels 0 to <code>top</code>, or <code>first</code> to <code>top</code> with <code>Pass::for_levels</code>, not chosen by name</td>
+</tr>
+<tr>
+<td><code>Pass::pixels_read()</code></td>
+<td>What <code>plan</code> reports of a read's cost</td>
+<td>The pixels the last run converted</td>
 </tr>
 </tbody>
 </table></div>
@@ -2150,6 +2155,7 @@ level2.at(10, 20);                                        // the value at grid r
 <li><strong>The same bits as the whole Image.</strong> About 580 million values over 2,400 random Windows at Levels 0 to 4, on scalar, AVX2 and AVX-512 code here and NEON in CI, and every Window of 25 small Images from 1 × 1 to 9 × 9 pixels, agree to the bit with the Image read whole and across instruction sets. The specification asks only for agreement to a tolerance; the bits came at little cost.</li>
 <li><strong>Missing data as the specification states it,</strong> with both weightings, checked bitwise against an independent reference and against a float64 computation of the rule.</li>
 <li><strong>Each kind of Slice</strong> reduced by its own rule, and <code>decimate</code> for every kind.</li>
+<li><strong>Coarse Levels alone.</strong> <code>decimate</code> at Level 4 alone reads 1 pixel in 256 and takes 0.017 times a copy; every value equals the same Level of a full read.</li>
 <li><strong>Threads by bands of rows,</strong> with every value equal to one thread's, bit for bit; 1.65 to 1.84 times as fast on two threads, over two runs.</li>
 <li><strong><code>binomial5</code>,</strong> bitwise against a whole-plane reference with and without missing data, and at a quarter of the amplitude at the halved grid's highest frequency, against <code>bilinear</code>'s half, as the specification states. It cost 0.9 to 1.3 times <code>bilinear</code>.</li>
 <li><strong>Speed.</strong> On the fastest instruction set, <code>pixel.raw</code> takes 1.7 times a copy into warm memory at Level 0, and <code>complex.polar</code> and <code>color.hsv</code> 1.4 to 1.7 times their own arithmetic alone. Missing data costs 1.2 to 1.8 times an unmasked read, and nothing at all where no mask exists.</li>
@@ -2161,7 +2167,7 @@ cargo run --release --bin exp1b              # the checks and the speed tables
 cargo run --release --bin exp1 -- --check    # experiment 1's own check
 </code></pre>
 <p>CI runs the checks on Linux on x86 and ARM, on Windows, and on macOS on ARM, and on Linux also checks that no vector instruction is left as a call. <code>RESULTS-1b.md</code> beside the code has the full results.</p>
-<p><strong>What comes next</strong> in code: <code>decimate</code> reading only the pixels kept when a request asks for coarse Levels alone; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p><strong>What comes next</strong> in code: a thread pool for the bands; then the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
 <p><strong>What specification versions 68 and 69 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
 <p>Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>
@@ -2276,6 +2282,12 @@ cargo run --release --bin exp1 -- --check    # experiment 1's own check
 <td><strong>The four proposals of experiment 1b:</strong> one 2D average rather than rescaling after each pass; stored NaN counted as missing; <code>valid_fraction</code> weighted by the filter; and <code>valid</code> following the averaged mask beside kinds that are not averaged</td>
 <td>5</td>
 <td>As the experiment does, set out in <code>RESULTS-1b.md</code></td>
+</tr>
+<tr>
+<td>M12</td>
+<td><strong>Labels at coarse Levels alone.</strong> A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window</td>
+<td>5</td>
+<td>Labels read only their grid points under any method, as the experiment does; state it in section 5</td>
 </tr>
 </tbody>
 </table></div>

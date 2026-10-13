@@ -112,6 +112,7 @@ fn main() {
     all_ok &= other_kinds(&isas, rows, cols);
     all_ok &= binomial(&isas, &cases, rows, cols);
     all_ok &= bands(&isas, &cases, rows, cols);
+    all_ok &= coarse_alone(&isas, &cases, rows, cols);
 
     if std::env::args().any(|a| a == "--check") {
         if !all_ok {
@@ -890,6 +891,166 @@ fn benchmarks(isas: &[Isa]) {
     other_speed(isas);
     binomial_speed(isas);
     bands_speed(isas);
+    coarse_speed(isas);
+}
+
+/// A read of Levels `first` to `top` alone, into freshly planned buffers, with the pixels read.
+fn coarse(
+    img: &Image,
+    func: Func,
+    isa: Isa,
+    window: Window,
+    first: u32,
+    options: ReadOptions,
+) -> (Vec<Vec<Slice>>, usize) {
+    let mut pass = Pass::for_levels(img, func, window, first, TOP, options.level_method);
+    let mut out = pass.outputs();
+    for s in out.iter_mut().flatten() {
+        s.data.fill(f32::NAN);
+    }
+    pass.run(img, isa, options, &mut out);
+    (out, pass.pixels_read())
+}
+
+/// Coarser Levels alone (section 5): a request for Levels `first` to 4 makes the same values as
+/// a request for Levels 0 to 4, at those Levels, and none below. Where values are kept, for
+/// `decimate` and labels, it reads only the grid points of Level `first`.
+fn coarse_alone(isas: &[Isa], cases: &[(Func, &str)], rows: usize, cols: usize) -> bool {
+    println!("## 9. Coarser Levels alone\n");
+    println!("Requests for Levels 1 to 4, 2 to 4, 3 to 4 and 4 alone, against the same request for Levels 0 to 4, over 100 random Windows for each case. Where values are kept, each is also checked against the Level 0 value at its grid point, and the pixels read against the grid points the Window holds. \"Pixels read\" is the share of the Window's pixels whose samples were converted: every one, and the margins, where values are averaged; only the grid points of the first Level asked for, where they are kept.\n");
+    println!("| Function | Sample type | Mask | Level method | Instruction set | Reads | Values compared | Differing bits | Pixels read, first Level 1 | Pixels read, Level 4 alone |");
+    println!("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    let mut ok = true;
+    let mut all: Vec<(Func, &str)> = cases.to_vec();
+    all.extend([
+        (Func::Labels, "U16"),
+        (Func::Range, "F32"),
+        (Func::Mask, "U16"),
+    ]);
+    for (case_no, (func, kind)) in all.iter().enumerate() {
+        let plain = make(kind, rows, cols, 7 + case_no as u64);
+        let holes = with_holes(
+            make(kind, rows, cols, 7 + case_no as u64),
+            300 + case_no as u64,
+        );
+        for (img, mask) in [(&plain, "none"), (&holes, "holes")] {
+            for method in [
+                LevelMethod::Decimate,
+                LevelMethod::Bilinear,
+                LevelMethod::Binomial5,
+            ] {
+                let options = ReadOptions {
+                    level_method: method,
+                    ..ReadOptions::default()
+                };
+                let kept = method == LevelMethod::Decimate || *func == Func::Labels;
+                for isa in isas {
+                    let mut rng = Rng(400 + case_no as u64);
+                    let (mut reads, mut compared, mut diffs) = (0usize, 0usize, 0usize);
+                    let (mut window_pixels, mut read1, mut read4) = (0usize, 0usize, 0usize);
+                    for t in 0..100 {
+                        let win = random_window(&mut rng, rows, cols, t);
+                        let all_levels = rolling_with(img, *func, *isa, win, TOP, options);
+                        window_pixels += win.row_count * win.col_count;
+                        for first in 1..=TOP {
+                            let (got, read) = coarse(img, *func, *isa, win, first, options);
+                            reads += 1;
+                            for (k, (lg, la)) in got.iter().zip(&all_levels).enumerate() {
+                                if (k as u32) < first {
+                                    diffs += lg.len();
+                                    continue;
+                                }
+                                compared += la.iter().map(|s| s.data.len()).sum::<usize>();
+                                diffs += differ(std::slice::from_ref(lg), std::slice::from_ref(la));
+                            }
+                            // A kept read touches exactly the grid points of its first Level
+                            // that the Window holds, and each kept value is the Level 0 value at
+                            // its grid point, as the plain conversion of the full read gives it.
+                            if kept {
+                                for l in got.iter().skip(first as usize) {
+                                    for (s, s0) in l.iter().zip(&all_levels[0]) {
+                                        let step = 1i64 << s.level;
+                                        for i in s.rows.0..=s.rows.1 {
+                                            for j in s.cols.0..=s.cols.1 {
+                                                diffs += usize::from(
+                                                    s.at(i, j).to_bits()
+                                                        != s0.at(i * step, j * step).to_bits(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                let step = 1usize << first;
+                                let grid = |start: usize, count: usize| {
+                                    (start + count - 1) / step + 1 - start.div_ceil(step)
+                                };
+                                let points = grid(win.row_start, win.row_count)
+                                    * grid(win.col_start, win.col_count);
+                                diffs += usize::from(read != points);
+                            }
+                            match first {
+                                1 => read1 += read,
+                                TOP => read4 += read,
+                                _ => {}
+                            }
+                        }
+                    }
+                    ok &= diffs == 0;
+                    println!(
+                        "| `{}` | {kind} | {mask} | `{}` | {isa:?} | {reads} | {compared} | {diffs} | {:.3} | {:.4} |",
+                        func.name(),
+                        method_name(method),
+                        read1 as f64 / window_pixels as f64,
+                        read4 as f64 / window_pixels as f64
+                    );
+                }
+            }
+        }
+    }
+    println!("\nAll checks of coarser Levels alone passed: **{ok}**\n");
+    ok
+}
+
+/// What reading only the grid points saves: Level 4 alone with `decimate`, against Levels 0 to 4.
+fn coarse_speed(isas: &[Isa]) {
+    println!("### Coarser Levels alone\n");
+    println!("8,192 × 8,192 pixels, the whole Image, one thread, best of five, on the fastest instruction set.\n");
+    println!("| Slice | Level method | Levels | Pixels read | Time | Times a copy |");
+    println!("| --- | --- | --- | --- | --- | --- |");
+    let isa = *isas.last().unwrap();
+    let n = 8192;
+    let img = make("U16", n, n, 65);
+    let src = vec![1f32; n * n];
+    let mut dst = vec![0f32; n * n];
+    let copy = time(|| {
+        dst.copy_from_slice(&src);
+        std::hint::black_box(&mut dst);
+    });
+    for (method, first) in [
+        (LevelMethod::Decimate, 0),
+        (LevelMethod::Decimate, 4),
+        (LevelMethod::Bilinear, 0),
+        (LevelMethod::Bilinear, 4),
+    ] {
+        let options = ReadOptions {
+            level_method: method,
+            ..ReadOptions::default()
+        };
+        let mut pass = Pass::for_levels(&img, Func::Raw, full(&img), first, TOP, method);
+        let mut out = pass.outputs();
+        let t = time(|| {
+            pass.run(&img, isa, options, &mut out);
+            std::hint::black_box(&mut out);
+        });
+        println!(
+            "| `pixel.raw.intensity` | `{}` | {first} to {TOP} | {:.4} | {t:.4} s | {:.3} |",
+            method_name(method),
+            pass.pixels_read() as f64 / (n * n) as f64,
+            t / copy
+        );
+    }
+    println!("| Copy | | | | {copy:.4} s | 1.000 |");
+    println!();
 }
 
 /// A read split into bands of rows, one thread each, into freshly planned buffers.
@@ -1449,7 +1610,7 @@ fn other_speed(isas: &[Isa]) {
     for (name, func, img, image, options) in &cases {
         for isa in isas.iter().filter(|i| **i != Isa::Scalar) {
             for top in [0u32, 4] {
-                let mut pass = Pass::new(img, *func, full(img), top);
+                let mut pass = Pass::for_method(img, *func, full(img), top, options.level_method);
                 let mut out = pass.outputs();
                 let t = time(|| {
                     pass.run(img, *isa, *options, &mut out);

@@ -30,8 +30,8 @@
 
 use super::{
     axis_plan_radius, blur5, blur5_over, blur5_row, blur5_row_weighted, blur5_weighted,
-    convert_row, grid_len, halve, halve_over, halve_row, halve_row_weighted, halve_weighted, hsv0,
-    hue_from, keep_present, mask_planes1, mask_planes4, mask_planes5, min3_present, min3_row,
+    convert_row_step, grid_len, halve, halve_over, halve_row, halve_row_weighted, halve_weighted,
+    hsv0, hue_from, keep_present, mask_planes1, mask_planes4, mask_planes5, min3_present, min3_row,
     phase_from, polar0, present_one, reflect, weight_present, Func, Image, Reduce, Samples, Slice,
     Window,
 };
@@ -130,9 +130,16 @@ impl LevelState {
 /// on the same Image shape allocates nothing.
 pub struct Pass {
     func: Func,
-    /// Taps of an averaging halving: 3 for `bilinear`, 5 for `binomial5`. Kinds that are not
-    /// averaged, and `decimate`, use the three of the 3 × 3 block.
+    /// Taps of a halving: 5 for an averaging `binomial5`, 3 for an averaging `bilinear` and for
+    /// range, and 1 where values are kept.
     taps: usize,
+    /// The Level read straight from the Image: 0, or the first Level asked for where values are
+    /// kept.
+    base: usize,
+    /// The Window holds no grid point of a Level asked for, so a run reads nothing.
+    idle: bool,
+    /// Image pixels converted by the last run, each counted once for each time it was read.
+    read: usize,
     rows: usize,
     cols: usize,
     masked: bool,
@@ -183,10 +190,11 @@ pub struct ReadOptions {
 
 impl LevelMethod {
     /// Taps of each halving this method makes for `func`: five for `binomial5` where the Slices
-    /// are averaged, and otherwise the three of the 3 × 3 block that `bilinear`, range and
-    /// keeping use.
+    /// are averaged, the three of the 3 × 3 block for `bilinear` and for range, and one where a
+    /// value is kept, for `decimate` and for labels, which read nothing but the grid point.
     pub(crate) fn taps(self, func: Func) -> usize {
         match (self, func.reduce()) {
+            (LevelMethod::Decimate, _) | (_, Reduce::Keep) => 1,
             (LevelMethod::Binomial5, Reduce::Average) => 5,
             _ => 3,
         }
@@ -195,9 +203,8 @@ impl LevelMethod {
 
 impl Pass {
     /// Plans a read of `func` for `window` at Levels 0 to `top`, as `read_levels` makes it, for
-    /// Images of `img`'s shape, with or without a validity mask as `img` has, for any level
-    /// method of three taps: `bilinear`, `decimate`, and `binomial5` on kinds that are not
-    /// averaged.
+    /// Images of `img`'s shape, with or without a validity mask as `img` has, for `bilinear`, or
+    /// any level method with the same taps for `func`.
     pub fn new(img: &Image, func: Func, window: Window, top: u32) -> Pass {
         Pass::for_method(img, func, window, top, LevelMethod::Bilinear)
     }
@@ -212,9 +219,38 @@ impl Pass {
         top: u32,
         method: LevelMethod,
     ) -> Pass {
+        Pass::for_levels(img, func, window, 0, top, method)
+    }
+
+    /// As `for_method`, for Levels `first` to `top` alone: Levels below `first` make no Slices.
+    /// Where values are kept, for `decimate` and for labels, Level `first` is read straight from
+    /// the Image at its grid points, a spacing of 2^first, and no other pixel is read, as section
+    /// 5 asks of `decimate`. Every other method still reads every pixel under the Window.
+    pub fn for_levels(
+        img: &Image,
+        func: Func,
+        window: Window,
+        first: u32,
+        top: u32,
+        method: LevelMethod,
+    ) -> Pass {
+        assert!(first <= top, "the first Level asked for is above the last");
         let taps = method.taps(func);
         let radius = (taps / 2) as i64;
-        let plan = Plan::new(img, window, top, radius);
+        let mut plan = Plan::new(img, window, top, radius);
+        for k in 0..(first as usize).min(plan.levels()) {
+            plan.row_out[k] = None;
+            plan.col_out[k] = None;
+        }
+        // Where the Window holds no grid point of any Level asked for, nothing is read.
+        let idle =
+            (0..plan.levels()).all(|k| plan.row_out[k].is_none() || plan.col_out[k].is_none());
+        // Kept values need nothing below the first Level asked for.
+        let base = if taps == 1 {
+            (first as usize).min(plan.levels().saturating_sub(1))
+        } else {
+            0
+        };
         let masked = img.valid.is_some();
         let (carried, extra) = func.level0_planes();
         let levels: Vec<LevelState> = (0..plan.levels())
@@ -267,6 +303,9 @@ impl Pass {
         Pass {
             func,
             taps,
+            base,
+            idle,
+            read: 0,
             rows: img.rows,
             cols: img.cols,
             masked,
@@ -336,6 +375,10 @@ impl Pass {
             self.taps,
             "the read was planned for another level method"
         );
+        self.read = 0;
+        if self.idle {
+            return;
+        }
         for level in &mut self.levels {
             level.next = level.rows.0;
             level.tags.fill(i64::MIN);
@@ -345,23 +388,29 @@ impl Pass {
             LevelMethod::Decimate => Reduce::Keep,
             LevelMethod::Bilinear | LevelMethod::Binomial5 => func.reduce(),
         };
-        let (r0, r1) = self.levels[0].rows;
-        let (c0, c1) = self.levels[0].cols;
-        let n = self.levels[0].width();
+        let base = self.base;
+        let step = 1usize << base;
+        let (r0, r1) = self.levels[base].rows;
+        let (c0, c1) = self.levels[base].cols;
+        let n = self.levels[base].width();
+        // Image columns of the grid points read: every column at Level 0, or every 2^base-th.
+        let (i0, i1) = ((c0 as usize) << base, (c1 as usize) << base);
         for r in r0..=r1 {
-            let row = &mut self.levels[0].row;
+            let ir = (r as usize) << base;
+            let row = &mut self.levels[base].row;
+            self.read += n;
             match func {
                 // Converted straight into the Level 0 row.
                 Func::Raw | Func::Labels | Func::Range => {
-                    convert_row(img, r as usize, c0 as usize, c1 as usize, &mut row[..1])
+                    convert_row_step(img, ir, i0, i1, step, &mut row[..1])
                 }
                 // The mask, 1.0 where present and 0.0 where missing, averaged as it is. A sample
                 // that is not a number counts as missing, as on the weighted path.
                 Func::Mask => {
                     match &img.valid {
                         Some(mask) => {
-                            let at = r as usize * img.cols;
-                            let bytes = &mask[at + c0 as usize..=at + c1 as usize];
+                            let at = ir * img.cols;
+                            let bytes = mask[at + i0..=at + i1].iter().step_by(step);
                             for (v, &b) in row[0].iter_mut().zip(bytes) {
                                 *v = f32::from(u8::from(b != 0));
                             }
@@ -374,13 +423,7 @@ impl Pass {
                         && matches!(img.samples, Samples::F32(_) | Samples::ComplexF32(_))
                     {
                         let k = components(img);
-                        convert_row(
-                            img,
-                            r as usize,
-                            c0 as usize,
-                            c1 as usize,
-                            &mut self.inputs[..k],
-                        );
+                        convert_row_step(img, ir, i0, i1, step, &mut self.inputs[..k]);
                         let w = row[0].as_mut_ptr();
                         for x in &self.inputs[..k] {
                             // The sample rows and the mask row hold n values; the mask row is
@@ -390,7 +433,7 @@ impl Pass {
                     }
                 }
                 Func::Polar => {
-                    convert_row(img, r as usize, c0 as usize, c1 as usize, &mut self.inputs);
+                    convert_row_step(img, ir, i0, i1, step, &mut self.inputs);
                     let i = &self.inputs;
                     // Every input and output row holds n values.
                     unsafe {
@@ -409,7 +452,7 @@ impl Pass {
                     }
                 }
                 Func::Hsv => {
-                    convert_row(img, r as usize, c0 as usize, c1 as usize, &mut self.inputs);
+                    convert_row_step(img, ir, i0, i1, step, &mut self.inputs);
                     let i = &self.inputs;
                     // Every input and output row holds n values.
                     unsafe {
@@ -433,9 +476,9 @@ impl Pass {
             if let (Some(mask), true) = (&img.valid, self.weighted()) {
                 // Each pixel's weight is 1 where present and 0 where missing, and every plane of
                 // a missing pixel is NaN, whatever its kernel made of the samples.
-                let level0 = &mut self.levels[0];
-                let at = r as usize * img.cols;
-                let bytes = &mask[at + c0 as usize..=at + c1 as usize];
+                let level0 = &mut self.levels[base];
+                let at = ir * img.cols;
+                let bytes = mask[at + i0..=at + i1].iter().step_by(step);
                 for (v, &b) in level0.count.iter_mut().zip(bytes) {
                     *v = if b == 0 { 0.0 } else { 1.0 };
                 }
@@ -457,12 +500,19 @@ impl Pass {
                     }
                 }
             }
-            self.levels[0].next = r + 1;
-            self.emit(isa, options, reduce, 0, r, views);
+            self.levels[base].next = r + 1;
+            self.emit(isa, options, reduce, base, r, views);
         }
-        for (k, level) in self.levels.iter().enumerate() {
+        for (k, level) in self.levels.iter().enumerate().skip(base) {
             assert_eq!(level.next, level.rows.1 + 1, "Level {k} was not finished");
         }
+    }
+
+    /// Image pixels whose samples the last run converted: every pixel under the Window and its
+    /// margins where values are filtered or reduced, and where values are kept and only coarser
+    /// Levels are asked for, the grid points of the first Level alone.
+    pub fn pixels_read(&self) -> usize {
+        self.read
     }
 
     /// Whether missing values are NaN and skipped. The mask Slices are made from the mask itself,
