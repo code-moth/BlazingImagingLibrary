@@ -1,0 +1,16 @@
+[package]
+name = "bil-exp5"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "LGPL-2.1-or-later"
+description = "BIL experiment 5: borrowed NumPy arrays over memory-mapped files, through Python's stable interface"
+build = "build.rs"
+
+[lib]
+name = "bil_exp5"
+# A Python extension module. It is built against Python's stable interface, version 3.11 on,
+# by declaring the parts of it this experiment uses (src/ffi.rs), with no dependency.
+crate-type = ["cdylib"]
+
+[dependencies]
