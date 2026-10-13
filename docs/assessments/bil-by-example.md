@@ -1,9 +1,9 @@
-This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 69: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
+This document shows BIL in use, through calls a caller would actually write. It covers every part of specification version 70: opening, Windows, Levels, the slice functions for each kind of sensor, Fragments, frames, metadata, markings, geocoding, writing, performance, safety and extension.
 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 69. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 70. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -552,7 +552,9 @@ native_overview = image.read_fragment(window, level="stored2")
 
 ```python
 count, certainty = video.image(0).count_frames()   # e.g. (54_000, Known)
-frame = luma.find_index("time", bil.DateTime("2026-09-14T10:22:31.500Z"))
+from datetime import datetime, timezone
+
+frame = luma.find_index("time", datetime(2026, 9, 14, 10, 22, 31, 500_000, tzinfo=timezone.utc))
 shot  = luma.read_slice("video.rgb.red", bil.Window(0, 0, 1080, 1920, frame=frame))
 ```
 
@@ -963,15 +965,28 @@ plan = image.plan_slice("pixel.raw.intensity", window)
 plan.access_class   # Borrowed, Converted or Decoded; delivery is reported separately
 ```
 
+### 13.6 Close a Source at a chosen moment
+
+```python
+source = bil.open_source("scene.tif")
+array  = source.image(0).read_fragment(window).data   # borrowed, where the zero-copy rule holds
+source.close()         # frees the cache, read-ahead, metadata and Readers now
+array.mean()           # still valid: it keeps the memory it borrows
+source.image(0).read_slice("pixel.raw.intensity", window)   # an error: the Source is closed
+```
+
 ## 14. Safety and audit
 
 ### 14.1 A file from outside
 
 ```python
 options = bil.OpenOptions(untrusted=True, max_image_pixels=2_000_000_000,
-                          max_decoded_bytes=500_000_000, max_field_group_bytes=10_000_000)
+                          max_decoded_bytes=500_000_000, max_field_group_bytes=10_000_000,
+                          max_scans=200)   # 500 progressive scans unless set
 source = bil.open_source("inbox/received.ntf", options)
 ```
+
+A file whose header claims too much fails with an error before any memory is taken for its pixels; one with too many scans fails when the decode reaches the limit.
 
 With `isolation` set to `Untrusted` in the installation's configuration, its C and C++ drivers run in a separate process.
 
@@ -1090,6 +1105,8 @@ tile   = source.image(0).read_slice("pixel.raw.intensity", window)
 tile.status   # Partial
 ```
 
+A block a decoder recovered from damage, with a warning, is corrupt too: without `corrupt_as_missing` it is an error, and with it the whole block is missing.
+
 
 ### 16.3 A step that cannot answer
 
@@ -1196,4 +1213,4 @@ Version 1 of this document found these gaps in the calling interface. Version 58
 
 **Settled since, in version 59.** A writer writes the geo model without being asked (R30). A live stream has one position for all Readers, and a frame no longer held is `Missing` (R34).
 
-**Added since, in versions 62 to 68.** Every position can carry its accuracy, with `relative_accuracy`, `circular_error`, `linear_error` and `error_ellipse` (examples 11.11 to 11.14). Scripted drivers run in a helper process for Rust, C and C++ callers (example 15.1). `missing_weights` chooses how coarse Levels weight missing data (example 6.4). `access_pattern` tells BIL how the caller moves through a Source (examples 2.2 and 13.2). Domain profiles check a Source for the metadata a kind of work needs (examples 9.10 to 9.12). External decoding through the mapped format needs no change to the caller's code, so it has no example of its own.
+**Added since, in versions 62 to 70.** Every position can carry its accuracy, with `relative_accuracy`, `circular_error`, `linear_error` and `error_ellipse` (examples 11.11 to 11.14). Scripted drivers run in a helper process for Rust, C and C++ callers (example 15.1). `missing_weights` chooses how coarse Levels weight missing data (example 6.4). `access_pattern` tells BIL how the caller moves through a Source (examples 2.2 and 13.2). Domain profiles check a Source for the metadata a kind of work needs (examples 9.10 to 9.12). A Source can be closed at a chosen moment while borrowed arrays stay valid (example 13.6), and `max_scans` limits progressive images (example 14.1). External decoding through the mapped format needs no change to the caller's code, so it has no example of its own.

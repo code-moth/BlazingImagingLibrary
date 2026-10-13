@@ -35,10 +35,10 @@ Experiment 5 of the implementability assessment, section 8: borrowed NumPy array
 ## What it shows for the design
 
 - **Section 4 holds as written for `Shared` and `Off`.** No change is needed for borrowed arrays to outlive their Source.
-- **`close()` can free everything but the borrowed memory.** Here a closed Source refuses reads, and arrays borrowed from it keep only the mapping. Section 4 says a borrowed array "keeps its Source open"; this is the narrower form, proposed for the author in the user manual's chapter 24, M3.
-- **`Private` needs one more sentence.** Writes through one borrowed array are seen by every array borrowed from the same Source, since they share the copy-on-write pages. Section 4 says only that changes stay in the caller's memory. A caller who writes through a `Private` array while another thread reads the same pages makes a data race in its own code; BIL never writes them.
-- **Two statements of the specification differ.** Section 12, rule 9 says "Borrowed arrays are read-only", while section 4 allows writes under `Private`. The code follows section 4.
-- **The Python interface can be small.** About 190 lines declare all of the stable interface it needs. Whether the full Python interface is built on PyO3, as the implementability assessment assumes, or on declarations of BIL's own, is for the author; PyO3 is the larger and better tested route once CI can fetch it.
+- **`close()` can free everything but the borrowed memory.** Here a closed Source refuses reads, and arrays borrowed from it keep only the mapping. Section 4 said a borrowed array "keeps its Source open"; this narrower form, proposed in the user manual's chapter 24 as M3, is section 4's since version 70.
+- **`Private` needs one more sentence.** Writes through one borrowed array are seen by every array borrowed from the same Source, since they share the copy-on-write pages. Section 4 said only that changes stay in the caller's memory; since version 70 it says both this and that a caller who writes through a `Private` array while another thread reads the same pages makes a data race in its own code, which BIL never writes.
+- **Two statements of the specification differed.** Section 12, rule 9 said "Borrowed arrays are read-only", while section 4 allows writes under `Private`. The code follows section 4, and since version 70 rule 9 says "read-only under `Shared` mapping".
+- **The Python interface can be small.** About 190 lines declare all of the stable interface it needs. The author ruled in version 70 that the full Python interface is built on PyO3, the better tested route, which CI can fetch; these declarations stay as the experiment's own.
 
 ## What it leaves
 

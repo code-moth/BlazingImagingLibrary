@@ -1,4 +1,4 @@
-This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 69, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.
+This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 70, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.
 
 ## 1. About this manual
 
@@ -157,7 +157,8 @@ To choose the driver yourself, call `open_source_with`. `describe_decoding()` on
 | `read_ahead_bytes` | 64 MB | Bound what `Sequential` reads ahead |
 | `untrusted` | False | Open a file from outside with default limits, and isolate it where the installation says so. Chapter 19. |
 | `max_image_pixels`, `max_decoded_bytes`, `max_field_group_bytes` | None | Refuse an Image, a compressed block or a metadata group larger than this |
-| `corrupt_as_missing` | False | Deliver a corrupt block as missing pixels, with status `Partial`, instead of an error |
+| `max_scans` | None, or 500 when `untrusted` | Refuse a progressive image with more scans than this |
+| `corrupt_as_missing` | False | Deliver a corrupt block as missing pixels, with status `Partial`, instead of an error. A block a library recovered from damage, with a warning, counts as corrupt, and is missing as a whole. |
 | `companion` | The file's name with `.metadata` added | Name a companion file of metadata (chapter 16) |
 | `trust_companion` | True, or False when `untrusted` is set | Use the companion file's values |
 | `frame_index` | None | Use a saved frame index instead of scanning a video (chapter 11) |
@@ -177,7 +178,7 @@ source = bil.open_source(
 
 **Remote Sources** are read through the same calls. BIL runs its network code on a small runtime of its own, so a caller's own asynchronous runtime is never touched. Requests are counted and merged, because over a network the number of requests costs more than the bytes, and `plan` reports both.
 
-**Closing.** In C, `bil_close_source` closes a Source. For Rust and Python the specification does not yet say; this manual assumes a Source closes when the last reference to it goes (chapter 24, M3). A borrowed Fragment or Slice holds a reference, so the Source stays open while any of its borrowed arrays lives. Closing frees the cache, the held metadata and anything read ahead.
+**Closing.** A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call `close()` in Python or `bil_close_source` in C. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again (chapter 24, M20). Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.
 
 ## 6. Looking at an Image
 
@@ -203,6 +204,7 @@ info  = image.info()
 | `component_names` | The name of each component |
 | `relations` | Each related Image, how it relates, and for a scaled grid the reduction and where its samples sit |
 | `storage` | How the pixels lie in the file: block size, interleave, and whether the order of the blocks is known (chapter 12) |
+| `may_have_missing` | Whether this Image can have missing pixels. Where it is false, no checks are made for them (chapter 9). |
 
 **What else to ask an Image**
 
@@ -270,7 +272,7 @@ request = bil.SliceRequest(
 )
 plan   = image.plan(request)     # sizes, access class, blocks to decode, before any pixel is read
 result = image.read(request)
-result["complex.polar.phase", "level2"]   # indexing by Slice and Level is assumed (chapter 24, M5)
+result["complex.polar.phase", "level2"]   # by Slice name and level name
 ```
 
 | Part | Choice |
@@ -334,7 +336,7 @@ pyramid["level2"]
 
 **Size.** A Slice at Level n holds the grid points that fall inside the Window. A Window of rows 100 to 199 at Level 2 holds the grid rows at 100, 104, … 196: 25 rows. `plan_slice` reports the size.
 
-**How many Levels.** `level_count()` gives the number of resolution levels the Image offers (chapter 24, M6).
+**How many Levels.** `level_count()` gives the number of resolution levels the Image offers: Level 0 and every halving until the Image is one pixel along its shorter side.
 
 **All Levels in one pass.** Each halving makes the Level above it, so every Level from 0 to n costs about a third more than Level 0 alone. Ask for them together rather than one at a time.
 
@@ -352,8 +354,8 @@ pyramid["level2"]
 | --- | --- | --- |
 | Linear | `intensity`, `power`, `red`, band values | The level method |
 | Angle | `phase`, `hue` | The level method on unit vectors, so 359° and 1° average to 0°, not 180° |
-| Label | `class.labels.value`, `palette.lookup.index` | Keeping every second value. A label is never averaged. |
-| Mask | `pixel.mask.valid` | 1.0 where the reduced value exists, else 0.0 |
+| Label | `class.labels.value`, `palette.lookup.index` | Keeping every second value. A label is never averaged, so coarse Levels alone read only their grid points, whatever the method. |
+| Mask | `pixel.mask.valid` | 1.0 wherever any pixel under the method's filter was valid, else 0.0, beside whatever kind of Slice it is read with |
 | Range | `depth.sensor.range` | The least present value of the 3 × 3 block centered on each grid point, which favors the nearest surface |
 
 Levels are made after the slice function, so reduced `power_db` is not the decibels of reduced `power`. Reduce `power`, which is the physical quantity, and convert afterwards if you need decibels.
@@ -401,11 +403,11 @@ one_more  = image.read_slice("color.rgb.green", window, level="stored2.level1")
 
 ```python
 read  = image.read_slices("pixel.mask", ["valid", "valid_fraction"], window, level=2)
-read["valid"]            # 1.0 where a value exists, else 0.0
-read["valid_fraction"]   # at coarser Levels, the share of contributing pixels that were valid
+read["valid"]            # 1.0 wherever a pixel under the filter was valid, else 0.0
+read["valid_fraction"]   # at coarser Levels, the share of valid pixels, weighted by the filter
 ```
 
-**Levels leave missing values out.** Each halving skips NaN and rescales the remaining weights, so a value is NaN only when every value that would contribute is missing. `missing_weights` chooses how the values below are weighted.
+**Levels leave missing values out.** Each halving skips NaN and rescales the remaining weights once, over the filter's rows and columns together, so a value is NaN only when every value that would contribute is missing. `missing_weights` chooses how the values below are weighted.
 
 | `missing_weights` | Each present value below counts with | A Level is then |
 | --- | --- | --- |
@@ -440,7 +442,7 @@ filled.status      # still Partial
 
 **No cost where nothing is missing.** A driver says whether an Image can have missing pixels. Where it cannot, no checks are made at all, and the fast paths are unchanged. The experiments confirm it: an Image with no mask runs the same code as before missing data was added.
 
-**Stored NaN.** In float data, a NaN stored at a pixel the mask calls valid is treated as missing, the same as a masked pixel. The experiments do this, and it is a proposal awaiting the author (chapter 24).
+**Stored NaN.** In float data, a NaN stored at a pixel the mask calls valid is missing, the same as a masked pixel.
 ## 10. Fragments: the native pixels
 
 > **Status:** Specified. Borrowing from a mapped file, `Shared`, `Private` and `Off` mapping, strided views for a `step`, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would.
@@ -451,7 +453,7 @@ A Fragment is the stored pixels of a Window, unaltered: not converted, scaled or
 fragment = image.read_fragment(window)               # level0 by default
 fragment.pixel_type     # sample type, component count, significant bits, bit shift
 fragment.is_borrowed    # True if these are the stored bytes themselves
-fragment.data           # a NumPy array of the native type, read-only when borrowed
+fragment.data           # a NumPy array of the native type, read-only when borrowed under Shared
 coarse = image.read_fragment(window, "stored2")      # a stored level, as it stands
 ```
 
@@ -477,7 +479,8 @@ A computed Level is not a Fragment, because it holds new values, so `read_fragme
 Otherwise the Fragment owns a buffer decoded once. The type is the same either way.
 
 - **Read-only under `Shared` mapping.** In Python a borrowed array is read-only. Open with `mapping=Private` to change it in your own memory, copy-on-write.
-- **It keeps its Source open,** wherever it goes.
+- **Shared within one Source under `Private`.** Every array borrowed from one Source shares its copied pages, so a change through one shows through the others. Changing pages another thread is reading is a data race in your code; BIL never writes them.
+- **It keeps its memory,** wherever it goes, even after the Source is closed.
 - **Do not change a file BIL has mapped.** Mapping a file another process changes or shortens is not supported, and on most systems can end the reading process. Use `mapping=Off` for files that may change and for unreliable network file systems.
 
 **Deferred Fragments.** For video, reading a Fragment decodes nothing: it seeks and extracts the compressed packets from the preceding key frame to the frame asked for, and `is_deferred` is true. The frame is decoded when a Slice is made from it, or when you ask the Fragment for its pixels. A deferred Fragment is self-contained and decoded once, by its own Reader where that Reader is free, and otherwise by a decoder made for the purpose. A Window does not reduce video decoding, only the conversion to float32.
@@ -513,7 +516,7 @@ slice = luma.read_slice("video.planes.luma", bil.Window(0, 0, 1080, 1920, frame=
 - **The index is built on first need:** the first call that needs a `Known` count, a time coordinate, or a jump to a distant frame. Call `build_frame_index()` to choose the moment yourself.
 - **Save it.** `write_frame_index(location)` saves the index, and `frame_index` in `OpenOptions` uses it next time. A saved index records the stream's size and a checksum of its start, and one that no longer matches is refused.
 
-**Live streams.** A live stream's count is `AtLeast`, and its frames are numbered from the first received. All Readers see the same frames, a frame older than those still held is `Missing`, and `latest_frame()` gives the newest. Give every read a `timeout`, and a `cancel` handle if another thread may need to stop it.
+**Live streams.** A live stream's count is `AtLeast`, and its frames are numbered from the first received. All Readers see the same frames, a frame older than those still held is `Missing`, and `latest_frame()` gives the newest. Give every read a `timeout`, and a `cancel` handle if another thread may need to stop it. A live stream ignores the access pattern of chapter 12, since every Reader shares its one position.
 
 **Nested cycles.** A sensor that sweeps 50 range gates once a second can declare further indexes, such as `sweep` and `gate`. They resolve to a frame number through `resolve_frame`, and a Window still carries one `frame`.
 
@@ -820,7 +823,7 @@ image.list_geo_models()                       # most rigorous first: ["rational_
 model = image.read_geo_model("rational_polynomial", 0)
 chain = model.for_slice(overview)             # adds BIL's image_window step for this Slice
 where = chain.image_to_world([(0.0, 0.0), (511.0, 511.0)])
-back  = chain.world_to_image([(where[0].lat, where[0].lon, where[0].height)])   # fields assumed (M5)
+back  = chain.world_to_image([(where[0].lat, where[0].lon, where[0].height)])
 ```
 
 `for_window(window, level)` builds the same chain for a computed Level before any Slice is read, and `list_steps()` lists each step of a chain with its spaces and parameters.
@@ -943,7 +946,7 @@ scene = bil.open_source(path, untrusted=True, max_image_pixels=4 * 10**10)   # r
 
 | Measure | What it does |
 | --- | --- |
-| Limits | `max_image_pixels`, `max_decoded_bytes` and `max_field_group_bytes` refuse impossible sizes before any memory is taken. None are set for a trusted Source, because very large images are BIL's purpose; an untrusted Source gets defaults scaled to the file. A header claiming more uncompressed pixels than the file can hold is always rejected. |
+| Limits | `max_image_pixels`, `max_decoded_bytes`, `max_field_group_bytes` and `max_scans` refuse what is too large: a header claiming too many pixels or bytes before any memory is taken for them, and too many scans while decoding, which then stops and frees what it took. A refusal is an error. None are set for a trusted Source, because very large images are BIL's purpose; an untrusted Source gets defaults scaled to the file, and 500 scans. A library's own working memory for a block is capped at twice `max_decoded_bytes`, where the library allows it. A header claiming more uncompressed pixels than the file can hold is always rejected. A codec is never let expand a JPEG 2000 palette after the size is checked: the driver delivers the indices for `palette.lookup`. |
 | Configured plugin locations | External, optional and scripted plugins load only from locations you or the installation's configuration name. BIL never searches the working directory, the library path or beside the data. |
 | Isolation | C and C++ drivers and codecs can run in a separate decoder process: `Off` by default, `Untrusted` for Sources opened as untrusted, or `Always`. Set once in the installation's configuration. It needs a place for mapped data, and if none is configured the open fails rather than running the driver in your process. |
 | Fuzz testing | BIL's own Rust readers, parsers, the mapped driver and the companion file reader are fuzz tested as a condition of release |
@@ -1042,7 +1045,7 @@ A profile report uses the same three statuses as accuracy, counted over its requ
 | An error naming a field | The name is not defined for this Source | Check `find_fields` or `list_fields` |
 | A field with status `Missing` | It is defined but has no value here | Supply it with `add_field` or a companion file, if you know it |
 | A function not offered | An input it needs is missing | `list_required_fields` names it |
-| An error on a corrupt block | Corrupt data is an error by default | Open with `corrupt_as_missing=True` to get `Partial` instead |
+| An error on a corrupt block | Corrupt data is an error by default, including a block a library recovered with a warning | Open with `corrupt_as_missing=True` to get `Partial` instead, with the block missing |
 | An error on `stored2.level1` | `stored2` is not aligned with the Level grid | Read `stored2` as it stands, or a computed Level |
 | An error on a Level with `step` above 1 | They cannot be combined | Use `decimate` for powers of two |
 | A frame with status `Missing` from a live stream | It is older than the frames still held | Read sooner, or keep up with `latest_frame` |
@@ -1063,12 +1066,12 @@ import bil
 
 source = bil.open_source("scene.ntf")
 slice  = source.image(0).read_slice("complex.polar.magnitude", window)
-slice.data                          # a NumPy array over the same memory, read-only when borrowed
+slice.data                          # a NumPy array over the same memory, read-only when borrowed under Shared
 ```
 
 - **No copy.** Slices and Fragments are NumPy arrays over BIL's memory, including strided and borrowed ones.
 - **The interpreter lock is released** during every read.
-- **One build for several Pythons:** the package uses Python's stable interface.
+- **One build for several Pythons:** the package uses Python's stable interface, through PyO3.
 
 **Rust**
 
@@ -1203,7 +1206,7 @@ source.close()                      # the arrays stay valid; the mapping goes wi
 | `open_source(path, row_count, col_count, sample_type, offset, mapping)` | `open_source` with `OpenOptions` | A raw file of native samples, described by the caller; `sample_type` (`U8`, `U16` or `F32`) and `mapping` (`Shared`, `Private` or `Off`) passed as text |
 | `read_fragment(row_start, col_start, row_count, col_count, step)` | `read_fragment(window, level)` | The Window as numbers, with no frame and no Level |
 | `read_slice(...)` | `read_slice(slice_name, window)` | Makes `pixel.raw.intensity` only, so takes no name |
-| `close()` | Not yet specified for Python (M3) | Frees the Source; borrowed arrays keep only the file's memory |
+| `close()` | `close()` (section 4) | The same: frees the Source; borrowed arrays keep only the file's memory |
 | `Fragment`, `Slice` | `Fragment`, `Slice` | Buffer-protocol objects with `is_borrowed`, for `numpy.asarray` and `memoryview` |
 
 It shows that a borrowed array stays valid after its Source is closed and dropped, under eight threads; is read-only under `Shared` and the caller's own under `Private`; that a `step` is a strided view, and misaligned samples a copy; that the interpreter lock is released during every read; and that nothing leaks over 50,000 reads. It passes in CI on all four systems, with Python 3.12, and with Python 3.11 on Linux.
@@ -1226,11 +1229,11 @@ It runs in CI on Linux on x86 and ARM. GDAL, the other library the assessment na
 
 **What comes next** in code: the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.
 
-**What specification versions 68 and 69 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
+**What specification versions 68 to 70 change in this code.** Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.
 
 ## 24. Gaps and inconsistencies found while writing
 
-Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.
+Writing this manual against specification versions 68 to 70 found the points below. Each goes to the author as a proposal. Those ruled on are listed first, so the record is complete.
 
 **Fixed while writing, or ruled on by the author**
 
@@ -1243,27 +1246,29 @@ Writing this manual against specification versions 68 and 69 found the points be
 | F5 | The checking agent found that `ImageInfo.storage`, `describe_storage` and a scripted driver's `PixelLayout` described one thing three ways, and that a profile could not recommend another profile | One `Storage` record, which BIL derives from a `PixelLayout` for scripted drivers; profiles named in a profile's required or recommended list, with no separate `includes` |
 | F6 | M1 of version 1: the values `RandomAccess` and `SequentialAccess` repeated their type's name | Renamed `Random` and `Sequential`, by the author's ruling (version 69) |
 | F7 | M10 of version 1: whether blocks read ahead count against `set_cache_size`, and the other details of read-ahead | Accepted as proposed, by the author's ruling (version 69); with many small tiles, raise the count |
+| M2 | **Whether an Image can have missing pixels** is something "a driver states" (section 5), but `ImageInfo` has no field for it, so a caller cannot see whether the fast path applies | Accepted as proposed, by the author's ruling (version 70): add `may_have_missing` to `ImageInfo` |
+| M3 | **How a Source is closed** is stated for C (`bil_close_source`) but not for Rust or Python. This manual says a Source closes when the last reference goes. Section 4 says a borrowed array "keeps its Source open". | Accepted as proposed, by the author's ruling (version 70): state that, and add `close()` in Python, which frees what the Source holds and refuses further reads, while arrays borrowed from it keep only the file's memory. Experiment 5 does this. |
+| M4 | **The configuration** names plugin locations, the decoder's place, `isolation` and the driver order, but its form and where it lives are not specified | Accepted as proposed, by the author's ruling (version 70): a file in a stated place, with an environment variable to point elsewhere and a call to read it, settled when Tier 2 starts |
+| M5 | **Python forms not stated:** how a `SliceRequest` is built, how a returned set of Slices is indexed by Slice and Level, how a time is passed to `find_index`, and the fields of a world position | Accepted as proposed, by the author's ruling (version 70): constructors with keywords, indexing by `(slice_name, level_name)`, `datetime` for times, and positions with `lat`, `lon`, `height`, `status` and `accuracy`, as this manual assumes |
+| M6 | **`level_count()`** is "how many resolution levels this Image offers", but computed Levels have no natural limit | Accepted as proposed, by the author's ruling (version 70): the number of halvings until the Image is one pixel along its shorter side |
+| M7 | **`common.units` and a Slice's unit.** A Slice's unit is part of its definition; `common.units` gives the unit of the calibrated value per component. They can disagree for a function that converts units. | Accepted as proposed, by the author's ruling (version 70): define `common.units` as the unit of the calibration that `radiometric_gain` and `radiometric_offset` produce, and nothing else |
+| M8 | **`common.sample_spacing` beside `common.ground_sample_distance`.** One is in the image plane, such as slant range, and the other on the ground, but the definitions do not yet say so | Accepted as proposed, by the author's ruling (version 70): state it in both definitions |
+| M9 | **Access patterns on a live stream.** A live stream has one position for every Reader, so neither pattern can change how it is read | Accepted as proposed, by the author's ruling (version 70): state that a live stream ignores the pattern, and `plan` reports it |
+| M11 | **The four proposals of experiment 1b:** one 2D average rather than rescaling after each pass; stored NaN counted as missing; `valid_fraction` weighted by the filter; and `valid` following the averaged mask beside kinds that are not averaged | Accepted as proposed, by the author's ruling (version 70): as the experiment does, set out in `RESULTS-1b.md` |
+| M12 | **Labels at coarse Levels alone.** A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window | Accepted as proposed, by the author's ruling (version 70): labels read only their grid points under any method, as the experiment does; state it in section 5 |
+| M13 | **Writes under `Private`.** Every array borrowed from one Source shares its copy-on-write pages, so a write through one is seen by the others, and a write while another thread reads the same pages is a data race in the caller's code. Section 4 says only that changes stay in the caller's memory. | Accepted as proposed, by the author's ruling (version 70): state both, as experiment 5 finds |
+| M14 | **Two statements differ.** Section 12, rule 9 says borrowed arrays are read-only; section 4 allows writes under `Private` | Accepted as proposed, by the author's ruling (version 70): rule 9: "read-only under `Shared` mapping" |
+| M15 | **How the Python interface is built.** The implementability assessment assumes PyO3. Experiment 5 declares the stable interface itself, about 190 lines, because this workspace cannot fetch PyO3. | Accepted as proposed, by the author's ruling (version 70): PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check |
+| M16 | **Corrupt data a library recovers from.** libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default. | Accepted as proposed, by the author's ruling (version 70): a warning is an error by default; under `corrupt_as_missing`, the block (Fragment) is marked missing and the read is `Partial`, since libjpeg does not say which rows it filled |
+| M17 | **A limit on progressive scans, a cap on a library's working memory,** and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image, and keeps whole-image coefficients beside its output. | Accepted as proposed, by the author's ruling (version 70): a fourth limit, `max_scans`, 500 by default for untrusted Sources and none otherwise, like the others; a library's working memory capped at a multiple of `max_decoded_bytes`, twice in experiment 3; a refusal is an error, as section 3.3 says |
+| M18 | **JPEG 2000 palettes and channel definitions.** OpenJPEG expands a JP2 palette after the header's size is checked, against section 10.3; turning that off also leaves the component mapping (`cmap`) and channel definitions (`cdef`, such as which component is alpha) unapplied. | Accepted as proposed, by the author's ruling (version 70): the driver delivers indices for `palette.lookup`, and applies or reports `cmap` and `cdef` itself, as experiment 3's layer leaves them |
 
 **Open, for the author**
 
 | | Gap or inconsistency | Where | Proposal |
 | --- | --- | --- | --- |
-| M2 | **Whether an Image can have missing pixels** is something "a driver states" (section 5), but `ImageInfo` has no field for it, so a caller cannot see whether the fast path applies | 3, 5 | Add `may_have_missing` to `ImageInfo` |
-| M3 | **How a Source is closed** is stated for C (`bil_close_source`) but not for Rust or Python. This manual says a Source closes when the last reference goes. Section 4 says a borrowed array "keeps its Source open". | 2, 4 | State that, and add `close()` in Python, which frees what the Source holds and refuses further reads, while arrays borrowed from it keep only the file's memory. Experiment 5 does this. |
-| M4 | **The configuration** names plugin locations, the decoder's place, `isolation` and the driver order, but its form and where it lives are not specified | 10.2, 10.3 | A file in a stated place, with an environment variable to point elsewhere and a call to read it, settled when Tier 2 starts |
-| M5 | **Python forms not stated:** how a `SliceRequest` is built, how a returned set of Slices is indexed by Slice and Level, how a time is passed to `find_index`, and the fields of a world position | 3.1, 5, 13.4 | Constructors with keywords, indexing by `(slice_name, level_name)`, `datetime` for times, and positions with `lat`, `lon`, `height`, `status` and `accuracy`, as this manual assumes |
-| M6 | **`level_count()`** is "how many resolution levels this Image offers", but computed Levels have no natural limit | 5 | The number of halvings until the Image is one pixel along its shorter side |
-| M7 | **`common.units` and a Slice's unit.** A Slice's unit is part of its definition; `common.units` gives the unit of the calibrated value per component. They can disagree for a function that converts units. | 5, 14.2 | Define `common.units` as the unit of the calibration that `radiometric_gain` and `radiometric_offset` produce, and nothing else |
-| M8 | **`common.sample_spacing` beside `common.ground_sample_distance`.** One is in the image plane, such as slant range, and the other on the ground, but the definitions do not yet say so | 14.2 | State it in both definitions |
-| M9 | **Access patterns on a live stream.** A live stream has one position for every Reader, so neither pattern can change how it is read | 3.2, 4 | State that a live stream ignores the pattern, and `plan` reports it |
-| M11 | **The four proposals of experiment 1b:** one 2D average rather than rescaling after each pass; stored NaN counted as missing; `valid_fraction` weighted by the filter; and `valid` following the averaged mask beside kinds that are not averaged | 5 | As the experiment does, set out in `RESULTS-1b.md` |
-| M12 | **Labels at coarse Levels alone.** A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window | 5 | Labels read only their grid points under any method, as the experiment does; state it in section 5 |
-| M13 | **Writes under `Private`.** Every array borrowed from one Source shares its copy-on-write pages, so a write through one is seen by the others, and a write while another thread reads the same pages is a data race in the caller's code. Section 4 says only that changes stay in the caller's memory. | 4 | State both, as experiment 5 finds |
-| M14 | **Two statements differ.** Section 12, rule 9 says borrowed arrays are read-only; section 4 allows writes under `Private` | 4, 12 | Rule 9: "read-only under `Shared` mapping" |
-| M15 | **How the Python interface is built.** The implementability assessment assumes PyO3. Experiment 5 declares the stable interface itself, about 190 lines, because this workspace cannot fetch PyO3. | 10.5, 12 | PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check |
-| M16 | **Corrupt data a library recovers from.** libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default. | 3.3, 10.3 | A warning is an error by default; under `corrupt_as_missing`, the block (Fragment) is marked missing and the read is `Partial`, since libjpeg does not say which rows it filled |
-| M17 | **A limit on progressive scans, a cap on a library's working memory,** and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image, and keeps whole-image coefficients beside its output. | 10.3 | A fourth limit, `max_scans`, 500 by default for untrusted Sources and none otherwise, like the others; a library's working memory capped at a multiple of `max_decoded_bytes`, twice in experiment 3; a refusal is an error, as section 3.3 says |
-| M18 | **JPEG 2000 palettes and channel definitions.** OpenJPEG expands a JP2 palette after the header's size is checked, against section 10.3; turning that off also leaves the component mapping (`cmap`) and channel definitions (`cdef`, such as which component is alpha) unapplied. | 5, 9.3, 10.3 | The driver delivers indices for `palette.lookup`, and applies or reports `cmap` and `cdef` itself, as experiment 3's layer leaves them |
+| M19 | **A stored NaN where there is no mask.** Version 70 makes a NaN stored at a pixel the validity mask calls valid missing. It does not say what a NaN in float data does where the Image has no mask and `may_have_missing` is false: there the fast path makes no checks, so a NaN would spread through averaging. | 5 | A stored NaN in float data is always missing. A driver of a float format sets `may_have_missing` unless the format guarantees there is no NaN, so the fast path is kept only where it is safe |
+| M20 | **Closing in C.** M3 was proposed for Python. Version 70 writes its C form beside it: `bil_close_source` frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed. In Rust, dropping the Source closes it. | 2, 4 | Confirm the C form as written, or rule otherwise |
 
 **How this list is kept.** Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.
 

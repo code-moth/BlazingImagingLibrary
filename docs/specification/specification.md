@@ -249,7 +249,7 @@ BIL has one naming rule, the same in every language: types are UpperCamelCase, a
 | --- | --- | --- |
 | Handles | Every object is an opaque handle. Its fields are read through accessors. | `BilSource *`, `BilImage *`, `BilSlice *`, `BilFragment *` |
 | Status | Every function returns a `BilStatus`. Results come back through the last arguments. | `BIL_OK`, `BIL_ERROR`, `BIL_PARTIAL` |
-| Ownership | What a call creates, the caller frees with the matching `bil_free_` call. A handle obtained from another is valid while its parent is. | `bil_free_slice`, `bil_free_fragment`, `bil_close_source` |
+| Ownership | What a call creates, the caller frees with the matching `bil_free_` call. A handle obtained from another, such as an Image from its Source, is valid while its parent is. A Fragment or Slice is created by its read, and lives until it is freed (section 4). | `bil_free_slice`, `bil_free_fragment`, `bil_close_source` |
 | Data | Array data is reached through an accessor that gives a pointer, the size and the strides. The pointer is valid until the object is freed. | `bil_slice_data(slice, &values, &rows, &cols, &row_stride)` |
 | Errors | The message for the last failed call on this thread is read with `bil_last_error`. | `bil_last_error(buffer, buffer_size)` |
 
@@ -280,7 +280,7 @@ if (status == BIL_OK) status = bil_image(source, 0, &image);
 if (status == BIL_OK) status = bil_read_slice(image, "complex.polar.magnitude", &window, &slice);
 ```
 
-**Stability.** The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version (section 10). The Python package is built against Python's stable interface, so one build serves several Python versions.
+**Stability.** The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version (section 10). The Python package is built against Python's stable interface, so one build serves several Python versions. It is built on PyO3, the better tested route to that interface.
 
 **The acronym.** BIL also names the Band Interleaved by Line raster layout, which BIL reads. The same letters are also used for burst illumination LIDAR, a sensor type BIL reads. Documentation spells out Blazing Imaging Library on first use.
 
@@ -337,6 +337,7 @@ A driver opens the file and produces Fragments. The core applies a slice functio
 | `component_names` | The name of each component |
 | `relations` | Each related Image: its index, the relation, and for a scaled grid the reduction and the position of its samples |
 | `storage` | How the pixels lie in the file: the block size, the interleave and whether the block order is known, from the `Storage` of section 4 |
+| `may_have_missing` | Whether the driver states that this Image can have missing pixels. Where it is false, no checks are made for them (section 5). |
 
 ### 3.1 Indexes and coordinates
 
@@ -367,7 +368,7 @@ Every coordinate attaches to one index. A coordinate is a metadata field attache
 | --- | --- |
 | `list_coordinates()` | The coordinates this Image has, with the unit and the index each attaches to |
 | `read_coordinate(coordinate_name)` | The coordinate's values along its index |
-| `find_index(coordinate_name, value)` | The index whose coordinate is nearest the value |
+| `find_index(coordinate_name, value)` | The index whose coordinate is nearest the value. In Python a time is passed as a `datetime`. |
 
 ### 3.2 Frames
 
@@ -398,7 +399,7 @@ For a framing sensor, a frame is one physical collection cycle: one exposure and
 - **A saved index checks its stream.** A saved frame index records the stream's size and a checksum of its start. An index that no longer matches is refused, and the stream is scanned instead.
 - **The index is built on first need.** That is the first call that needs a `Known` count, a time coordinate or a jump to a distant frame.
 - **A live stream has no end.** Its count is `AtLeast`, and its frames are numbered from the first one received.
-- **A live stream has one position.** All Readers of a live Source see the same frames. A Reader cannot hold a place of its own in a stream that cannot be read again.
+- **A live stream has one position.** All Readers of a live Source see the same frames. A Reader cannot hold a place of its own in a stream that cannot be read again, so a live stream ignores the access pattern of section 4, and `plan` reports that it does.
 - **Past frames are `Missing`.** A request for a frame older than those still held is delivered with status `Missing`, never by waiting or seeking. A read can be given a `timeout` and a `cancel` handle (section 3.4), so it never waits without end.
 
 **Additional index dimensions.** Where collection cycles nest, an Image may declare further named indexes. A sensor that sweeps 50 range gates once a second can declare `sweep` and `gate`. These are natural numbers too, and they always resolve to a frame number through `resolve_frame`. `Window` is unchanged: it still carries one `frame`.
@@ -422,6 +423,8 @@ Every call returns a result, and everything that is delivered carries a status. 
 - **Per element, where elements differ.** A set of positions carries a status for each position. For pixels, the per-pixel form of the status is the validity mask of a Fragment and NaN in a Slice.
 - **An unknown name is an error, and a known one with no value is `Missing`.** A field name that is not defined for this Source is an error. A defined field or a dictionary item that has no value here is delivered with status `Missing` and no value. The same holds along an index.
 - **Corrupt data is an error by default.** A caller may ask for a corrupt block to be delivered as missing data instead, and the result is then `Partial`.
+    - **Recovered data is corrupt data.** A library that decodes a damaged block by filling in what it lost, and warns, as libjpeg does, has met corrupt data. The warning is an error by default.
+    - **The whole block is missing.** Under `corrupt_as_missing`, a block a library recovered is marked missing as a whole, since a library does not say which of its pixels it filled in.
 - **A failure never becomes a crash.** A failure inside BIL is caught at the interface and returned as an error.
 - **In C.** Every function returns a status code, and the value comes back through an argument.
 
@@ -437,6 +440,7 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `max_image_pixels` | None | Refuse an Image larger than this (section 10.3) |
 | `max_decoded_bytes` | None | Refuse a compressed block that decodes to more than this |
 | `max_field_group_bytes` | None | Refuse a metadata group larger than this |
+| `max_scans` | None, or 500 when `untrusted` is set | Refuse a progressive image with more scans than this (section 10.3) |
 | `untrusted` | False | Open the Source as untrusted, for `isolation` (section 10.3) |
 | `companion` | The file's name with `.metadata` added | A companion file to read (section 14.2) |
 | `frame_index` | None | A saved frame index to use instead of scanning (section 3.2) |
@@ -534,7 +538,9 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 **Borrowed data**
 
 - **Read-only under `Shared` mapping.** Borrowed pixels cannot be changed, and in Python they appear as a read-only NumPy array. Under `Private` mapping they can be changed, and the changes stay in the caller's memory.
-- **It keeps its Source open.** A borrowed Fragment, and in Python its array, holds a reference to its Source for as long as it lives.
+- **Shared within one Source under `Private`.** Every array borrowed from one Source shares its copy-on-write pages, so a change through one is seen through the others. A change while another thread reads the same pages is a data race in the caller's code, as for any memory the caller shares; BIL itself never writes them.
+- **It keeps its memory.** A borrowed Fragment, and in Python its array, holds a reference to the mapped or read memory it borrows from for as long as it lives.
+- **Closing a Source.** A Source closes when the last reference to it goes, which in Rust is when it is dropped. `close()` in Python, and `bil_close_source` in C, close it at a chosen moment: it frees what the Source holds, its cache, read-ahead, metadata and Readers, and in Python every later read from it is an error. Arrays borrowed from it stay valid, and keep only the memory they borrow, which goes with the last of them. In C, `bil_close_source` also frees the Source's handle, which must not be used again; Fragments and Slices already read from it stay valid until each is freed with its own `bil_free_` call.
 - **A choice of mapping.** `mapping` in `OpenOptions` is `Shared` by default. `Private` maps the file copy-on-write, so a caller can change the array without touching the file. `Off` reads into owned buffers, for network file systems where mapping is unreliable.
 - **Files that change are not supported.** Mapping a file while another process changes or shortens it is not supported, and on most systems it can end the reading process.
 
@@ -567,7 +573,7 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 | --- | --- |
 | Source and Image | Yes. Anything they hold that changes, such as the cache and extracted metadata, is guarded inside BIL. |
 | Reader | No. It belongs to one thread at a time, and may be handed to another. |
-| Fragment and Slice | Yes, once delivered. A borrowed one keeps its Source open wherever it goes. |
+| Fragment and Slice | Yes, once delivered. A borrowed one keeps the memory it borrows wherever it goes. |
 
 In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and Python the same rules are stated in the documentation.
 
@@ -617,6 +623,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 - **Reported.** `plan` reports the blocks a read will find read ahead and those it will read itself. `describe_held` and `describe_cache` report the bytes read ahead and how many reads they served.
 - **It stops when it is not wanted.** Read-ahead stops when the Source is closed, when the Reader it reads ahead for is dropped, and when a read is canceled.
 - **With external decoding.** Where a decoder process serves the Source (section 10.2), read-ahead asks it for the next blocks over the control channel, and it decodes them into free slots. A slot a reader has marked is never taken for read-ahead.
+- **Not for live streams.** A live stream has one position for every Reader (section 3.2), so neither pattern changes how it is read. It ignores the pattern, and `plan` says so.
 - **Within one request it is already done.** One request reads its own blocks in storage order and streams them through the pass (section 12). The access pattern concerns what happens between requests.
 
 **Reading a Fragment.** `read_fragment(window, level)` returns the native pixels of a Window. `level` is `level0` by default, or the name of a stored level such as `stored2`, read as it stands. A computed Level is not a Fragment, because it holds new values, so naming one is an error. The Window is given in full-resolution rows and columns, as for a Slice.
@@ -753,7 +760,7 @@ hv    = bil.SliceSelector("complex.polar.magnitude", component="hv")
 | `read_slices(function, slice_names, window)` | A `SliceSet`: several Slices from one Fragment. `function` is a function name, or a `SliceSelector` that names a function and its parameters. |
 | `read_slice_into(slice_name, window, buffer)` | Fills a float32 buffer the caller owns |
 | `stream_slice(slice_name, window, callback)` | Hands the caller float32 row blocks in turn |
-| `level_count()` | How many resolution levels this Image offers |
+| `level_count()` | How many resolution levels this Image offers: Level 0 and every halving until the Image is one pixel along its shorter side |
 | `list_level_methods()` | The named downsampling methods available |
 | `list_stored_levels()` | The reduced-resolution data the file itself holds, each with its name, size, scale and method |
 | `read_slice_levels(slice_name, window, level_count)` | Every resolution level from full size downwards, made in one pass |
@@ -773,6 +780,7 @@ hv    = bil.SliceSelector("complex.polar.magnitude", component="hv")
 - **Planned the same way.** `plan(request)` reports what a request would deliver and cost. `plan_slice` is its short form for one Slice.
 - **Where the result goes.** `read(request, target)` takes a target that matches the delivery. `Returned` needs none. `IntoBuffers` takes a mapping from each Slice name and level name to a float32 buffer of the size `plan(request)` reports. `Streamed` takes a callback.
 - **Streamed blocks.** The callback is called once for each block of rows. Each block carries its Slice name, its level name, the grid rows it covers and its values. Blocks of one Slice and Level arrive in row order, and blocks of different Slices and Levels may interleave.
+- **In Python.** A `SliceRequest` and its `SliceOptions` are made with keyword arguments, and what a returned request delivers is indexed by Slice name and level name together, as `result["complex.polar.phase", "level2"]`.
 - **The short forms.** `read_slice` asks for one Slice at one Level. `read_slices` asks for several Slices. `read_slice_levels` asks for several Levels. `read_slice_into` and `stream_slice` choose the delivery.
 
 ```rust
@@ -842,8 +850,8 @@ Averaging suits most Slices but not all, so each Slice name declares its kind wh
 | --- | --- | --- |
 | Linear quantities | `intensity`, `power`, `red`, `luminance`, band values | The chosen method |
 | Angles | `phase`, `hue` | The chosen method applied to unit vectors, so wrap-around is handled |
-| Labels and indices | `class.labels.value`, `palette.lookup.index` | Every second value kept, with no averaging |
-| Masks | `pixel.mask.valid` | 1.0 where the reduced data value exists, which is wherever any contributing pixel was valid, else 0.0 |
+| Labels and indices | `class.labels.value`, `palette.lookup.index` | Every second value kept, with no averaging. Since only the grid point's value is used, a read of coarse Levels alone reads only those points, whatever the level method. |
+| Masks | `pixel.mask.valid` | 1.0 wherever any pixel under the level method's filter was valid, else 0.0: the mask averaged by the method, then marked where it is above 0. This holds whatever kind of Slice it is read beside, so beside labels or range it can differ from where a reduced value exists. `valid_fraction` is the averaged mask itself, the share of valid pixels weighted by the filter. |
 | Range and depth | `depth.sensor.range` | The minimum of the 3×3 block centered on each point of the reduced grid, which favors the nearest surface. Averaging across a depth edge would invent a range that exists nowhere in the scene. |
 
 For range, the block at each halving is centered on the reduced value's own pixel, so a range Slice sits on the same grid as every other Slice at that Level. Missing values are left out, and the result is NaN only when all nine are missing. The `x`, `y` and `z` Slices of `depth.points` are taken together from whichever pixel in the block has the minimum range, so a reduced point is always a real point.
@@ -854,7 +862,7 @@ Because levels are made after the slice function, reduced `power` and reduced `p
 
 | Route | Reads | Cost follows | Gives up |
 | --- | --- | --- | --- |
-| Computed, with a filtering method such as `bilinear` | Every full-resolution pixel under the Window | The full-resolution area | Nothing. Values agree for every file and on every machine, to the tolerance of this section. |
+| Computed, with a filtering method such as `bilinear` | Every full-resolution pixel under the Window; for labels read at coarse Levels alone, only their grid points | The full-resolution area | Nothing. Values agree for every file and on every machine, to the tolerance of this section. |
 | Computed, with `decimate` | Only the pixels kept | The output, where the storage can be strided | Filtering, so fine detail aliases |
 | Stored | Reduced data the file already holds | The output | Control of the method. Values depend on how the file was made. |
 
@@ -925,17 +933,19 @@ pub enum MissingWeights { Equal, PixelCount }
 
 **Missing data.** A Slice value with no data behind it is NaN. This covers three cases: pixels that were never recorded, pixels that were never imaged, and pixels the format marks with a fill value. Some formats store only part of the 2D array, so the unrecorded positions have no description in the file. When BIL unpacks such data to a full array, each of those positions still needs a number, and that number is NaN.
 
-- **Every Slice of a missing pixel is NaN,** whichever slice function made it. `pixel.mask.valid` gives the same information as 1.0 or 0.0 for callers that prefer a mask.
+- **Every Slice of a missing pixel is NaN,** whichever slice function made it. `pixel.mask.valid` gives the same information as 1.0 or 0.0 for callers that prefer a mask, at Level 0 and beside every kind of Slice that is averaged. Beside labels or range at coarser Levels it follows the averaged mask (the table of kinds above), and the NaN positions of the Slice itself say where a value is missing.
 - **Averaging skips missing values.** Resolution levels and local functions leave NaN out and rescale the remaining weights. A result is NaN only when every value that would contribute is missing.
+    - **One average over the whole filter.** The weights are rescaled once, over the filter's rows and columns together, so a Level value is the average of the present values under the 2D filter, not an average rescaled after each pass along rows and then columns.
+    - **A stored NaN is missing.** In float data, a NaN stored at a pixel the validity mask calls valid counts as missing, exactly as if the mask marked it.
     - **Two ways to weight a Level.** Each Level is made from the Level below it, and `missing_weights` in `SliceOptions` chooses how the values below are weighted where some are missing.
     - **`Equal`, the default.** Each present value below has its filter weight alone. A Level is the average of the present values of the Level below. This is the common case.
     - **`PixelCount`.** Each present value below has its filter weight times the share of present full-resolution pixels behind it. A Level is then the average of the present full-resolution pixels under the whole filter, as if it were made from full resolution in one step.
     - **The same where nothing is missing.** With every pixel present, both give exactly the values of an Image with no missing data.
 - **A number in place of NaN, on request.** One NaN spreads through a Fourier transform or a convolution, and code of that kind does not expect it. `missing_value` in `SliceOptions` fills missing positions with a number the caller chooses. NaN remains the default.
     - **Filled last.** The fill is applied to the finished Slice, after the slice function and the Level, so averaging still leaves missing values out and every other value is unchanged.
-    - **Still reported.** The status stays `Partial`. A caller who needs to know which positions were filled asks for `pixel.mask.valid` in the same request.
+    - **Still reported.** The status stays `Partial`. A caller who needs to know which positions were filled asks for `pixel.mask.valid` in the same request, or, beside labels or range at coarser Levels, reads the same Slice without `missing_value`.
     - **Not borrowed.** Filling writes new values, so a Slice with missing positions and a `missing_value` is not `Borrowed`.
-- **No cost where nothing is missing.** A driver states whether an Image can have missing pixels. Where it cannot, no checks are made and the fast paths in section 6 are unchanged.
+- **No cost where nothing is missing.** A driver states whether an Image can have missing pixels, as `may_have_missing` in its `ImageInfo`. Where it cannot, no checks are made and the fast paths in section 6 are unchanged.
 - **Fill values take a pass.** Replacing a format's fill value with NaN means computing new values, so that Slice is not `Borrowed`.
 
 **Precision limit.** Every Slice is float32, whatever the Fragment holds, so algorithms that take Slices need only one representation.
@@ -1194,7 +1204,7 @@ A function that presents must be pointwise and take every statistic it uses from
 | `pixel.reduce` | `mean`, `sum`, `min`, `max`, `norm` | Reductions across the components of one pixel |
 | `pixel.weighted(weights)` | `value` | Dot product of the pixel with supplied weights |
 | `pixel.pair(i, j)` | `ratio`, `normalized_difference` | i / j, and (i − j) / (i + j) |
-| `pixel.mask` | `valid`, `saturated`, `valid_fraction` | 1.0 or 0.0; and, at coarser Levels, the share of contributing pixels that were valid |
+| `pixel.mask` | `valid`, `saturated`, `valid_fraction` | 1.0 or 0.0; and, at coarser Levels, the share of valid pixels, weighted by the level method's filter |
 | `pixel.nearest(coordinate_name, value)` | `value` | The component whose coordinate is nearest the value |
 | `pixel.integrate(coordinate_name, from, to)` | `value` | The average of the components whose coordinates lie between two values |
 | `pixel.peak(coordinate_name)` | `value`, `coordinate` | The largest component, and the coordinate at which it occurs |
@@ -1649,19 +1659,25 @@ This is an optional layer, built and supported as part of BIL. It is switched on
 
 Imagery files often arrive from outside, and BIL hands them to many C and C++ libraries. A file crafted to exploit one of those libraries could take over the caller's process, and a Rust core does not protect code it only calls. BIL answers with four measures.
 
-**Resource limits.** `open_source` takes `OpenOptions`, in which the caller sets limits. A read that would exceed one fails before any memory is taken.
+**Resource limits.** `open_source` takes `OpenOptions`, in which the caller sets limits. A read whose header claims more than a size limit allows fails before any memory is taken for its pixels. The scan limit and the cap on a library's working memory are met while decoding, so they stop the decode, which frees what it took.
 
 | Limit | Guards against |
 | --- | --- |
 | `max_image_pixels` | A header that claims an impossible size |
 | `max_decoded_bytes` | One compressed block that expands without bound |
 | `max_field_group_bytes` | A metadata group built to exhaust memory |
+| `max_scans` | A progressive image with thousands of scans, each a pass over the whole image |
 
 - **No limit is set by default for a trusted Source.** Very large images are BIL's purpose, so any fixed default would turn away real data.
-- **An untrusted Source gets limits.** Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image and bytes per metadata group, each scaled to the size of the file where that makes sense. The caller can raise them.
+- **An untrusted Source gets limits.** Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image, bytes per metadata group and 500 progressive scans, each scaled to the size of the file where that makes sense. The caller can raise them.
 - **One check is always made.** For uncompressed data, a header that claims more pixels than the file can hold is rejected.
+- **A library's working memory is capped too.** Where `max_decoded_bytes` is set, the memory a library uses beside its output for one block, such as a progressive JPEG's whole-image coefficients, is capped at twice that limit, where the library allows a cap.
+- **A refusal is an error.** A read that a limit refuses fails with an error, as section 3.3 says.
+- **What a codec would expand, the driver applies.** A codec that would add components after the header is checked, as a JPEG 2000 palette does, is told not to. The driver delivers the palette's indices, which `palette.lookup` turns into color, and applies the component mapping and channel definitions (`cmap` and `cdef`, which say, for one, which component is alpha) itself, or reports them where it does not.
 
 **Plugins from configured locations only.** BIL loads external, optional and scripted plugins only from locations named by the caller or by the installation's configuration.
+
+**The configuration.** The installation's configuration is one file in a stated place, which an environment variable can point elsewhere, and a call reads it. It names plugin and helper locations, the order of preference among drivers, `isolation` and the place for mapped data. Its form, its place, the variable's name and the call are settled when Tier 2 starts.
 
 - **No searching.** BIL does not look in the working directory, on the library search path or beside the data.
 - **Installed packages are still found.** Installing an optional package such as `bil-grok` records its location in that configuration.
@@ -1893,7 +1909,7 @@ A Slice costs at most one pass over its Window, and that pass is built to run at
 6. **Caller-owned buffers.** `read_slice_into` and `stream_slice` allocate nothing per call.
 7. **Parallel rows and tiles.** Large Windows are split across threads. Gains flatten after a few cores, because memory bandwidth becomes the limit. How far decoding itself runs in parallel follows the driver's declared `concurrency` (section 10).
 8. **Cheap variants offered.** Where a Slice needs costly arithmetic, a cheaper relative is provided: `power` avoids the square root in `magnitude`, and both avoid the arctangent in `phase` and the logarithm in `power_db`.
-9. **No-copy hand-off to Python.** Slices and Fragments are exposed as NumPy arrays over the same memory, including strided and borrowed ones. Borrowed arrays are read-only. The interpreter lock is released during every read.
+9. **No-copy hand-off to Python.** Slices and Fragments are exposed as NumPy arrays over the same memory, including strided and borrowed ones. Borrowed arrays are read-only under `Shared` mapping (section 4). The interpreter lock is released during every read.
 10. **Measured, not assumed.** Each slice function has a benchmark against a plain memory copy of the same Window, and against its own arithmetic alone on data already in memory. The aim is the least cost each function's arithmetic allows: a function that only converts should run near the speed of a copy, and one that needs an arctangent or a square root for every pixel should run near the speed of that arithmetic. The figures guide the design, and no single factor applies to every function. Benchmarks run on dedicated machines, outside the build, because timing on shared build machines varies. Each has a threshold, and a regression past it is reported and must be fixed or explained before a release. The round trip to the interpreter's helper process is benchmarked in the same way (section 10.1).
 11. **Reads follow the storage.** One request reads its blocks in the order they are stored. Between requests, `Sequential` reads and decodes ahead in that order, so a caller working through an Image finds its next blocks ready, and `Random` reads nothing it was not asked for (section 4). Both are benchmarked on files stored in strips, in tiles and band by band, locally and remotely.
 
@@ -1964,7 +1980,7 @@ The statuses are those of section 3.3. A position is `Complete`, `Missing`, `Not
 | `read_geo_model(model_name, frame)` | The chain for one frame |
 | `for_slice(slice)` | The same chain with BIL's `image_window` step in front, built from the Slice's `origin` and `scale`, so it covers any Window, Level, stored level or `step` |
 | `for_window(window, level)` | A short form of `for_slice` for a computed Level, before any Slice is read |
-| `image_to_world(positions, surface)` | World positions, as 64-bit values, for pixel positions, each with a status. `surface` may be left out: a chain that needs one then uses the constant height of section 13.6, and a chain that ends in a plane, such as patient space, needs none. With `accuracy`, each position also carries its `Accuracy` (section 13.9). |
+| `image_to_world(positions, surface)` | World positions, as 64-bit values, for pixel positions, each with a status. `surface` may be left out: a chain that needs one then uses the constant height of section 13.6, and a chain that ends in a plane, such as patient space, needs none. With `accuracy`, each position also carries its `Accuracy` (section 13.9). In Python each position has `lat`, `lon`, `height`, `status` and `accuracy`. |
 | `world_to_image(positions)` | Pixel positions for world positions, each with a status |
 | `list_steps()` | Each step of a chain, with its spaces and parameters |
 | `concatenate(step_or_chain)` | A new chain with a step or chain added |
@@ -2329,7 +2345,7 @@ The mapping lives in the native field's definition, which names the dictionary i
 | `common.exposure_time` | Seconds | Exif `ExposureTime` | Not derived |
 | `common.center_position` | Latitude, longitude and height | Formats that state a scene center | The geo model, at the center of the Image |
 | `common.footprint` | The positions of the four corners | NITF `IGEOLO` | The geo model, at the corners of the Image |
-| `common.ground_sample_distance` | Meters, along rows and along columns | Product formats that state it | The geo model, from neighboring pixels at the center |
+| `common.ground_sample_distance` | Meters, along rows and along columns, on the ground. In the image's own plane it is `common.sample_spacing`. | Product formats that state it | The geo model, from neighboring pixels at the center |
 | `common.sun_elevation`, `common.sun_azimuth` | Degrees | Optical satellite products | A solar position formula, from the collection time and the center position |
 | `common.earth_sun_distance` | Astronomical units | Optical satellite products | A formula, from the collection time |
 | `common.view_elevation`, `common.view_azimuth` | Degrees | Products that state the sensor's look direction | The sensor's position in the geo model, and the center position |
@@ -2361,12 +2377,12 @@ The mapping lives in the native field's definition, which names the dictionary i
 | `common.horizontal_accuracy`, `common.vertical_accuracy` | Meters, at 90 percent | Products that state CE90 and LE90 | The accuracy record at the center of the Image (section 13.9) |
 | `common.band_width` | Nanometers, for each component | ENVI `fwhm` | The difference of each band's upper and lower edges |
 | `common.radiometric_gain`, `common.radiometric_offset` | For each component, in the units of `common.units` per stored unit | Product calibration fields | The Image's normalization parameters, where they are a linear scale (section 7) |
-| `common.units` | The unit of the calibrated value, for each component | Product formats, HDF5 and NetCDF `units` | The Image's normalization |
+| `common.units` | The unit of the calibration that `common.radiometric_gain` and `common.radiometric_offset` produce, for each component, and nothing else. A Slice's own unit is part of its definition (section 5). | Product formats, HDF5 and NetCDF `units` | The Image's normalization |
 | `common.solar_irradiance` | Watts per square meter per micrometer, for each component | Optical satellite products | Not derived |
 | `common.thermal_constants` | The two constants that turn radiance into brightness temperature, for each component | Thermal products | Not derived |
 | `common.polarization` | The transmit and receive polarization of each component | SAR products | Not derived |
 | `common.look_side` | `left` or `right` | SAR products | The sensor's position and velocity in the geo model, and the center position |
-| `common.sample_spacing` | The distance between samples along rows and along columns, with its unit | SAR products, DICOM `PixelSpacing` | The geo model, where it has one |
+| `common.sample_spacing` | The distance between samples along rows and along columns, with its unit, in the image's own plane, such as slant range for SAR. On the ground it is `common.ground_sample_distance`. | SAR products, DICOM `PixelSpacing` | The geo model, where it has one |
 | `common.calibration_constant` | The radar calibration constant, for each component | SAR products | Not derived |
 | `common.frame_rate` | Frames per second | Video streams | The time coordinate of the frames |
 | `common.sensor_position`, `common.sensor_attitude` | Position, and roll, pitch and yaw, for each frame | MISB KLV, camera models | The geo model's camera step |
@@ -2523,7 +2539,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and seventy-one have been decided. Each lists the current proposal.
+Two points are not yet settled, and seventy-six have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2539,13 +2555,18 @@ Two points are not yet settled, and seventy-one have been decided. Each lists th
 - [x] **Frame count and index.** Decided: a frame count is `Known`, `AtLeast` or `Unknown`, and the frame index is built on first need, never when a Source is opened (section 3.2).
 - [x] **Mapped format details.** Decided: BIL's own layout, a JSON header with a block table and page-aligned blocks, used as a bounded set of slots on request. The decoder process is spawned on first use, or attached to where one is running. Readiness comes by a reply on the control channel, or by a `complete` flag for a whole copy. Readers mark the slots they hold, and shared memory is passed without a name (section 10.2).
 - [x] **Test data.** Decided: two layers. Synthetic reference files with known contents are generated by BIL's own test suite. Real files are listed in `testdata/manifest.toml` with their source, purpose and checksum, and fetched by `testdata/fetch.py`. The first come from GDAL's download cache, which mirrors the NITF Test Bed files; the author supplies others. CLIF 2007 remains a candidate for wide area motion imagery (Appendix B).
+- [x] **Interface details from the user manual.** Decided: `ImageInfo` states `may_have_missing`; a Source closes when the last reference goes, or at `close()`, after which borrowed arrays keep only their memory; `level_count` counts halvings to one pixel along the shorter side; Python builds requests with keywords, indexes results by Slice and level name, passes times as `datetime` and gives positions `lat`, `lon`, `height`, `status` and `accuracy`; a live stream ignores the access pattern; `common.units` and `common.sample_spacing` are defined against a Slice's unit and `common.ground_sample_distance` (sections 3, 3.1, 3.2, 4, 5, 13.4 and 14.2).
+- [x] **The configuration.** Decided: one file in a stated place, which an environment variable can point elsewhere, read by a call. Its form and names are settled when Tier 2 starts (section 10.3).
+- [x] **Missing data and coarse Levels, from experiment 1b.** Decided: a Level averages the present values over the whole 2D filter at once; a stored NaN at a valid pixel is missing; `pixel.mask.valid` follows the mask averaged by the level method, beside any kind of Slice, and `valid_fraction` is that average; labels at coarse Levels alone read only their grid points under any method (section 5).
+- [x] **Borrowed data and the Python interface, from experiment 5.** Decided: under `Private` mapping, arrays from one Source share their pages, and concurrent writes are the caller's data race; borrowed arrays are read-only under `Shared` mapping only; the Python interface is built on PyO3 (sections 2, 4 and 12).
+- [x] **Libraries' corrupt data and limits, from experiment 3.** Decided: data a library recovers with warnings is corrupt data, an error by default, and its whole block is missing under `corrupt_as_missing`; `max_scans` is a fourth limit, 500 for untrusted Sources; a library's working memory is capped at twice `max_decoded_bytes` where it allows; a refusal is an error; a codec does not expand JPEG 2000 palettes, and the driver applies or reports `cmap` and `cdef` (sections 3.3, 3.4 and 10.3).
 - [ ] **Drivers for the added sensor cases.** The medical, security screening and sonar cases in section 8 name the data but not yet the libraries that read it.
 - [x] **Metadata model.** Decided, for now: metadata is held as named fields, with names taken from self-describing files or from specifications. Fields are extracted on demand and held to be read when needed (section 14).
 - [x] **Markings and identity.** Decided: markings are always written, to the companion file where the format cannot hold them. Identity fields are left empty by default. The caller can override both (section 11).
 - [x] **Metadata dictionary.** Decided: BIL keeps a dictionary of essential metadata, so that formats offer the same items as far as they can. Each item is provided by the format, derived by a stated formula, or taken from a companion file, in that order (section 14.2).
 - [x] **Lazy metadata decoding.** Decided: each value is decoded only when it is read or when a function needs it (section 14.3).
 - [x] **Companion files.** Decided: a plain text file beside a Source supplies metadata the format lacks, and carries markings for outputs that cannot hold them. It replaces the separate markings side file (sections 11 and 14.2).
-- [x] **Borrowed data.** Decided: zero-copy also needs aligned samples. Borrowed data is read-only, and mapping is `Shared`, `Private` or `Off` (section 4).
+- [x] **Borrowed data.** Decided: zero-copy also needs aligned samples. Borrowed data is read-only under `Shared` mapping, and mapping is `Shared`, `Private` or `Off` (section 4).
 - [x] **Threads and plugins.** Decided: a Source and an Image may be shared between threads, and a Reader belongs to one thread at a time. Each driver declares its concurrency as `Parallel`, `OneHandlePerThread` or `Serial`. `bil_register_driver` carries an interface version (sections 4 and 10).
 - [x] **Codec choice and probing.** Decided: the driver and codec are chosen when a Source is opened and never switched. Both are reported and recorded in what BIL writes. Probing looks at the container, then its content, and ties follow a configured order (section 10).
 - [x] **Field names and time.** Decided: a field name is a list of parts, with escaped dots and numbered repeats. Text is Unicode, and a date and time states whether its zone is known. Local times take their zone from a stated offset, then, where an optional time-zone lookup is installed, the sensor location or the footprint. Otherwise they are taken as local time (section 14).

@@ -1,6 +1,6 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 6 bring the document in step with specification version 69: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays, and version 8 experiment 3, containing C errors. The rest of the judgment stands as written for version 56.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 9 bring the document in step with specification version 70: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays, version 8 experiment 3, containing C errors, and version 9 the author's acceptance of the proposals of the user manual and experiments 1b, 3 and 5. The rest of the judgment stands as written for version 56.
 
-**What has changed between versions 56 and 69**
+**What has changed between versions 56 and 70**
 
 | Change | Where it bears |
 | --- | --- |
@@ -14,6 +14,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 | `missing_weights` chooses how coarse Levels weight missing data: `Equal` or `PixelCount` (version 67) | H1 |
 | `Random` and `Sequential`: read-ahead and decoding ahead in the storage order each driver reports (versions 68 and 69) | Section 3, section 10 |
 | Domain profiles in the metadata dictionary, with 27 new items (version 68) | Section 3, section 10 |
+| The proposals of the user manual and experiments 1b, 3 and 5 accepted: `may_have_missing`, closing, Python forms, the configuration file, missing data at coarse Levels, `Private` mapping, PyO3, recovered data as corrupt, `max_scans` and a cap on library memory, JPEG 2000 palettes as indices (version 70) | H1, H2, section 3 |
 
 ## 1. Verdict
 
@@ -274,7 +275,7 @@ These are the backing libraries whose health matters most to the early tiers. He
 
 ## 7. What the specification must settle before coding
 
-These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 69, every one is settled. Version 68 opened one point that blocked nothing, the details of access patterns, and version 69 settles it.
+These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 70, every one is settled. Version 68 opened one point that blocked nothing, the details of access patterns, and version 69 settles it.
 
 **Before Tier 1**
 

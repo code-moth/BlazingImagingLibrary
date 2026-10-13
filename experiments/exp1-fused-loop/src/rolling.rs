@@ -17,7 +17,8 @@
 //! `missing_weights` chooses how a Level weights the values below it: `Equal`, the default, or
 //! `PixelCount`, by the share of present full-resolution pixels behind each (version 67).
 //!
-//! Four choices here are proposals that the specification leaves open, awaiting the author:
+//! Four choices first made here as proposals, which the author accepted in specification version
+//! 70 (section 5):
 //! - **One 2D average.** Along the row the weighted sum of the values present and the sum of
 //!   their weights are kept apart; down the column both are combined and divided once. The result
 //!   is the 3 x 3 average of the values present, rather than an average rescaled after each pass.

@@ -16,9 +16,10 @@
  * - OpenJPEG reports through callbacks, which here copy the message and never print.
  * - Before any pixel memory is taken, the size the header claims is checked against the
  *   caller's limits (section 10.3 of the specification), and libjpeg's own working memory is
- *   capped too, a choice for the experiment. OpenJPEG is told not to expand JP2 palettes, which
- *   would add components after the check; that also leaves a JP2 file's component mapping and
- *   channel definitions unapplied, which is proposed to the author as the driver's work.
+ *   capped too, at twice the limit, as section 10.3 says. OpenJPEG is told not to expand JP2
+ *   palettes, which would add components after the check; that also leaves a JP2 file's
+ *   component mapping and channel definitions unapplied, which section 10.3 makes the
+ *   driver's work.
  *
  * Nothing here writes to stdout or stderr, changes the locale, signal handlers or floating-point
  * environment, or keeps state between calls.
@@ -53,7 +54,8 @@ typedef struct {
  * refusal by a limit is an error under section 3.3; it is told apart only for the checks. */
 enum { SHIM_OK = 0, SHIM_ERROR = 1, SHIM_REFUSED = 2 };
 
-/* Progressive scans a decode may read, a limit the specification does not yet have. */
+/* Progressive scans a decode may read: section 10.3's max_scans, at its default for an untrusted
+ * Source. */
 #define BIL_MAX_SCANS 500
 
 /* a × b × c × d, or UINT64_MAX where it would overflow. */
@@ -178,7 +180,7 @@ int bil_jpeg_decode(const uint8_t *data, size_t len, const BilLimits *limits, ui
     jpeg_create_decompress(&s->cinfo);
     s->created = 1;
     /* libjpeg's working memory, such as a progressive file's whole-image coefficients, beside
-     * the output: capped at twice the output's limit, a figure for the experiment. */
+     * the output: capped at twice the output's limit, as section 10.3 says. */
     if (limits->max_decoded_bytes) {
         uint64_t cap = product(limits->max_decoded_bytes, 2, 1, 1);
         s->cinfo.mem->max_memory_to_use = cap > (uint64_t)LONG_MAX ? LONG_MAX : (long)cap;

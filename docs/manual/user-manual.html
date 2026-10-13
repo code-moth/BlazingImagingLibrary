@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 4</p>
+      <p class="eyebrow">Manual · Version 5</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>4</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 69</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>5</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 70</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 69, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 70, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -474,9 +474,14 @@ image  = source.image(0)
 <td>Refuse an Image, a compressed block or a metadata group larger than this</td>
 </tr>
 <tr>
+<td><code>max_scans</code></td>
+<td>None, or 500 when <code>untrusted</code></td>
+<td>Refuse a progressive image with more scans than this</td>
+</tr>
+<tr>
 <td><code>corrupt_as_missing</code></td>
 <td>False</td>
-<td>Deliver a corrupt block as missing pixels, with status <code>Partial</code>, instead of an error</td>
+<td>Deliver a corrupt block as missing pixels, with status <code>Partial</code>, instead of an error. A block a library recovered from damage, with a warning, counts as corrupt, and is missing as a whole.</td>
 </tr>
 <tr>
 <td><code>companion</code></td>
@@ -527,7 +532,7 @@ image  = source.image(0)
 )
 </code></pre>
 <p><strong>Remote Sources</strong> are read through the same calls. BIL runs its network code on a small runtime of its own, so a caller's own asynchronous runtime is never touched. Requests are counted and merged, because over a network the number of requests costs more than the bytes, and <code>plan</code> reports both.</p>
-<p><strong>Closing.</strong> In C, <code>bil_close_source</code> closes a Source. For Rust and Python the specification does not yet say; this manual assumes a Source closes when the last reference to it goes (chapter 24, M3). A borrowed Fragment or Slice holds a reference, so the Source stays open while any of its borrowed arrays lives. Closing frees the cache, the held metadata and anything read ahead.</p>
+<p><strong>Closing.</strong> A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call <code>close()</code> in Python or <code>bil_close_source</code> in C. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again (chapter 24, M20). Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.</p>
 <h2 id="6-looking-at-an-image">6. Looking at an Image</h2>
 <blockquote>
 <p><strong>Status:</strong> Specified.</p>
@@ -575,6 +580,10 @@ info  = image.info()
 <tr>
 <td><code>storage</code></td>
 <td>How the pixels lie in the file: block size, interleave, and whether the order of the blocks is known (chapter 12)</td>
+</tr>
+<tr>
+<td><code>may_have_missing</code></td>
+<td>Whether this Image can have missing pixels. Where it is false, no checks are made for them (chapter 9).</td>
 </tr>
 </tbody>
 </table></div>
@@ -658,7 +667,7 @@ hue = hsv[&quot;hue&quot;]
 )
 plan   = image.plan(request)     # sizes, access class, blocks to decode, before any pixel is read
 result = image.read(request)
-result[&quot;complex.polar.phase&quot;, &quot;level2&quot;]   # indexing by Slice and Level is assumed (chapter 24, M5)
+result[&quot;complex.polar.phase&quot;, &quot;level2&quot;]   # by Slice name and level name
 </code></pre>
 <div class="table-wrap"><table>
 <thead>
@@ -788,7 +797,7 @@ pyramid  = image.read_slice_levels(&quot;pixel.raw.intensity&quot;, window, 4)  
 pyramid[&quot;level2&quot;]
 </code></pre>
 <p><strong>Size.</strong> A Slice at Level n holds the grid points that fall inside the Window. A Window of rows 100 to 199 at Level 2 holds the grid rows at 100, 104, … 196: 25 rows. <code>plan_slice</code> reports the size.</p>
-<p><strong>How many Levels.</strong> <code>level_count()</code> gives the number of resolution levels the Image offers (chapter 24, M6).</p>
+<p><strong>How many Levels.</strong> <code>level_count()</code> gives the number of resolution levels the Image offers: Level 0 and every halving until the Image is one pixel along its shorter side.</p>
 <p><strong>All Levels in one pass.</strong> Each halving makes the Level above it, so every Level from 0 to n costs about a third more than Level 0 alone. Ask for them together rather than one at a time.</p>
 <p><strong>Methods</strong></p>
 <div class="table-wrap"><table>
@@ -840,12 +849,12 @@ pyramid[&quot;level2&quot;]
 <tr>
 <td>Label</td>
 <td><code>class.labels.value</code>, <code>palette.lookup.index</code></td>
-<td>Keeping every second value. A label is never averaged.</td>
+<td>Keeping every second value. A label is never averaged, so coarse Levels alone read only their grid points, whatever the method.</td>
 </tr>
 <tr>
 <td>Mask</td>
 <td><code>pixel.mask.valid</code></td>
-<td>1.0 where the reduced value exists, else 0.0</td>
+<td>1.0 wherever any pixel under the method's filter was valid, else 0.0, beside whatever kind of Slice it is read with</td>
 </tr>
 <tr>
 <td>Range</td>
@@ -907,10 +916,10 @@ one_more  = image.read_slice(&quot;color.rgb.green&quot;, window, level=&quot;st
 <p><strong>In a Fragment</strong> a missing pixel is marked in the Fragment's validity mask. A Fragment is still a full array, and the stored values at missing positions mean nothing.</p>
 <p><strong>The mask as a Slice</strong></p>
 <pre><code class="language-python">read  = image.read_slices(&quot;pixel.mask&quot;, [&quot;valid&quot;, &quot;valid_fraction&quot;], window, level=2)
-read[&quot;valid&quot;]            # 1.0 where a value exists, else 0.0
-read[&quot;valid_fraction&quot;]   # at coarser Levels, the share of contributing pixels that were valid
+read[&quot;valid&quot;]            # 1.0 wherever a pixel under the filter was valid, else 0.0
+read[&quot;valid_fraction&quot;]   # at coarser Levels, the share of valid pixels, weighted by the filter
 </code></pre>
-<p><strong>Levels leave missing values out.</strong> Each halving skips NaN and rescales the remaining weights, so a value is NaN only when every value that would contribute is missing. <code>missing_weights</code> chooses how the values below are weighted.</p>
+<p><strong>Levels leave missing values out.</strong> Each halving skips NaN and rescales the remaining weights once, over the filter's rows and columns together, so a value is NaN only when every value that would contribute is missing. <code>missing_weights</code> chooses how the values below are weighted.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -972,7 +981,7 @@ filled.status      # still Partial
 <li><strong>Not borrowed.</strong> Filling writes new values.</li>
 </ul>
 <p><strong>No cost where nothing is missing.</strong> A driver says whether an Image can have missing pixels. Where it cannot, no checks are made at all, and the fast paths are unchanged. The experiments confirm it: an Image with no mask runs the same code as before missing data was added.</p>
-<p><strong>Stored NaN.</strong> In float data, a NaN stored at a pixel the mask calls valid is treated as missing, the same as a masked pixel. The experiments do this, and it is a proposal awaiting the author (chapter 24).</p>
+<p><strong>Stored NaN.</strong> In float data, a NaN stored at a pixel the mask calls valid is missing, the same as a masked pixel.</p>
 <h2 id="10-fragments-the-native-pixels">10. Fragments: the native pixels</h2>
 <blockquote>
 <p><strong>Status:</strong> Specified. Borrowing from a mapped file, <code>Shared</code>, <code>Private</code> and <code>Off</code> mapping, strided views for a <code>step</code>, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would.</p>
@@ -981,7 +990,7 @@ filled.status      # still Partial
 <pre><code class="language-python">fragment = image.read_fragment(window)               # level0 by default
 fragment.pixel_type     # sample type, component count, significant bits, bit shift
 fragment.is_borrowed    # True if these are the stored bytes themselves
-fragment.data           # a NumPy array of the native type, read-only when borrowed
+fragment.data           # a NumPy array of the native type, read-only when borrowed under Shared
 coarse = image.read_fragment(window, &quot;stored2&quot;)      # a stored level, as it stands
 </code></pre>
 <p>A computed Level is not a Fragment, because it holds new values, so <code>read_fragment(window, "level2")</code> is an error.</p>
@@ -1004,7 +1013,8 @@ coarse = image.read_fragment(window, &quot;stored2&quot;)      # a stored level,
 <p>Otherwise the Fragment owns a buffer decoded once. The type is the same either way.</p>
 <ul>
 <li><strong>Read-only under <code>Shared</code> mapping.</strong> In Python a borrowed array is read-only. Open with <code>mapping=Private</code> to change it in your own memory, copy-on-write.</li>
-<li><strong>It keeps its Source open,</strong> wherever it goes.</li>
+<li><strong>Shared within one Source under <code>Private</code>.</strong> Every array borrowed from one Source shares its copied pages, so a change through one shows through the others. Changing pages another thread is reading is a data race in your code; BIL never writes them.</li>
+<li><strong>It keeps its memory,</strong> wherever it goes, even after the Source is closed.</li>
 <li><strong>Do not change a file BIL has mapped.</strong> Mapping a file another process changes or shortens is not supported, and on most systems can end the reading process. Use <code>mapping=Off</code> for files that may change and for unreliable network file systems.</li>
 </ul>
 <p><strong>Deferred Fragments.</strong> For video, reading a Fragment decodes nothing: it seeks and extracts the compressed packets from the preceding key frame to the frame asked for, and <code>is_deferred</code> is true. The frame is decoded when a Slice is made from it, or when you ask the Fragment for its pixels. A deferred Fragment is self-contained and decoded once, by its own Reader where that Reader is free, and otherwise by a decoder made for the purpose. A Window does not reduce video decoding, only the conversion to float32.</p>
@@ -1049,7 +1059,7 @@ slice = luma.read_slice(&quot;video.planes.luma&quot;, bil.Window(0, 0, 1080, 19
 <li><strong>The index is built on first need:</strong> the first call that needs a <code>Known</code> count, a time coordinate, or a jump to a distant frame. Call <code>build_frame_index()</code> to choose the moment yourself.</li>
 <li><strong>Save it.</strong> <code>write_frame_index(location)</code> saves the index, and <code>frame_index</code> in <code>OpenOptions</code> uses it next time. A saved index records the stream's size and a checksum of its start, and one that no longer matches is refused.</li>
 </ul>
-<p><strong>Live streams.</strong> A live stream's count is <code>AtLeast</code>, and its frames are numbered from the first received. All Readers see the same frames, a frame older than those still held is <code>Missing</code>, and <code>latest_frame()</code> gives the newest. Give every read a <code>timeout</code>, and a <code>cancel</code> handle if another thread may need to stop it.</p>
+<p><strong>Live streams.</strong> A live stream's count is <code>AtLeast</code>, and its frames are numbered from the first received. All Readers see the same frames, a frame older than those still held is <code>Missing</code>, and <code>latest_frame()</code> gives the newest. Give every read a <code>timeout</code>, and a <code>cancel</code> handle if another thread may need to stop it. A live stream ignores the access pattern of chapter 12, since every Reader shares its one position.</p>
 <p><strong>Nested cycles.</strong> A sensor that sweeps 50 range gates once a second can declare further indexes, such as <code>sweep</code> and <code>gate</code>. They resolve to a frame number through <code>resolve_frame</code>, and a Window still carries one <code>frame</code>.</p>
 <h2 id="12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</h2>
 <blockquote>
@@ -1591,7 +1601,7 @@ common.earth_sun_distance = 0.9934
 model = image.read_geo_model(&quot;rational_polynomial&quot;, 0)
 chain = model.for_slice(overview)             # adds BIL's image_window step for this Slice
 where = chain.image_to_world([(0.0, 0.0), (511.0, 511.0)])
-back  = chain.world_to_image([(where[0].lat, where[0].lon, where[0].height)])   # fields assumed (M5)
+back  = chain.world_to_image([(where[0].lat, where[0].lon, where[0].height)])
 </code></pre>
 <p><code>for_window(window, level)</code> builds the same chain for a computed Level before any Slice is read, and <code>list_steps()</code> lists each step of a chain with its spaces and parameters.</p>
 <p><strong>Steps.</strong> <code>affine</code>, <code>projective</code>, <code>polynomial</code>, <code>rational_polynomial</code>, <code>coordinate_grid</code>, <code>tie_points</code>, <code>camera</code>, <code>pose</code>, <code>range_doppler</code>, <code>polar</code>, <code>surface</code>, <code>reference_change</code>, <code>sphere_rotation</code>, <code>external</code> and <code>image_window</code>. A step runs both ways, by iteration where it has no direct inverse.</p>
@@ -1766,7 +1776,7 @@ scene = bil.open_source(path, untrusted=True, max_image_pixels=4 * 10**10)   # r
 <tbody>
 <tr>
 <td>Limits</td>
-<td><code>max_image_pixels</code>, <code>max_decoded_bytes</code> and <code>max_field_group_bytes</code> refuse impossible sizes before any memory is taken. None are set for a trusted Source, because very large images are BIL's purpose; an untrusted Source gets defaults scaled to the file. A header claiming more uncompressed pixels than the file can hold is always rejected.</td>
+<td><code>max_image_pixels</code>, <code>max_decoded_bytes</code>, <code>max_field_group_bytes</code> and <code>max_scans</code> refuse what is too large: a header claiming too many pixels or bytes before any memory is taken for them, and too many scans while decoding, which then stops and frees what it took. A refusal is an error. None are set for a trusted Source, because very large images are BIL's purpose; an untrusted Source gets defaults scaled to the file, and 500 scans. A library's own working memory for a block is capped at twice <code>max_decoded_bytes</code>, where the library allows it. A header claiming more uncompressed pixels than the file can hold is always rejected. A codec is never let expand a JPEG 2000 palette after the size is checked: the driver delivers the indices for <code>palette.lookup</code>.</td>
 </tr>
 <tr>
 <td>Configured plugin locations</td>
@@ -1953,8 +1963,8 @@ bil.register_driver(VendorDriver)
 </tr>
 <tr>
 <td>An error on a corrupt block</td>
-<td>Corrupt data is an error by default</td>
-<td>Open with <code>corrupt_as_missing=True</code> to get <code>Partial</code> instead</td>
+<td>Corrupt data is an error by default, including a block a library recovered with a warning</td>
+<td>Open with <code>corrupt_as_missing=True</code> to get <code>Partial</code> instead, with the block missing</td>
 </tr>
 <tr>
 <td>An error on <code>stored2.level1</code></td>
@@ -1989,12 +1999,12 @@ bil.register_driver(VendorDriver)
 
 source = bil.open_source(&quot;scene.ntf&quot;)
 slice  = source.image(0).read_slice(&quot;complex.polar.magnitude&quot;, window)
-slice.data                          # a NumPy array over the same memory, read-only when borrowed
+slice.data                          # a NumPy array over the same memory, read-only when borrowed under Shared
 </code></pre>
 <ul>
 <li><strong>No copy.</strong> Slices and Fragments are NumPy arrays over BIL's memory, including strided and borrowed ones.</li>
 <li><strong>The interpreter lock is released</strong> during every read.</li>
-<li><strong>One build for several Pythons:</strong> the package uses Python's stable interface.</li>
+<li><strong>One build for several Pythons:</strong> the package uses Python's stable interface, through PyO3.</li>
 </ul>
 <p><strong>Rust</strong></p>
 <pre><code class="language-rust">let source = bil::open_source(&quot;scene.ntf&quot;)?;
@@ -2204,8 +2214,8 @@ source.close()                      # the arrays stay valid; the mapping goes wi
 </tr>
 <tr>
 <td><code>close()</code></td>
-<td>Not yet specified for Python (M3)</td>
-<td>Frees the Source; borrowed arrays keep only the file's memory</td>
+<td><code>close()</code> (section 4)</td>
+<td>The same: frees the Source; borrowed arrays keep only the file's memory</td>
 </tr>
 <tr>
 <td><code>Fragment</code>, <code>Slice</code></td>
@@ -2225,9 +2235,9 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 </code></pre>
 <p>It runs in CI on Linux on x86 and ARM. GDAL, the other library the assessment names, is still to come. <code>RESULTS.md</code> beside it has the full results.</p>
 <p><strong>What comes next</strong> in code: the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 and 69 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What specification versions 68 to 70 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 and 69 found the points below. Each is a proposal for the author, not a decision. Points fixed in the specification while writing are listed first, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 70 found the points below. Each goes to the author as a proposal. Those ruled on are listed first, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2273,6 +2283,86 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 <td>M10 of version 1: whether blocks read ahead count against <code>set_cache_size</code>, and the other details of read-ahead</td>
 <td>Accepted as proposed, by the author's ruling (version 69); with many small tiles, raise the count</td>
 </tr>
+<tr>
+<td>M2</td>
+<td><strong>Whether an Image can have missing pixels</strong> is something "a driver states" (section 5), but <code>ImageInfo</code> has no field for it, so a caller cannot see whether the fast path applies</td>
+<td>Accepted as proposed, by the author's ruling (version 70): add <code>may_have_missing</code> to <code>ImageInfo</code></td>
+</tr>
+<tr>
+<td>M3</td>
+<td><strong>How a Source is closed</strong> is stated for C (<code>bil_close_source</code>) but not for Rust or Python. This manual says a Source closes when the last reference goes. Section 4 says a borrowed array "keeps its Source open".</td>
+<td>Accepted as proposed, by the author's ruling (version 70): state that, and add <code>close()</code> in Python, which frees what the Source holds and refuses further reads, while arrays borrowed from it keep only the file's memory. Experiment 5 does this.</td>
+</tr>
+<tr>
+<td>M4</td>
+<td><strong>The configuration</strong> names plugin locations, the decoder's place, <code>isolation</code> and the driver order, but its form and where it lives are not specified</td>
+<td>Accepted as proposed, by the author's ruling (version 70): a file in a stated place, with an environment variable to point elsewhere and a call to read it, settled when Tier 2 starts</td>
+</tr>
+<tr>
+<td>M5</td>
+<td><strong>Python forms not stated:</strong> how a <code>SliceRequest</code> is built, how a returned set of Slices is indexed by Slice and Level, how a time is passed to <code>find_index</code>, and the fields of a world position</td>
+<td>Accepted as proposed, by the author's ruling (version 70): constructors with keywords, indexing by <code>(slice_name, level_name)</code>, <code>datetime</code> for times, and positions with <code>lat</code>, <code>lon</code>, <code>height</code>, <code>status</code> and <code>accuracy</code>, as this manual assumes</td>
+</tr>
+<tr>
+<td>M6</td>
+<td><strong><code>level_count()</code></strong> is "how many resolution levels this Image offers", but computed Levels have no natural limit</td>
+<td>Accepted as proposed, by the author's ruling (version 70): the number of halvings until the Image is one pixel along its shorter side</td>
+</tr>
+<tr>
+<td>M7</td>
+<td><strong><code>common.units</code> and a Slice's unit.</strong> A Slice's unit is part of its definition; <code>common.units</code> gives the unit of the calibrated value per component. They can disagree for a function that converts units.</td>
+<td>Accepted as proposed, by the author's ruling (version 70): define <code>common.units</code> as the unit of the calibration that <code>radiometric_gain</code> and <code>radiometric_offset</code> produce, and nothing else</td>
+</tr>
+<tr>
+<td>M8</td>
+<td><strong><code>common.sample_spacing</code> beside <code>common.ground_sample_distance</code>.</strong> One is in the image plane, such as slant range, and the other on the ground, but the definitions do not yet say so</td>
+<td>Accepted as proposed, by the author's ruling (version 70): state it in both definitions</td>
+</tr>
+<tr>
+<td>M9</td>
+<td><strong>Access patterns on a live stream.</strong> A live stream has one position for every Reader, so neither pattern can change how it is read</td>
+<td>Accepted as proposed, by the author's ruling (version 70): state that a live stream ignores the pattern, and <code>plan</code> reports it</td>
+</tr>
+<tr>
+<td>M11</td>
+<td><strong>The four proposals of experiment 1b:</strong> one 2D average rather than rescaling after each pass; stored NaN counted as missing; <code>valid_fraction</code> weighted by the filter; and <code>valid</code> following the averaged mask beside kinds that are not averaged</td>
+<td>Accepted as proposed, by the author's ruling (version 70): as the experiment does, set out in <code>RESULTS-1b.md</code></td>
+</tr>
+<tr>
+<td>M12</td>
+<td><strong>Labels at coarse Levels alone.</strong> A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window</td>
+<td>Accepted as proposed, by the author's ruling (version 70): labels read only their grid points under any method, as the experiment does; state it in section 5</td>
+</tr>
+<tr>
+<td>M13</td>
+<td><strong>Writes under <code>Private</code>.</strong> Every array borrowed from one Source shares its copy-on-write pages, so a write through one is seen by the others, and a write while another thread reads the same pages is a data race in the caller's code. Section 4 says only that changes stay in the caller's memory.</td>
+<td>Accepted as proposed, by the author's ruling (version 70): state both, as experiment 5 finds</td>
+</tr>
+<tr>
+<td>M14</td>
+<td><strong>Two statements differ.</strong> Section 12, rule 9 says borrowed arrays are read-only; section 4 allows writes under <code>Private</code></td>
+<td>Accepted as proposed, by the author's ruling (version 70): rule 9: "read-only under <code>Shared</code> mapping"</td>
+</tr>
+<tr>
+<td>M15</td>
+<td><strong>How the Python interface is built.</strong> The implementability assessment assumes PyO3. Experiment 5 declares the stable interface itself, about 190 lines, because this workspace cannot fetch PyO3.</td>
+<td>Accepted as proposed, by the author's ruling (version 70): PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check</td>
+</tr>
+<tr>
+<td>M16</td>
+<td><strong>Corrupt data a library recovers from.</strong> libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default.</td>
+<td>Accepted as proposed, by the author's ruling (version 70): a warning is an error by default; under <code>corrupt_as_missing</code>, the block (Fragment) is marked missing and the read is <code>Partial</code>, since libjpeg does not say which rows it filled</td>
+</tr>
+<tr>
+<td>M17</td>
+<td><strong>A limit on progressive scans, a cap on a library's working memory,</strong> and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image, and keeps whole-image coefficients beside its output.</td>
+<td>Accepted as proposed, by the author's ruling (version 70): a fourth limit, <code>max_scans</code>, 500 by default for untrusted Sources and none otherwise, like the others; a library's working memory capped at a multiple of <code>max_decoded_bytes</code>, twice in experiment 3; a refusal is an error, as section 3.3 says</td>
+</tr>
+<tr>
+<td>M18</td>
+<td><strong>JPEG 2000 palettes and channel definitions.</strong> OpenJPEG expands a JP2 palette after the header's size is checked, against section 10.3; turning that off also leaves the component mapping (<code>cmap</code>) and channel definitions (<code>cdef</code>, such as which component is alpha) unapplied.</td>
+<td>Accepted as proposed, by the author's ruling (version 70): the driver delivers indices for <code>palette.lookup</code>, and applies or reports <code>cmap</code> and <code>cdef</code> itself, as experiment 3's layer leaves them</td>
+</tr>
 </tbody>
 </table></div>
 <p><strong>Open, for the author</strong></p>
@@ -2287,100 +2377,16 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 </thead>
 <tbody>
 <tr>
-<td>M2</td>
-<td><strong>Whether an Image can have missing pixels</strong> is something "a driver states" (section 5), but <code>ImageInfo</code> has no field for it, so a caller cannot see whether the fast path applies</td>
-<td>3, 5</td>
-<td>Add <code>may_have_missing</code> to <code>ImageInfo</code></td>
+<td>M19</td>
+<td><strong>A stored NaN where there is no mask.</strong> Version 70 makes a NaN stored at a pixel the validity mask calls valid missing. It does not say what a NaN in float data does where the Image has no mask and <code>may_have_missing</code> is false: there the fast path makes no checks, so a NaN would spread through averaging.</td>
+<td>5</td>
+<td>A stored NaN in float data is always missing. A driver of a float format sets <code>may_have_missing</code> unless the format guarantees there is no NaN, so the fast path is kept only where it is safe</td>
 </tr>
 <tr>
-<td>M3</td>
-<td><strong>How a Source is closed</strong> is stated for C (<code>bil_close_source</code>) but not for Rust or Python. This manual says a Source closes when the last reference goes. Section 4 says a borrowed array "keeps its Source open".</td>
+<td>M20</td>
+<td><strong>Closing in C.</strong> M3 was proposed for Python. Version 70 writes its C form beside it: <code>bil_close_source</code> frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed. In Rust, dropping the Source closes it.</td>
 <td>2, 4</td>
-<td>State that, and add <code>close()</code> in Python, which frees what the Source holds and refuses further reads, while arrays borrowed from it keep only the file's memory. Experiment 5 does this.</td>
-</tr>
-<tr>
-<td>M4</td>
-<td><strong>The configuration</strong> names plugin locations, the decoder's place, <code>isolation</code> and the driver order, but its form and where it lives are not specified</td>
-<td>10.2, 10.3</td>
-<td>A file in a stated place, with an environment variable to point elsewhere and a call to read it, settled when Tier 2 starts</td>
-</tr>
-<tr>
-<td>M5</td>
-<td><strong>Python forms not stated:</strong> how a <code>SliceRequest</code> is built, how a returned set of Slices is indexed by Slice and Level, how a time is passed to <code>find_index</code>, and the fields of a world position</td>
-<td>3.1, 5, 13.4</td>
-<td>Constructors with keywords, indexing by <code>(slice_name, level_name)</code>, <code>datetime</code> for times, and positions with <code>lat</code>, <code>lon</code>, <code>height</code>, <code>status</code> and <code>accuracy</code>, as this manual assumes</td>
-</tr>
-<tr>
-<td>M6</td>
-<td><strong><code>level_count()</code></strong> is "how many resolution levels this Image offers", but computed Levels have no natural limit</td>
-<td>5</td>
-<td>The number of halvings until the Image is one pixel along its shorter side</td>
-</tr>
-<tr>
-<td>M7</td>
-<td><strong><code>common.units</code> and a Slice's unit.</strong> A Slice's unit is part of its definition; <code>common.units</code> gives the unit of the calibrated value per component. They can disagree for a function that converts units.</td>
-<td>5, 14.2</td>
-<td>Define <code>common.units</code> as the unit of the calibration that <code>radiometric_gain</code> and <code>radiometric_offset</code> produce, and nothing else</td>
-</tr>
-<tr>
-<td>M8</td>
-<td><strong><code>common.sample_spacing</code> beside <code>common.ground_sample_distance</code>.</strong> One is in the image plane, such as slant range, and the other on the ground, but the definitions do not yet say so</td>
-<td>14.2</td>
-<td>State it in both definitions</td>
-</tr>
-<tr>
-<td>M9</td>
-<td><strong>Access patterns on a live stream.</strong> A live stream has one position for every Reader, so neither pattern can change how it is read</td>
-<td>3.2, 4</td>
-<td>State that a live stream ignores the pattern, and <code>plan</code> reports it</td>
-</tr>
-<tr>
-<td>M11</td>
-<td><strong>The four proposals of experiment 1b:</strong> one 2D average rather than rescaling after each pass; stored NaN counted as missing; <code>valid_fraction</code> weighted by the filter; and <code>valid</code> following the averaged mask beside kinds that are not averaged</td>
-<td>5</td>
-<td>As the experiment does, set out in <code>RESULTS-1b.md</code></td>
-</tr>
-<tr>
-<td>M12</td>
-<td><strong>Labels at coarse Levels alone.</strong> A label is kept, never averaged, so it needs only its grid point; but section 5's table of costs says a filtering method reads every pixel under the Window</td>
-<td>5</td>
-<td>Labels read only their grid points under any method, as the experiment does; state it in section 5</td>
-</tr>
-<tr>
-<td>M13</td>
-<td><strong>Writes under <code>Private</code>.</strong> Every array borrowed from one Source shares its copy-on-write pages, so a write through one is seen by the others, and a write while another thread reads the same pages is a data race in the caller's code. Section 4 says only that changes stay in the caller's memory.</td>
-<td>4</td>
-<td>State both, as experiment 5 finds</td>
-</tr>
-<tr>
-<td>M14</td>
-<td><strong>Two statements differ.</strong> Section 12, rule 9 says borrowed arrays are read-only; section 4 allows writes under <code>Private</code></td>
-<td>4, 12</td>
-<td>Rule 9: "read-only under <code>Shared</code> mapping"</td>
-</tr>
-<tr>
-<td>M15</td>
-<td><strong>How the Python interface is built.</strong> The implementability assessment assumes PyO3. Experiment 5 declares the stable interface itself, about 190 lines, because this workspace cannot fetch PyO3.</td>
-<td>10.5, 12</td>
-<td>PyO3 for the full interface, the better tested route, fetched by CI; the experiment's declarations stay as its check</td>
-</tr>
-<tr>
-<td>M16</td>
-<td><strong>Corrupt data a library recovers from.</strong> libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default.</td>
-<td>3.3, 10.3</td>
-<td>A warning is an error by default; under <code>corrupt_as_missing</code>, the block (Fragment) is marked missing and the read is <code>Partial</code>, since libjpeg does not say which rows it filled</td>
-</tr>
-<tr>
-<td>M17</td>
-<td><strong>A limit on progressive scans, a cap on a library's working memory,</strong> and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image, and keeps whole-image coefficients beside its output.</td>
-<td>10.3</td>
-<td>A fourth limit, <code>max_scans</code>, 500 by default for untrusted Sources and none otherwise, like the others; a library's working memory capped at a multiple of <code>max_decoded_bytes</code>, twice in experiment 3; a refusal is an error, as section 3.3 says</td>
-</tr>
-<tr>
-<td>M18</td>
-<td><strong>JPEG 2000 palettes and channel definitions.</strong> OpenJPEG expands a JP2 palette after the header's size is checked, against section 10.3; turning that off also leaves the component mapping (<code>cmap</code>) and channel definitions (<code>cdef</code>, such as which component is alpha) unapplied.</td>
-<td>5, 9.3, 10.3</td>
-<td>The driver delivers indices for <code>palette.lookup</code>, and applies or reports <code>cmap</code> and <code>cdef</code> itself, as experiment 3's layer leaves them</td>
+<td>Confirm the C form as written, or rule otherwise</td>
 </tr>
 </tbody>
 </table></div>
@@ -2485,7 +2491,7 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 4, written beside the code against version 69 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 5, written beside the code against version 70 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>
