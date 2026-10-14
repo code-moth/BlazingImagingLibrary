@@ -177,7 +177,9 @@ fn scan(
             .iter()
             .map(|&c| char::from(c))
             .collect::<String>()
-            .trim_end()
+            // Only the space padding NITF writes: any other byte is part of the tag, and a tag
+            // that is not printable is refused below.
+            .trim_end_matches(' ')
             .to_string();
         if tag.is_empty() || !tag.bytes().all(|b| b.is_ascii_graphic()) {
             return (

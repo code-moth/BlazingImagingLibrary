@@ -980,6 +980,28 @@ fn blocks_too_large_to_count_are_corrupt() {
     assert!(matches!(NitfSource::open(file), Err(Error::Corrupt(_))));
 }
 
+/// Found by the checking agent: only spaces pad a tag, so a tag padded with a tab is damage.
+#[test]
+fn a_tag_padded_with_anything_but_spaces_is_refused() {
+    let mut img = with_data(Img::new(4, 4, 1, "INT", 8));
+    img.ixshd = [tre("GOOD", b"ok"), b"ABC\t\t\t00002xy".to_vec()].concat();
+    let file = File21 {
+        images: vec![img],
+        des: vec![],
+        xhd: vec![],
+    }
+    .bytes();
+    let source = NitfSource::open(file).unwrap();
+    assert_eq!(
+        source.list_field_groups(Scope::Image(0)).unwrap(),
+        ["nitf.image_subheader", "nitf.GOOD"]
+    );
+    let g = source
+        .read_field_group(Scope::Image(0), "nitf.image_subheader")
+        .unwrap();
+    assert_eq!(g.status, Status::Partial);
+}
+
 #[test]
 fn a_damaged_extension_area_leaves_the_rest_readable() {
     let mut img = with_data(Img::new(4, 4, 1, "INT", 8));

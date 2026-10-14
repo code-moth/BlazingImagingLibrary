@@ -5,7 +5,7 @@ The NITF container reader (`crates/bil/src/nitf/`) is tested three ways. This fi
 
 ## Synthetic files
 
-`tests/nitf.rs`, in every CI run on all four systems, without optimization: 16 tests over files written field by field by the tests' own writer, beside 5 unit tests of the field definitions and values in the modules. They pass.
+`tests/nitf.rs`, in every CI run on all four systems, without optimization: 17 tests over files written field by field by the tests' own writer, beside 5 unit tests of the field definitions and values in the modules. They pass.
 
 ## Corrupt files
 
