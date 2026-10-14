@@ -135,6 +135,12 @@ fn main() {
                         let name = std::path::Path::new(&path).file_name().unwrap();
                         let file = format!("{}.{i}.bil", name.to_string_lossy());
                         std::fs::write(std::path::Path::new(&dir).join(file), &planes).unwrap();
+                        // One byte for each pixel: 1 where it was recorded, 0 where not.
+                        if let Some(v) = &f.validity {
+                            let mask: Vec<u8> = v.iter().map(|&x| u8::from(x)).collect();
+                            let file = format!("{}.{i}.mask", name.to_string_lossy());
+                            std::fs::write(std::path::Path::new(&dir).join(file), mask).unwrap();
+                        }
                     }
                     let missing = f
                         .validity
