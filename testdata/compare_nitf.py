@@ -4,7 +4,8 @@
 For each NITF file given, runs BIL's `nitf_dump` example and the GDAL reference program
 `nitf_reference`, and compares what they report: the version, the number of Images, header
 fields, each Image's size and sample type, the extensions present, and a hash of every
-uncompressed Image's pixels, band after band.
+Image's pixels, band after band, where both decode them: uncompressed Images and, where both
+were built with OpenJPEG, JPEG 2000.
 
     python3 -I testdata/compare_nitf.py NITF_DUMP NITF_REFERENCE FILE...
 
@@ -63,6 +64,17 @@ def compare(bil_lines, gdal_lines, path):
     bil, bil_file_ext, bil_ext, missing = facts(bil_lines)
     gdal, _, gdal_ext, _ = facts(gdal_lines)
     notes = []
+    # Pixels BIL refuses with a stated reason, such as a JPEG 2000 Image of a kind it does not yet
+    # read (M34), are a known limit, noted rather than counted, where GDAL decodes them.
+    for line in sorted(bil - gdal):
+        m = re.match(r"image (\d+) pixels refused (.*)$", line)
+        if not m:
+            continue
+        other = [g for g in gdal if re.match(rf"image {m.group(1)} pixels ", g)]
+        bil.discard(line)
+        for g in other:
+            gdal.discard(g)
+        notes.append(f"image {m.group(1)}: BIL refuses its pixels: {m.group(2)}")
     # Pixels never recorded hold no values: BIL leaves 0 and marks them, GDAL fills in its pad
     # value. Images whose pixels differ only there agree.
     for line in sorted(bil - gdal):

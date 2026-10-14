@@ -1,11 +1,15 @@
 [package]
 name = "bil-sys"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 rust-version = "1.97"
 license = "LGPL-2.1-or-later"
-description = "Native bindings used by the Blazing Imaging Library (bil). Placeholder: no bindings yet."
+description = "Native bindings used by the Blazing Imaging Library (bil): OpenJPEG's decoder, behind the openjpeg feature."
 repository = "https://github.com/code-moth/BlazingImagingLibrary"
 readme = "README.md"
+
+[features]
+# BIL's own bindings to the OpenJPEG the system or conda provides (specification, section 10).
+openjpeg = []
 
 [dependencies]

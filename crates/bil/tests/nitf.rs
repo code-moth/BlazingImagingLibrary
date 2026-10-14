@@ -1119,18 +1119,21 @@ fn compressed_blocks_are_left_to_a_codec() {
     let s = source.describe_storage(0).unwrap();
     assert_eq!(s.blocks.len(), 1);
     assert_eq!((s.blocks[0].offset, s.blocks[0].length), info.data);
-    assert!(matches!(
-        source.read_fragment(
-            0,
-            Window {
-                row_start: 0,
-                col_start: 0,
-                row_count: 1,
-                col_count: 1
-            }
-        ),
-        Err(Error::Unsupported(_))
-    ));
+    let read = source.read_fragment(
+        0,
+        Window {
+            row_start: 0,
+            col_start: 0,
+            row_count: 1,
+            col_count: 1,
+        },
+    );
+    // A codestream cut short: an error with the codec, unsupported without it.
+    if cfg!(feature = "openjpeg") {
+        assert!(matches!(read, Err(Error::Corrupt(_))));
+    } else {
+        assert!(matches!(read, Err(Error::Unsupported(_))));
+    }
 }
 
 #[test]
@@ -1295,4 +1298,302 @@ fn corrupt_files_are_errors_never_panics() {
         opened > 1000 && refused > 1000,
         "the mutations should both break and spare files"
     );
+}
+
+// ---------------------------------------------------------------- JPEG 2000 images
+
+fn jpeg2000_fixture(name: &str) -> Vec<u8> {
+    let path = format!("{}/tests/data/jpeg2000/{name}", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+/// The samples `tests/data/jpeg2000/make_fixtures.c` wrote.
+#[cfg(feature = "openjpeg")]
+fn jpeg2000_value(x: i64, y: i64, c: i64, prec: u32, signed: bool) -> i64 {
+    let m = 1i64 << prec;
+    let v = (x * 7 + y * 13 + c * 31 + x * y) % m;
+    if signed {
+        v - m / 2
+    } else {
+        v
+    }
+}
+
+fn jpeg2000_image(
+    fixture: &str,
+    rows: u64,
+    cols: u64,
+    bands: u64,
+    pvtype: &'static str,
+    nbpp: u64,
+) -> Img {
+    let mut img = Img::new(rows, cols, bands, pvtype, nbpp);
+    img.ic = "C8";
+    img.imode = "B";
+    img.data = jpeg2000_fixture(fixture);
+    img
+}
+
+fn open_one(img: Img) -> NitfSource<Vec<u8>> {
+    let file = File21 {
+        images: vec![img],
+        des: vec![],
+        xhd: vec![],
+    }
+    .bytes();
+    NitfSource::open(file).unwrap()
+}
+
+#[cfg(feature = "openjpeg")]
+#[test]
+fn jpeg2000_images_decode_through_windows() {
+    let cases = [
+        ("gray8.j2k", 29, 37, 1, "INT", 8, SampleType::U8, 8, false),
+        ("gray8.jp2", 29, 37, 1, "INT", 8, SampleType::U8, 8, false),
+        ("rgb8.j2k", 19, 23, 3, "INT", 8, SampleType::U8, 8, false),
+        (
+            "gray16.j2k",
+            17,
+            21,
+            1,
+            "INT",
+            16,
+            SampleType::U16,
+            16,
+            false,
+        ),
+        (
+            "signed12.j2k",
+            18,
+            20,
+            1,
+            "SI",
+            12,
+            SampleType::I16,
+            12,
+            true,
+        ),
+    ];
+    for (name, rows, cols, bands, pvtype, nbpp, t, prec, signed) in cases {
+        let mut img = jpeg2000_image(name, rows, cols, bands, pvtype, nbpp);
+        // The NITF blocks describe the codestream's 16 × 16 tiles where it has them.
+        if name.starts_with("gray8") {
+            img.block = (16, 16);
+        }
+        let source = open_one(img);
+        assert_eq!(
+            source.image_info(0).unwrap().codec.as_deref(),
+            Some("jpeg2000")
+        );
+        let windows = [
+            Window {
+                row_start: 0,
+                col_start: 0,
+                row_count: rows as u32,
+                col_count: cols as u32,
+            },
+            Window {
+                row_start: 3,
+                col_start: 5,
+                row_count: 11,
+                col_count: 13,
+            },
+            Window {
+                row_start: rows - 1,
+                col_start: cols - 1,
+                row_count: 1,
+                col_count: 1,
+            },
+        ];
+        for w in windows {
+            let f = source.read_fragment(0, w).unwrap();
+            assert_eq!(f.pixel_type.sample_type, t, "{name}");
+            assert_eq!(f.pixel_type.bit_shift, 0);
+            assert!(f.validity.is_none());
+            for r in 0..u64::from(w.row_count) {
+                for c in 0..u64::from(w.col_count) {
+                    for b in 0..bands {
+                        let at = r as usize * f.strides[0]
+                            + c as usize * f.strides[1]
+                            + b as usize * f.strides[2];
+                        let got = match t {
+                            SampleType::U8 => i64::from(f.data[at]),
+                            SampleType::U16 => {
+                                i64::from(u16::from_ne_bytes([f.data[at], f.data[at + 1]]))
+                            }
+                            SampleType::I16 => {
+                                i64::from(i16::from_ne_bytes([f.data[at], f.data[at + 1]]))
+                            }
+                            _ => unreachable!(),
+                        };
+                        let (x, y) = ((w.col_start + c) as i64, (w.row_start + r) as i64);
+                        assert_eq!(
+                            got,
+                            jpeg2000_value(x, y, b as i64, prec, signed),
+                            "{name} {x},{y},{b}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "openjpeg")]
+#[test]
+fn jpeg2000_that_disagrees_with_its_subheader_is_an_error() {
+    // Size, bands and signedness each differ from the codestream's.
+    let cases = [
+        jpeg2000_image("gray8.j2k", 29, 36, 1, "INT", 8),
+        jpeg2000_image("rgb8.j2k", 19, 23, 1, "INT", 8),
+        jpeg2000_image("gray16.j2k", 17, 21, 1, "INT", 8),
+        jpeg2000_image("signed12.j2k", 18, 20, 1, "INT", 12),
+    ];
+    for img in cases {
+        let source = open_one(img);
+        let w = Window {
+            row_start: 0,
+            col_start: 0,
+            row_count: 1,
+            col_count: 1,
+        };
+        let err = source.read_fragment(0, w).err().unwrap();
+        assert!(matches!(err, Error::Corrupt(_)), "{err}");
+    }
+    let mut img = jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8);
+    img.data[0] = 0;
+    let source = open_one(img);
+    let w = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 1,
+        col_count: 1,
+    };
+    assert!(matches!(source.read_fragment(0, w), Err(Error::Corrupt(_))));
+}
+
+/// Without a codec, a compressed Image's pixels are not read, and the error says why.
+#[test]
+fn compressed_images_without_their_codec_are_unsupported() {
+    let mut img = jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8);
+    img.ic = "C3";
+    let source = open_one(img);
+    let w = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 1,
+        col_count: 1,
+    };
+    assert!(matches!(
+        source.read_fragment(0, w),
+        Err(Error::Unsupported(_))
+    ));
+    #[cfg(not(feature = "openjpeg"))]
+    {
+        let source = open_one(jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8));
+        assert!(matches!(
+            source.read_fragment(0, w),
+            Err(Error::Unsupported(_))
+        ));
+    }
+}
+
+/// A JPEG 2000 Image behind a mask table of one block, with a pad value: every pixel whose
+/// sample is 0 is a pad pixel.
+#[cfg(feature = "openjpeg")]
+#[test]
+fn jpeg2000_behind_a_mask_table() {
+    let code = jpeg2000_fixture("gray8.j2k");
+    let masked = |offset: u32| {
+        let mut img = jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8);
+        img.ic = "M8";
+        let mut data = Vec::new();
+        data.extend(15u32.to_be_bytes()); // IMDATOFF
+        data.extend(4u16.to_be_bytes()); // BMRLNTH
+        data.extend(0u16.to_be_bytes()); // TMRLNTH
+        data.extend(8u16.to_be_bytes()); // TPXCDLNTH
+        data.push(0); // TPXCD
+        data.extend(offset.to_be_bytes());
+        data.extend(&code);
+        img.data = data;
+        open_one(img)
+    };
+    let w = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 29,
+        col_count: 37,
+    };
+    let f = masked(0).read_fragment(0, w).unwrap();
+    let valid = f.validity.unwrap();
+    for y in 0..29i64 {
+        for x in 0..37i64 {
+            let v = jpeg2000_value(x, y, 0, 8, false);
+            assert_eq!(i64::from(f.data[(y * 37 + x) as usize]), v);
+            assert_eq!(valid[(y * 37 + x) as usize], v != 0, "{x},{y}");
+        }
+    }
+    // The only block never recorded: every pixel missing.
+    let f = masked(u32::MAX).read_fragment(0, w).unwrap();
+    assert!(f.validity.unwrap().iter().all(|&v| !v));
+}
+
+#[cfg(feature = "openjpeg")]
+#[test]
+fn jpeg2000_limits_are_stated() {
+    let w = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 1,
+        col_count: 1,
+    };
+    // A mask table placing several blocks (M34).
+    let mut img = jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8);
+    img.ic = "M8";
+    img.block = (16, 16);
+    let code = img.data.clone();
+    let mut data = Vec::new();
+    data.extend((10u32 + 4 * 6).to_be_bytes());
+    data.extend(4u16.to_be_bytes());
+    data.extend(0u16.to_be_bytes());
+    data.extend(0u16.to_be_bytes());
+    for _ in 0..6 {
+        data.extend(0u32.to_be_bytes());
+    }
+    data.extend(code);
+    img.data = data;
+    assert!(matches!(
+        open_one(img).read_fragment(0, w),
+        Err(Error::Unsupported(_))
+    ));
+    // A JP2 file with channel definitions, which are neither applied nor reported yet.
+    let mut img = jpeg2000_image("gray8.jp2", 29, 37, 1, "INT", 8);
+    img.data = jp2_with_cdef(&img.data);
+    assert!(matches!(
+        open_one(img).read_fragment(0, w),
+        Err(Error::Unsupported(_))
+    ));
+    // An empty Window reads nothing.
+    let source = open_one(jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8));
+    let empty = Window {
+        row_start: 5,
+        col_start: 5,
+        row_count: 0,
+        col_count: 3,
+    };
+    assert!(source.read_fragment(0, empty).unwrap().data.is_empty());
+}
+
+/// A JP2 file with a channel definition box added to its header box.
+#[cfg(feature = "openjpeg")]
+fn jp2_with_cdef(jp2: &[u8]) -> Vec<u8> {
+    let at = jp2.windows(4).position(|w| w == b"jp2h").unwrap() - 4;
+    let len = u32::from_be_bytes(jp2[at..at + 4].try_into().unwrap()) as usize;
+    let cdef = [0, 0, 0, 16, b'c', b'd', b'e', b'f', 0, 1, 0, 0, 0, 0, 0, 1];
+    let mut out = jp2[..at].to_vec();
+    out.extend(((len + cdef.len()) as u32).to_be_bytes());
+    out.extend(&jp2[at + 4..at + len]);
+    out.extend(cdef);
+    out.extend(&jp2[at + len..]);
+    out
 }

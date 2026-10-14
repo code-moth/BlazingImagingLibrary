@@ -293,6 +293,28 @@ struct Image {
     info: ImageInfo,
     header: Header,
     mask: OnceLock<std::result::Result<MaskTable, String>>,
+    /// For an Image a codec in this build decodes: what the codec found when the Source was
+    /// opened, which decides every read (section 10, "Chosen once").
+    codestream: Option<std::result::Result<Codestream, Refusal>>,
+}
+
+/// Where an Image's one codestream lies, as the codec accepted it when the Source was opened.
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(not(feature = "openjpeg"), allow(dead_code))]
+struct Codestream {
+    start: u64,
+    length: u64,
+    jp2: bool,
+}
+
+/// Why a codec did not accept an Image when the Source was opened.
+#[derive(Clone, Debug)]
+#[cfg_attr(not(feature = "openjpeg"), allow(dead_code))]
+enum Refusal {
+    Corrupt(String),
+    Unsupported(String),
+    /// The Image's only block was never recorded: every pixel is missing.
+    NeverRecorded,
 }
 
 /// An open NITF Source.
@@ -353,7 +375,19 @@ fn read_header<R: ReadAt>(
 }
 
 /// The sample type for NITF's pixel value type and bits a sample, or why there is none.
-fn sample_type(pvtype: &str, nbpp: u32) -> std::result::Result<SampleType, String> {
+fn sample_type(
+    pvtype: &str,
+    nbpp: u32,
+    compressed: bool,
+) -> std::result::Result<SampleType, String> {
+    // A codec delivers whole numbers whatever their bits, so a compressed Image of 11 or 14 bits
+    // a sample takes the smallest type that holds them.
+    let nbpp = match (compressed, pvtype, nbpp) {
+        (true, "INT" | "SI", 2..=7) => 8,
+        (true, "INT" | "SI", 9..=15) => 16,
+        (true, "INT" | "SI", 17..=31) => 32,
+        _ => nbpp,
+    };
     Ok(match (pvtype, nbpp) {
         ("INT" | "B", 1) | ("INT", 8) => SampleType::U8,
         ("INT", 12 | 16) => SampleType::U16,
@@ -490,10 +524,18 @@ impl<R: ReadAt> NitfSource<R> {
                 Error::Corrupt(m) => corrupt(format!("image {n}: {m}")),
                 other => other,
             })?;
+            let mask = OnceLock::new();
+            #[cfg(feature = "openjpeg")]
+            let codestream = (info.codec.as_deref() == Some("jpeg2000"))
+                .then(|| accept_jpeg2000(&reader, &info, &mask))
+                .transpose()?;
+            #[cfg(not(feature = "openjpeg"))]
+            let codestream = None;
             images.push(Image {
                 info,
                 header: sub,
-                mask: OnceLock::new(),
+                mask,
+                codestream,
             });
         }
         Ok(NitfSource {
@@ -803,19 +845,15 @@ impl<R: ReadAt> NitfSource<R> {
         Ok(storage)
     }
 
-    /// The native pixels of a Window of an uncompressed Image, pixel-interleaved, in native byte
-    /// order, with the pixels never recorded marked: those in blocks the mask table leaves out,
-    /// and pad pixels.
+    /// The native pixels of a Window of an Image, uncompressed or decoded by a codec this build
+    /// has, pixel-interleaved, in native byte order, with the pixels never recorded marked: those
+    /// in blocks the mask table leaves out, and pad pixels.
     pub fn read_fragment(&self, image: usize, window: Window) -> Result<Fragment> {
-        let info = &self.image(image)?.info;
+        let img = self.image(image)?;
+        let info = &img.info;
         let pixel_type = info
             .pixel_type
             .ok_or_else(|| Error::Unsupported(info.unsupported.clone().unwrap_or_default()))?;
-        if let Some(c) = &info.codec {
-            return Err(Error::Unsupported(format!(
-                "image {image} is compressed; its blocks go to the {c} codec"
-            )));
-        }
         let rows = u64::from(window.row_count);
         let cols = u64::from(window.col_count);
         if window
@@ -832,7 +870,6 @@ impl<R: ReadAt> NitfSource<R> {
                 info.rows, info.cols
             )));
         }
-        let g = Geometry::of(info);
         let bands = info.bands as usize;
         let size = pixel_type.sample_type.size();
         // The Fragment's bytes, checked before anything is taken for them.
@@ -846,11 +883,51 @@ impl<R: ReadAt> NitfSource<R> {
                 ))
             })?;
         let strides = [cols as usize * bands * size, bands * size, size];
+        if let Some(c) = &info.codec {
+            let codestream = match &img.codestream {
+                None => {
+                    return Err(Error::Unsupported(format!(
+                        "image {image} is compressed; its blocks need the {c} codec, which this build lacks"
+                    )))
+                }
+                Some(Err(Refusal::Corrupt(m))) => {
+                    return Err(corrupt(format!("image {image}: {m}")))
+                }
+                Some(Err(Refusal::Unsupported(m))) => {
+                    return Err(Error::Unsupported(format!("image {image}: {m}")))
+                }
+                Some(Err(Refusal::NeverRecorded)) => {
+                    let pixels = (rows * cols) as usize;
+                    return Ok(finish(
+                        window,
+                        pixel_type,
+                        strides,
+                        vec![0; rows as usize * strides[0]],
+                        (pixels > 0).then(|| vec![false; pixels]),
+                        None,
+                    ));
+                }
+                Some(Ok(c)) => *c,
+            };
+            let data = if rows == 0 || cols == 0 {
+                Vec::new()
+            } else {
+                self.decode(image, info, pixel_type, codestream, window)?
+            };
+            return Ok(finish(
+                window,
+                pixel_type,
+                strides,
+                data,
+                None,
+                self.mask(image)?,
+            ));
+        }
+        let mask = self.mask(image)?;
+        let g = Geometry::of(info);
         let mut data = vec![0u8; rows as usize * strides[0]];
         let mut valid = vec![true; (rows * cols) as usize];
         let mut any_missing = false;
-        let mask = self.mask(image)?;
-        let pad = mask.and_then(|m| m.pad);
         let (bh, bw) = (u64::from(info.block_size.0), u64::from(info.block_size.1));
         let row_end = window.row_start + rows;
         let col_end = window.col_start + cols;
@@ -894,23 +971,260 @@ impl<R: ReadAt> NitfSource<R> {
                 }
             }
         }
-        if let Some(pad) = pad {
-            // A pad pixel is one whose every sample holds the pad value.
-            for p in 0..(rows * cols) as usize {
-                let pixel = &data[p * strides[1]..(p + 1) * strides[1]];
-                if pixel.chunks_exact(size).all(|s| native_value(s) == pad) {
-                    valid[p] = false;
-                    any_missing = true;
-                }
-            }
-        }
-        Ok(Fragment {
+        Ok(finish(
             window,
             pixel_type,
             strides,
             data,
-            validity: any_missing.then_some(valid),
-        })
+            any_missing.then_some(valid),
+            mask,
+        ))
+    }
+
+    /// The pixels of a Window of an Image a codec decodes, pixel-interleaved in native byte
+    /// order. A JPEG 2000 Image's data is one codestream, whose own tiles the NITF blocks
+    /// describe (M34); only the tiles the Window touches are decoded.
+    #[cfg(feature = "openjpeg")]
+    fn decode(
+        &self,
+        image: usize,
+        info: &ImageInfo,
+        pixel_type: PixelType,
+        codestream: Codestream,
+        window: Window,
+    ) -> Result<Vec<u8>> {
+        use crate::codec::jpeg2000::{self, Format, Request};
+        let area = (
+            window.col_start,
+            window.row_start,
+            window.col_start + u64::from(window.col_count),
+            window.row_start + u64::from(window.row_count),
+        );
+        let request = Request {
+            area: Some(area),
+            reduce: 0,
+        };
+        let format = if codestream.jp2 {
+            Format::Jp2
+        } else {
+            Format::Codestream
+        };
+        let check = |h: &jpeg2000::Header| jpeg2000_agrees(info, h);
+        let (_, decoded) = jpeg2000::decode(
+            &self.reader,
+            codestream.start,
+            codestream.length,
+            format,
+            request,
+            &check,
+        )
+        .map_err(|e| jpeg2000_error(image, e))?;
+        let sample = pixel_type.sample_type;
+        let (rows, cols, bands, size) = (
+            window.row_count as usize,
+            window.col_count as usize,
+            info.bands as usize,
+            sample.size(),
+        );
+        let mut data = vec![0u8; rows * cols * bands * size];
+        for b in 0..bands {
+            let comp = decoded
+                .component(b)
+                .ok_or_else(|| corrupt(format!("image {image}: component {b} missing")))?;
+            if comp.width as usize != cols || comp.height as usize != rows {
+                return Err(corrupt(format!(
+                    "image {image}: component {b} decoded as {} × {} for a Window of {cols} × {rows}",
+                    comp.width, comp.height
+                )));
+            }
+            for (p, &v) in comp.data.iter().enumerate() {
+                let at = (p * bands + b) * size;
+                let out = &mut data[at..at + size];
+                match sample {
+                    SampleType::U8 => out[0] = v.clamp(0, 255) as u8,
+                    SampleType::I8 => out[0] = v.clamp(-128, 127) as i8 as u8,
+                    SampleType::U16 => {
+                        out.copy_from_slice(&(v.clamp(0, 65535) as u16).to_ne_bytes())
+                    }
+                    SampleType::I16 => {
+                        out.copy_from_slice(&(v.clamp(-32768, 32767) as i16).to_ne_bytes())
+                    }
+                    SampleType::U32 => out.copy_from_slice(&(v.max(0) as u32).to_ne_bytes()),
+                    _ => out.copy_from_slice(&v.to_ne_bytes()),
+                }
+            }
+        }
+        Ok(data)
+    }
+
+    #[cfg(not(feature = "openjpeg"))]
+    fn decode(
+        &self,
+        _: usize,
+        _: &ImageInfo,
+        _: PixelType,
+        _: Codestream,
+        _: Window,
+    ) -> Result<Vec<u8>> {
+        unreachable!("no codec in this build accepts an Image")
+    }
+}
+
+/// A codec's error as the reader's.
+#[cfg(feature = "openjpeg")]
+fn jpeg2000_error(image: usize, e: crate::codec::jpeg2000::Error) -> Error {
+    use crate::codec::jpeg2000::Error as E;
+    match e {
+        E::Unsupported(m) => Error::Unsupported(format!("image {image}: {m}")),
+        E::Io(kind, m) => Error::Io(io::Error::new(kind, m)),
+        E::Corrupt(m) | E::Refused(m) => corrupt(format!("image {image}: {m}")),
+    }
+}
+
+/// Whether a JPEG 2000 header agrees with the Image's subheader: the same columns, rows and
+/// bands, no subsampling, and samples of no more than NBPP bits, signed where PVTYPE is `SI`.
+#[cfg(feature = "openjpeg")]
+fn jpeg2000_agrees(
+    info: &ImageInfo,
+    h: &crate::codec::jpeg2000::Header,
+) -> std::result::Result<(), String> {
+    if h.width() != info.cols || h.height() != info.rows {
+        return Err(format!(
+            "a codestream of {} × {} pixels for an Image of {} × {}",
+            h.width(),
+            h.height(),
+            info.cols,
+            info.rows
+        ));
+    }
+    if h.components.len() != info.bands as usize {
+        return Err(format!(
+            "a codestream of {} components for an Image of {} bands",
+            h.components.len(),
+            info.bands
+        ));
+    }
+    let signed = info.pixel_type.is_some_and(|t| {
+        matches!(
+            t.sample_type,
+            SampleType::I8 | SampleType::I16 | SampleType::I32 | SampleType::I64
+        )
+    });
+    for (i, c) in h.components.iter().enumerate() {
+        if c.dx != 1 || c.dy != 1 {
+            return Err(format!("component {i} is subsampled {} × {}", c.dx, c.dy));
+        }
+        if c.precision > info.stored_bits || c.signed != signed {
+            return Err(format!(
+                "component {i} holds {} bits{} where the subheader states {} bits{}",
+                c.precision,
+                if c.signed { ", signed" } else { "" },
+                info.stored_bits,
+                if signed { ", signed" } else { "" },
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// What the JPEG 2000 codec finds in an Image when the Source is opened: where its codestream
+/// lies, and whether the codec accepts it (section 10, "Chosen once"). Only a failure to read
+/// the Source fails the open; anything wrong with the codestream is kept for the Image's reads,
+/// as damage that does not locate Images is (section 3.3).
+#[cfg(feature = "openjpeg")]
+fn accept_jpeg2000<R: ReadAt>(
+    reader: &R,
+    info: &ImageInfo,
+    mask: &OnceLock<std::result::Result<MaskTable, String>>,
+) -> Result<std::result::Result<Codestream, Refusal>> {
+    use crate::codec::jpeg2000::{self, Error as E, Format};
+    if info.pixel_type.is_none() {
+        return Ok(Err(Refusal::Unsupported(
+            info.unsupported.clone().unwrap_or_default(),
+        )));
+    }
+    let table = if info.masked {
+        match mask.get_or_init(|| read_mask(reader, info).map_err(|e| e.to_string())) {
+            Ok(m) => Some(m),
+            Err(m) => return Ok(Err(Refusal::Corrupt(format!("its block mask: {m}")))),
+        }
+    } else {
+        None
+    };
+    if let Some(m) = table {
+        if m.offsets.len() > 1 {
+            return Ok(Err(Refusal::Unsupported(format!(
+                "a JPEG 2000 Image whose mask table places {} blocks (M34)",
+                m.offsets.len()
+            ))));
+        }
+        if m.offsets.first() == Some(&None) {
+            return Ok(Err(Refusal::NeverRecorded));
+        }
+    }
+    let start = info.data.0
+        + table.map_or(0, |m| {
+            m.data_start + m.offsets.first().copied().flatten().unwrap_or(0)
+        });
+    let end = info.data.0 + info.data.1;
+    if start >= end {
+        return Ok(Err(Refusal::Corrupt("no JPEG 2000 data".into())));
+    }
+    let first = read(reader, start, 12.min(end - start))?;
+    let Some(format) = Format::sniff(&first) else {
+        return Ok(Err(Refusal::Corrupt(
+            "its data is neither a JPEG 2000 codestream nor a JP2 file".into(),
+        )));
+    };
+    let header = match jpeg2000::read_header(reader, start, end - start, format) {
+        Ok(h) => h,
+        Err(E::Io(kind, m)) => return Err(Error::Io(io::Error::new(kind, m))),
+        Err(E::Unsupported(m)) => return Ok(Err(Refusal::Unsupported(m))),
+        Err(E::Corrupt(m) | E::Refused(m)) => return Ok(Err(Refusal::Corrupt(m))),
+    };
+    if let Err(m) = jpeg2000_agrees(info, &header) {
+        return Ok(Err(Refusal::Corrupt(m)));
+    }
+    if !header.jp2_boxes.is_empty() {
+        return Ok(Err(Refusal::Unsupported(format!(
+            "a JP2 file whose {} this reader neither applies nor reports yet (M34)",
+            header.jp2_boxes.join(", ")
+        ))));
+    }
+    Ok(Ok(Codestream {
+        start,
+        length: end - start,
+        jp2: format == Format::Jp2,
+    }))
+}
+
+/// A Fragment from its pixels, with pad pixels marked: those whose every sample holds the mask
+/// table's pad value.
+fn finish(
+    window: Window,
+    pixel_type: PixelType,
+    strides: [usize; 3],
+    data: Vec<u8>,
+    validity: Option<Vec<bool>>,
+    mask: Option<&MaskTable>,
+) -> Fragment {
+    let pixels = window.row_count as usize * window.col_count as usize;
+    let mut validity = validity;
+    if let Some(pad) = mask.and_then(|m| m.pad) {
+        let size = strides[2];
+        for p in 0..pixels {
+            let pixel = &data[p * strides[1]..(p + 1) * strides[1]];
+            if pixel.chunks_exact(size).all(|s| native_value(s) == pad) {
+                validity.get_or_insert_with(|| vec![true; pixels])[p] = false;
+            }
+        }
+    }
+    Fragment {
+        window,
+        pixel_type,
+        strides,
+        data,
+        validity,
     }
 }
 
@@ -1040,7 +1354,8 @@ fn describe(sub: &Header, data: (u64, u64)) -> Result<ImageInfo> {
         return Err(corrupt(format!("IMODE {imode:?}")));
     }
     let pvtype = sub.text("PVTYPE");
-    let (pixel_type, unsupported) = match sample_type(&pvtype, nbpp as u32) {
+    let compressed = codec(&ic).is_some();
+    let (pixel_type, unsupported) = match sample_type(&pvtype, nbpp as u32, compressed) {
         Ok(t) => {
             let whole = matches!(
                 t,
@@ -1051,7 +1366,8 @@ fn describe(sub: &Header, data: (u64, u64)) -> Result<ImageInfo> {
             } else {
                 abpp
             };
-            let shift = if sub.text("PJUST") == "L" {
+            // A codec delivers values aligned to the right, whatever PJUST says of storage.
+            let shift = if sub.text("PJUST") == "L" && !compressed {
                 nbpp - significant
             } else {
                 0

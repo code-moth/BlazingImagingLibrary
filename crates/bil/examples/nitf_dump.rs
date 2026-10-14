@@ -8,7 +8,7 @@
 //!     cargo run --release --example nitf_dump -- FILE.ntf
 
 use bil::fields::Field;
-use bil::nitf::{NitfSource, Scope, Version};
+use bil::nitf::{Error, NitfSource, Scope, Version};
 use bil::types::Window;
 
 /// The header fields compared: those GDAL reports, as `NITF_` and the name. Each is printed
@@ -105,7 +105,12 @@ fn main() {
         {
             println!("image {i} extension {}", g.trim_start_matches("nitf."));
         }
-        let pixels = if info.codec.is_some() {
+        // The codecs this build has; GDAL's reference program decodes the same.
+        let decodable = match info.codec.as_deref() {
+            None => true,
+            Some(c) => c == "jpeg2000" && cfg!(feature = "openjpeg"),
+        };
+        let pixels = if !decodable {
             "compressed".to_string()
         } else if info.pixel_type.is_none() {
             "unsupported".to_string()
@@ -151,6 +156,8 @@ fn main() {
                     }
                     format!("{:016x}", fnv(&planes))
                 }
+                // A compressed Image of a kind the codec does not yet read.
+                Err(Error::Unsupported(m)) if info.codec.is_some() => format!("refused {m}"),
                 Err(e) => format!("error {e}"),
             }
         };

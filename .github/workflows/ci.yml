@@ -40,6 +40,34 @@ jobs:
         # Built without optimization, so integer overflow on corrupt input panics and fails the
         # tests rather than wrapping silently. Includes 20,000 corrupt NITF files.
         run: cargo test -p bil
+      - name: OpenJPEG
+        # JPEG 2000 through the OpenJPEG the system provides. No package manager's copy is set
+        # up for Windows here, so its build is tested without the feature.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get update -q && sudo apt-get install -y -q libopenjp2-7-dev
+          else
+            brew install openjpeg
+          fi
+      - name: Tests with OpenJPEG
+        # The bindings' structures against the header, then the codec and the NITF reader's
+        # JPEG 2000 Images, with damaged codestreams.
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          BIL_REQUIRE_LAYOUT_CHECK: "1"
+        run: |
+          set -o pipefail
+          cargo clippy --all-targets -p bil -p bil-sys --features bil/openjpeg,bil-sys/openjpeg --message-format=short -- -D warnings 2>&1 | tee clippy-opj.txt || {
+            grep -E "^(error|warning)|: (error|warning)" clippy-opj.txt | head -20 | sed 's/^/::error::/'
+            exit 1
+          }
+          cargo test -p bil -p bil-sys --features bil/openjpeg,bil-sys/openjpeg 2>&1 | tee test-opj.txt
+          if grep -q "layout of OpenJPEG's structures is not checked" test-opj.txt clippy-opj.txt; then
+            echo "::error::openjpeg.h was not found, so the layout check did not run"; exit 1
+          fi
       - name: Experiment 1, correctness
         # Bitwise Window independence and agreement across instruction sets, and accuracy.
         run: cargo run --release --bin exp1 -- --check
@@ -233,12 +261,12 @@ jobs:
       - name: GDAL, the reference
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q libgdal-dev
+          sudo apt-get install -y -q libgdal-dev libopenjp2-7-dev
           cc -O2 -Wall -Wextra -Werror testdata/nitf_reference.c -o nitf_reference $(gdal-config --cflags) $(gdal-config --libs)
       - name: The NITF reader against GDAL
         shell: bash
         run: |
-          cargo build --release --example nitf_dump
+          cargo build --release --example nitf_dump --features openjpeg
           find testdata/cache -iname '*.ntf' -print0 | sort -z | xargs -0 python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_reference
       - name: The NITF reader against GDAL, on GDAL's own NITF test files
         if: success() || failure()

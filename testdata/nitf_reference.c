@@ -78,7 +78,12 @@ static void image(GDALDatasetH ds, int i) {
     for (size_t k = 0; k < sizeof names / sizeof *names; k++) field(ds, prefix, names[k]);
     extensions(ds, i);
     const char *ic = GDALGetMetadataItem(ds, "NITF_IC", NULL);
-    if (ic && strcmp(ic, "NC") && strcmp(ic, "NM")) {
+    /* JPEG 2000 is decoded where GDAL has its OpenJPEG driver, as BIL's build with the openjpeg
+     * feature does; other compression is not compared. GDAL would prefer an ECW or Kakadu
+     * driver where one is installed; Ubuntu's GDAL, which CI uses, has neither. */
+    int jpeg2000 = ic && (!strcmp(ic, "C8") || !strcmp(ic, "M8")) &&
+                   GDALGetDriverByName("JP2OpenJPEG") != NULL;
+    if (ic && strcmp(ic, "NC") && strcmp(ic, "NM") && !jpeg2000) {
         printf("image %d pixels compressed\n", i);
         return;
     }

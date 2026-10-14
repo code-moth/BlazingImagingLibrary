@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 rust-version = "1.97"
 license = "LGPL-2.1-or-later"
-description = "Blazing Imaging Library: reads imaging sensor data from any format as native Fragments or 2D float32 Slices. Early preview: vector kernels and a NITF container reader."
+description = "Blazing Imaging Library: reads imaging sensor data from any format as native Fragments or 2D float32 Slices. Early preview: vector kernels, a NITF container reader and JPEG 2000 through OpenJPEG."
 repository = "https://github.com/code-moth/BlazingImagingLibrary"
 readme = "README.md"
 keywords = ["imaging", "remote-sensing", "sar", "nitf", "geotiff"]
@@ -14,5 +14,9 @@ categories = ["science::geo", "multimedia::images"]
 # Each built-in driver is behind a build feature (specification, section 10).
 default = ["nitf"]
 nitf = []
+# JPEG 2000 through the OpenJPEG the system or conda provides; off by default, since not every
+# system has it.
+openjpeg = ["dep:bil-sys", "bil-sys/openjpeg"]
 
 [dependencies]
+bil-sys = { path = "../bil-sys", version = "0.0.2", optional = true }

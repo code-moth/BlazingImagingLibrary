@@ -15,6 +15,7 @@
     clippy::excessive_precision
 )]
 
+pub mod codec;
 pub mod fields;
 pub mod io;
 pub mod kernels;
