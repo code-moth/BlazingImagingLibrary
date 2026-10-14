@@ -1,4 +1,4 @@
-This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 70, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.
+This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 71, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.
 
 ## 1. About this manual
 
@@ -178,7 +178,7 @@ source = bil.open_source(
 
 **Remote Sources** are read through the same calls. BIL runs its network code on a small runtime of its own, so a caller's own asynchronous runtime is never touched. Requests are counted and merged, because over a network the number of requests costs more than the bytes, and `plan` reports both.
 
-**Closing.** A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call `close()` in Python or `bil_close_source` in C. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again (chapter 24, M20). Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.
+**Closing.** A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call `close()` in Python or `bil_close_source` in C. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again, while Fragments and Slices already read stay valid until each is freed. Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.
 
 ## 6. Looking at an Image
 
@@ -442,7 +442,7 @@ filled.status      # still Partial
 
 **No cost where nothing is missing.** A driver says whether an Image can have missing pixels. Where it cannot, no checks are made at all, and the fast paths are unchanged. The experiments confirm it: an Image with no mask runs the same code as before missing data was added.
 
-**Stored NaN.** In float data, a NaN stored at a pixel the mask calls valid is missing, the same as a masked pixel.
+**Stored NaN.** In float data, a stored NaN is always missing, the same as a masked pixel, whether or not the Image has a mask. Float formats therefore report `may_have_missing` unless they rule NaN out.
 ## 10. Fragments: the native pixels
 
 > **Status:** Specified. Borrowing from a mapped file, `Shared`, `Private` and `Off` mapping, strided views for a `step`, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would.
@@ -1262,13 +1262,10 @@ Writing this manual against specification versions 68 to 70 found the points bel
 | M16 | **Corrupt data a library recovers from.** libjpeg decodes about one corrupt JPEG in eight with warnings, filling what it lost, for example with gray. Section 3.3 makes corrupt data an error by default. | Accepted as proposed, by the author's ruling (version 70): a warning is an error by default; under `corrupt_as_missing`, the block (Fragment) is marked missing and the read is `Partial`, since libjpeg does not say which rows it filled |
 | M17 | **A limit on progressive scans, a cap on a library's working memory,** and how a refusal by a limit is reported. A progressive JPEG can hold thousands of scans, each a pass over the whole image, and keeps whole-image coefficients beside its output. | Accepted as proposed, by the author's ruling (version 70): a fourth limit, `max_scans`, 500 by default for untrusted Sources and none otherwise, like the others; a library's working memory capped at a multiple of `max_decoded_bytes`, twice in experiment 3; a refusal is an error, as section 3.3 says |
 | M18 | **JPEG 2000 palettes and channel definitions.** OpenJPEG expands a JP2 palette after the header's size is checked, against section 10.3; turning that off also leaves the component mapping (`cmap`) and channel definitions (`cdef`, such as which component is alpha) unapplied. | Accepted as proposed, by the author's ruling (version 70): the driver delivers indices for `palette.lookup`, and applies or reports `cmap` and `cdef` itself, as experiment 3's layer leaves them |
+| M19 | **A stored NaN where there is no mask.** Version 70 makes a NaN stored at a pixel the validity mask calls valid missing. It does not say what a NaN in float data does where the Image has no mask and `may_have_missing` is false: there the fast path makes no checks, so a NaN would spread through averaging. | Accepted as proposed, by the author's ruling (version 71): a stored NaN in float data is always missing; float drivers set `may_have_missing` unless the format rules NaN out |
+| M20 | **Closing in C.** M3 was proposed for Python. Version 70 writes its C form beside it: `bil_close_source` frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed. In Rust, dropping the Source closes it. | Accepted as proposed, by the author's ruling (version 71): the C form as written in version 70 |
 
-**Open, for the author**
-
-| | Gap or inconsistency | Where | Proposal |
-| --- | --- | --- | --- |
-| M19 | **A stored NaN where there is no mask.** Version 70 makes a NaN stored at a pixel the validity mask calls valid missing. It does not say what a NaN in float data does where the Image has no mask and `may_have_missing` is false: there the fast path makes no checks, so a NaN would spread through averaging. | 5 | A stored NaN in float data is always missing. A driver of a float format sets `may_have_missing` unless the format guarantees there is no NaN, so the fast path is kept only where it is safe |
-| M20 | **Closing in C.** M3 was proposed for Python. Version 70 writes its C form beside it: `bil_close_source` frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed. In Rust, dropping the Source closes it. | 2, 4 | Confirm the C form as written, or rule otherwise |
+**Open, for the author.** None at present.
 
 **How this list is kept.** Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.
 

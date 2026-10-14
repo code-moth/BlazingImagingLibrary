@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 5</p>
+      <p class="eyebrow">Manual · Version 6</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>5</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 70</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>6</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 71</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 70, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 71, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -532,7 +532,7 @@ image  = source.image(0)
 )
 </code></pre>
 <p><strong>Remote Sources</strong> are read through the same calls. BIL runs its network code on a small runtime of its own, so a caller's own asynchronous runtime is never touched. Requests are counted and merged, because over a network the number of requests costs more than the bytes, and <code>plan</code> reports both.</p>
-<p><strong>Closing.</strong> A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call <code>close()</code> in Python or <code>bil_close_source</code> in C. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again (chapter 24, M20). Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.</p>
+<p><strong>Closing.</strong> A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call <code>close()</code> in Python or <code>bil_close_source</code> in C. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again, while Fragments and Slices already read stay valid until each is freed. Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.</p>
 <h2 id="6-looking-at-an-image">6. Looking at an Image</h2>
 <blockquote>
 <p><strong>Status:</strong> Specified.</p>
@@ -981,7 +981,7 @@ filled.status      # still Partial
 <li><strong>Not borrowed.</strong> Filling writes new values.</li>
 </ul>
 <p><strong>No cost where nothing is missing.</strong> A driver says whether an Image can have missing pixels. Where it cannot, no checks are made at all, and the fast paths are unchanged. The experiments confirm it: an Image with no mask runs the same code as before missing data was added.</p>
-<p><strong>Stored NaN.</strong> In float data, a NaN stored at a pixel the mask calls valid is missing, the same as a masked pixel.</p>
+<p><strong>Stored NaN.</strong> In float data, a stored NaN is always missing, the same as a masked pixel, whether or not the Image has a mask. Float formats therefore report <code>may_have_missing</code> unless they rule NaN out.</p>
 <h2 id="10-fragments-the-native-pixels">10. Fragments: the native pixels</h2>
 <blockquote>
 <p><strong>Status:</strong> Specified. Borrowing from a mapped file, <code>Shared</code>, <code>Private</code> and <code>Off</code> mapping, strided views for a <code>step</code>, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would.</p>
@@ -2363,33 +2363,19 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 <td><strong>JPEG 2000 palettes and channel definitions.</strong> OpenJPEG expands a JP2 palette after the header's size is checked, against section 10.3; turning that off also leaves the component mapping (<code>cmap</code>) and channel definitions (<code>cdef</code>, such as which component is alpha) unapplied.</td>
 <td>Accepted as proposed, by the author's ruling (version 70): the driver delivers indices for <code>palette.lookup</code>, and applies or reports <code>cmap</code> and <code>cdef</code> itself, as experiment 3's layer leaves them</td>
 </tr>
-</tbody>
-</table></div>
-<p><strong>Open, for the author</strong></p>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th></th>
-<th>Gap or inconsistency</th>
-<th>Where</th>
-<th>Proposal</th>
-</tr>
-</thead>
-<tbody>
 <tr>
 <td>M19</td>
 <td><strong>A stored NaN where there is no mask.</strong> Version 70 makes a NaN stored at a pixel the validity mask calls valid missing. It does not say what a NaN in float data does where the Image has no mask and <code>may_have_missing</code> is false: there the fast path makes no checks, so a NaN would spread through averaging.</td>
-<td>5</td>
-<td>A stored NaN in float data is always missing. A driver of a float format sets <code>may_have_missing</code> unless the format guarantees there is no NaN, so the fast path is kept only where it is safe</td>
+<td>Accepted as proposed, by the author's ruling (version 71): a stored NaN in float data is always missing; float drivers set <code>may_have_missing</code> unless the format rules NaN out</td>
 </tr>
 <tr>
 <td>M20</td>
 <td><strong>Closing in C.</strong> M3 was proposed for Python. Version 70 writes its C form beside it: <code>bil_close_source</code> frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed. In Rust, dropping the Source closes it.</td>
-<td>2, 4</td>
-<td>Confirm the C form as written, or rule otherwise</td>
+<td>Accepted as proposed, by the author's ruling (version 71): the C form as written in version 70</td>
 </tr>
 </tbody>
 </table></div>
+<p><strong>Open, for the author.</strong> None at present.</p>
 <p><strong>How this list is kept.</strong> Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.</p>
 <h2 id="appendix-where-each-call-is-described">Appendix: where each call is described</h2>
 <div class="table-wrap"><table>
@@ -2491,7 +2477,7 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 5, written beside the code against version 70 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 6, written beside the code against version 71 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>
