@@ -64,7 +64,11 @@ jobs:
             grep -E "^(error|warning)|: (error|warning)" clippy-opj.txt | head -20 | sed 's/^/::error::/'
             exit 1
           }
-          cargo test -p bil -p bil-sys --features bil/openjpeg,bil-sys/openjpeg 2>&1 | tee test-opj.txt
+          # Failures are raised as annotations too.
+          cargo test -p bil -p bil-sys --features bil/openjpeg,bil-sys/openjpeg 2>&1 | tee test-opj.txt || {
+            grep -E -A3 "panicked|FAILED|^error|left:|right:" test-opj.txt | head -30 | cut -c1-200 | sed 's/^/::error::/'
+            exit 1
+          }
           if grep -q "layout of OpenJPEG's structures is not checked" test-opj.txt clippy-opj.txt; then
             echo "::error::openjpeg.h was not found, so the layout check did not run"; exit 1
           fi
