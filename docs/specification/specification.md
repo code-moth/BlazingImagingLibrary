@@ -423,6 +423,7 @@ Every call returns a result, and everything that is delivered carries a status. 
 - **Per element, where elements differ.** A set of positions carries a status for each position. For pixels, the per-pixel form of the status is the validity mask of a Fragment and NaN in a Slice.
 - **An unknown name is an error, and a known one with no value is `Missing`.** A field name that is not defined for this Source is an error. A defined field or a dictionary item that has no value here is delivered with status `Missing` and no value. The same holds along an index.
 - **Corrupt data is an error by default.** A caller may ask for a corrupt block to be delivered as missing data instead, and the result is then `Partial`.
+    - **What stops an open.** Opening fails where the structure that locates the Images cannot be trusted: a header or segment that runs past the end of the file, block counts that do not cover the Image, or uncompressed data larger than its segment holds. Damage within an extension area does not stop it: the extensions read before the damage are listed, their header's group is `Partial`, and the pixels can still be read.
     - **Recovered data is corrupt data.** A library that decodes a damaged block by filling in what it lost, and warns, as libjpeg does, has met corrupt data. The warning is an error by default.
     - **The whole block is missing.** Under `corrupt_as_missing`, a block a library recovered is marked missing as a whole, since a library does not say which of its pixels it filled in.
 - **A failure never becomes a crash.** A failure inside BIL is caught at the interface and returned as an error.
@@ -630,6 +631,8 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 
 **Missing pixels.** Where part of the array was never recorded, a Fragment is still a full array, and its validity mask marks the missing positions. This is the same for every sample type. Where a format marks missing data with a fill value, the driver turns it into mask entries. Slices made from the Fragment are NaN at those positions.
 
+- **NITF pad pixels.** Where a NITF block mask table states a pad value, a pixel is missing when every one of its samples holds that value, anywhere in the Image, whether or not its block is flagged as holding pad pixels.
+
 **Illustrative shape** (not final)
 
 ```rust
@@ -720,7 +723,7 @@ Which function to use depends on circumstance. The same color Fragment can be re
 **Names taken from metadata.** A name found in a file is made into a Slice name by one rule.
 
 1. **Converted to snake\_case.** Letters become lower case, and every run of other characters becomes one underscore. "Near Infrared (B8)" becomes `near_infrared_b8`.
-2. **Made unique.** Where a name repeats, every instance carries its number, counted from 1: `red_1`, `red_2`. A name that occurs once has no number. Field names follow the same rule, in brackets (section 14.1).
+2. **Made unique.** Where a name repeats, every instance carries its number, counted from 1: `red_1`, `red_2`. A name that occurs once has no number. Field names follow the same rule, in brackets, except that a field in a counted run is always numbered (section 14.1).
 3. **The original is kept.** Every Slice carries the name as the file wrote it, as its `label`.
 4. **Wavelengths carry enough digits.** Bands named by wavelength take as many decimal places as are needed to tell them apart: `nm550`, or `nm549_6` and `nm550_4` where two bands would otherwise share a name.
 
@@ -1434,6 +1437,8 @@ A caller can also name the driver explicitly with `open_source_with`.
 
 **Containers and codecs.** A driver reads a container format. Compressed pixel blocks inside it are handed to a codec that BIL chooses separately. One JPEG 2000 codec therefore serves NITF, JP2, GeoTIFF and HEIF alike, and BIL does not depend on the JPEG 2000 support bundled inside GDAL.
 
+- **Codecs by what they decode.** A driver names the codec its blocks need by what is coded, in snake\_case, not by library. NITF's compression codes map as follows: `jpeg` (C3, M3), `jpeg2000` (C8, M8), `bilevel` (C1, M1), `vector_quantization` (C4, M4), `lossless_jpeg` (C5, M5), `downsampled_jpeg` (I1), and `nitf_` with the code, in lower case, for any other, such as `nitf_c7`.
+
 **Several libraries per format.** More than one driver or codec may cover a format. BIL chooses among them in a set order of preference, and the first that accepts the Source is used.
 
 - **Chosen once, when the Source is opened.** A codec accepts a Source only after checking the coding parameters the file declares, such as a JPEG 2000 profile. The driver and codec chosen are kept for the life of the Source.
@@ -1672,6 +1677,7 @@ Imagery files often arrive from outside, and BIL hands them to many C and C++ li
 - **An untrusted Source gets limits.** Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image, bytes per metadata group and 500 progressive scans, each scaled to the size of the file where that makes sense. The caller can raise them.
 - **One check is always made.** For uncompressed data, a header that claims more pixels than the file can hold is rejected.
 - **A library's working memory is capped too.** Where `max_decoded_bytes` is set, the memory a library uses beside its output for one block, such as a progressive JPEG's whole-image coefficients, is capped at twice that limit, where the library allows a cap.
+- **Where a library offers no cap,** and `max_decoded_bytes` is set, the driver refuses, before reading it, a block whose declared size over every component exceeds twice that limit, since a library's working memory can follow the size of the block it reads, as GDAL's does. The refusal is an error.
 - **A refusal is an error.** A read that a limit refuses fails with an error, as section 3.3 says.
 - **What a codec would expand, the driver applies.** A codec that would add components after the header is checked, as a JPEG 2000 palette does, is told not to. The driver delivers the palette's indices, which `palette.lookup` turns into color, and applies the component mapping and channel definitions (`cmap` and `cdef`, which say, for one, which component is alpha) itself, or reports them where it does not.
 
@@ -1771,6 +1777,7 @@ Installing BIL is enough to read its formats. BIL does not duplicate libraries t
 | BIL configures its libraries through their own calls, never through environment variables | Settings meant for BIL changing another package, or the caller's settings changing BIL |
 | BIL installs no signal handlers and does not change the locale, the working directory or shared error handlers | Side effects on the rest of the process |
 | BIL does not let its libraries load plugins of their own from search paths | Stray plugins, and a way around section 10.3 |
+| BIL registers the drivers of a library it shares with the caller one at a time, only those it uses, and opens each Source with only the driver it chose allowed. It never registers all of a library's drivers at once where that would load plugins from search paths, as GDAL's `GDALAllRegister` does. For GDAL: one `GDALRegister_` call for each driver, and `GDALOpenEx` with a list of allowed drivers. | Plugins loaded through a shared library, and other packages' drivers probing BIL's Sources. Registering only adds, so another package that registers everything later still works. |
 
 **A coexistence test.** Each release is tested in one process alongside the common packages that carry the same libraries, reading through BIL and through each of them in turn.
 
@@ -2280,7 +2287,8 @@ Geocoding, normalization parameters and coordinates are built from metadata, and
 - **Native names are kept exactly.** The part of a name after the namespace is spelled as the file or the specification spells it, so it can be looked up in the format's own documents. BIL's own naming applies to the namespace only.
 - **A name is a list of parts.** Each part is one level of the format's own structure: a group, a record or a field. Every call accepts the list, or its dotted form, in which the parts are joined by dots.
 - **Dots inside a part are escaped.** HDF5 paths and XML names may contain dots. In the dotted form such a dot is written `\.`, as in `hdf5.calibration.band\.1`.
-- **Repeats carry a number.** Where a native name occurs more than once, every instance carries its number, counted from 1, in square brackets: `nitf.RPC00B[2]`, `fits.HISTORY[3]`, `dicom.ReferencedImageSequence[1].ReferencedSOPInstanceUID`. A name that occurs once has no number.
+- **Repeats carry a number.** Where a native name occurs more than once, every instance carries its number, counted from 1, in square brackets: `nitf.RPC00B[2]`, `fits.HISTORY[3]`, `dicom.ReferencedImageSequence[1].ReferencedSOPInstanceUID`. Outside a counted run, a name that occurs once has no number.
+- **Runs carry their place.** A field in a counted run of a format's structure, such as one band's fields in a NITF image subheader, always carries its place in the run, even when the run has one entry, since the number says which band or segment it belongs to: `IREPBAND[1]`, `LISH[1]`. A field inside two runs carries one number for each, outermost first: `LUTD[2][1]` for the second band's first lookup table.
 - **Text is Unicode.** Text is decoded from the character set the format declares. The result of `read_field` still carries the stored bytes.
 - **A date and time states whether its zone is known.** With a known zone it is held in UTC, with the offset the file stated. Without one it is held as local time, marked as having no known zone, and is never silently taken as UTC.
 - **Field definitions name the specified fields.** A definition gives a code or position its name, value type and unit. Each driver carries the definitions for its formats.
@@ -2302,6 +2310,8 @@ The `locator` and `encoding` each format accepts are listed by its driver.
 
 - **Codes up to the format's length.** A locator's code matches the code the file stores with its padding removed, so where a format pads its codes, a code of any length up to the format's own is accepted: a NITF extension tag of one to six characters. Each driver states its formats' limit beside the locators it lists: a longest length where codes are padded, as NITF's tags are, or a fixed length where they are not, as a DICOM tag is. A definition whose code breaks the limit is refused with an error when it is added, rather than never matching.
 - **A family of codes.** A locator's code may hold a wildcard, `*`, so that one definition serves a family of codes, such as `RPC00*` for RPC00A and RPC00B. A field's name keeps the code matched in each file, so native names stay exact: `nitf.RPC00B.LINE_OFF` in a file that holds RPC00B.
+- **Wildcards.** `*` stands for any run of characters, including none, anywhere in a code; the other characters count against the format's limit, and a code needs at least one. Where several definitions match a code, one with no wildcard is preferred, then the one with the most characters fixed; a definition that ties with one already present is refused when added. There is no way to name a literal `*`, so a stored code that holds one is matched only by a family.
+- **Ordered layouts.** Where a format's fields follow one another, with presence, lengths and counts that depend on earlier fields, as NITF's headers and most of its extensions do, a locator gives the field's place in an ordered layout rather than an offset. Each field has a `length`, a number or another field's value less a number, and may have `present_if`: another field's stored bytes among given values, not among them, or above zero. Runs of fields repeat by a `count`: a number, another field's value, or one field's value or another's where that is 0. For example: `{"layout": "nitf.image_subheader", "after": "ICORDS", "length": 60, "present_if": {"field": "ICORDS", "not": [" "]}}`.
 - **Nothing is hidden.** A value with no definition is still listed, under its native code, with its value as bytes.
 
 ### 14.2 The metadata dictionary
@@ -2464,7 +2474,7 @@ Every item above is in the `common` namespace, and a profile named in a list sta
 6. **Values that vary by index are extracted for the indexes asked for.** Opening a video with 100,000 frames does not parse 100,000 KLV packets.
     - **Held up to a limit.** Fields attached to an index are held for at most `max_held_positions` positions, set in `OpenOptions`, with a default of 1,000. The position used longest ago is released first, and extracted again if asked for. A live stream therefore stays within bounded memory.
     - **Values at their own times.** Some fields arrive at times of their own, as KLV packets do, not aligned to frames and often less often. The value at a frame is the latest at or before the frame's time, returned with its own time.
-7. **Markings are always carried.** A definition can flag a field as a `Marking`, such as a security classification, or as `Identity`, such as a patient's name. A writer extracts both kinds whether or not the caller has asked for them, writes the markings and leaves the identity fields empty (section 11).
+7. **Markings are always carried.** A definition can flag a field as a `Marking`, such as a security classification, NITF's security fields among them, or as `Identity`, such as a patient's name or NITF's originator name and telephone (ONAME, OPHONE). NITF's titles and comments (FTITLE, IID2, ICOM), which can hold anything, stay `Ordinary`. A writer extracts both kinds whether or not the caller has asked for them, writes the markings and leaves the identity fields empty (section 11).
 
 This is the design for now. BIL does not yet index metadata across many Sources, or keep it after the Source is closed.
 
@@ -2542,7 +2552,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and seventy-eight have been decided. Each lists the current proposal.
+Two points are not yet settled, and eighty-four have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2565,6 +2575,12 @@ Two points are not yet settled, and seventy-eight have been decided. Each lists 
 - [x] **Libraries' corrupt data and limits, from experiment 3.** Decided: data a library recovers with warnings is corrupt data, an error by default, and its whole block is missing under `corrupt_as_missing`; `max_scans` is a fourth limit, 500 for untrusted Sources; a library's working memory is capped at twice `max_decoded_bytes` where it allows; a refusal is an error; a codec does not expand JPEG 2000 palettes, and the driver applies or reports `cmap` and `cdef` (sections 3.3, 3.4 and 10.3).
 - [x] **Stored NaN and closing in C.** Decided: a stored NaN in float data is always missing, mask or not, and float drivers set `may_have_missing` unless the format rules NaN out; in C, `bil_close_source` frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed, and in Rust dropping the Source closes it (sections 4 and 5).
 - [x] **Codes in locators.** Decided: a locator's code matches the stored code with its padding removed, up to a length each driver states for its formats, and a definition that breaks it is refused when added; a code may hold a wildcard, `*`, for a family of codes, and a field's name keeps the code matched (section 14.1).
+- [x] **Ordered layouts and runs.** Decided: a locator may give a field's place in an ordered layout, with lengths, presence and counts taken from earlier fields; a field in a counted run always carries its place, one number for each run, outermost first (section 14.1).
+- [x] **Wildcards.** Decided: `*` stands for any run of characters, including none, and a code needs at least one other character; an exact code is preferred, then the most characters fixed, and a tie is refused when added; no literal `*` (section 14.1).
+- [x] **Working memory where a library has no cap.** Decided: the driver refuses a block whose declared size over every component exceeds twice `max_decoded_bytes`, before reading it (section 10.3).
+- [x] **Registering a shared library's drivers.** Decided: one at a time, only those BIL uses, each Source opened with only its chosen driver allowed; never all at once (section 10.5).
+- [x] **NITF pad pixels, identity fields and codec names.** Decided: a pixel is missing when every sample holds the pad value, anywhere in the Image; ONAME and OPHONE are `Identity`, NITF's titles and comments `Ordinary`; codecs are named by what they decode, with NITF's codes mapped (sections 4, 10 and 14.3).
+- [x] **What stops an open.** Decided: damage to the structure that locates the Images fails the open; damage within an extension area leaves its header's group `Partial` and the pixels readable (section 3.3).
 - [ ] **Drivers for the added sensor cases.** The medical, security screening and sonar cases in section 8 name the data but not yet the libraries that read it.
 - [x] **Metadata model.** Decided, for now: metadata is held as named fields, with names taken from self-describing files or from specifications. Fields are extracted on demand and held to be read when needed (section 14).
 - [x] **Markings and identity.** Decided: markings are always written, to the companion file where the format cannot hold them. Identity fields are left empty by default. The caller can override both (section 11).

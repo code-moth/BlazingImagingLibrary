@@ -13,7 +13,7 @@ BIL is written in Rust, with a C-callable interface over it delivered as one sha
 
 The two-page flyer is [`flyer.pdf`](flyer.pdf), with its source in [`flyer.html`](flyer.html).
 
-> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 72, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
+> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 73, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
 
 ## Why BIL is needed
 
@@ -121,10 +121,10 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 
 | Document | What it is |
 | --- | --- |
-| [Specification](docs/specification/specification.md), version 72 | The source of truth for the design |
-| [User Manual](docs/manual/user-manual.md), version 8 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
+| [Specification](docs/specification/specification.md), version 73 | The source of truth for the design |
+| [User Manual](docs/manual/user-manual.md), version 9 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 10 | Calls for every use case, in Python, Rust and C |
-| [Implementability](docs/assessments/implementability.md), version 10 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
+| [Implementability](docs/assessments/implementability.md), version 11 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |
 | [Experiment 1](experiments/exp1-fused-loop/RESULTS.md), [1b](experiments/exp1-fused-loop/RESULTS-1b.md), [3](experiments/exp3-c-errors/RESULTS.md) and [5](experiments/exp5-borrowed-arrays/RESULTS.md) | The fused loop, the rolling buffer, containing C errors, and borrowed NumPy arrays |
 
@@ -151,7 +151,7 @@ cargo build --release -p bil-exp5
 python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
 ```
 
-**The NITF container reader,** the first of Tier 1's readers, in the `bil` crate. It reads NITF 2.0, NITF 2.1 and NSIF 1.0 with no dependency: headers and extensions as fields through definitions, extracted when first asked for, and uncompressed pixels of every interleave and sample layout, with blocks never recorded and pad pixels marked missing, as proposed to the author. CI compares it with GDAL on the 22 real NITF test files and on the NITF files of GDAL's own test suite, and feeds it 20,000 corrupt files.
+**The NITF container reader,** the first of Tier 1's readers, in the `bil` crate. It reads NITF 2.0, NITF 2.1 and NSIF 1.0 with no dependency: headers and extensions as fields through definitions, extracted when first asked for, and uncompressed pixels of every interleave and sample layout, with blocks never recorded and pad pixels marked missing. CI compares it with GDAL on the 22 real NITF test files and on the NITF files of GDAL's own test suite, and feeds it 20,000 corrupt files.
 
 ```sh
 cargo test -p bil

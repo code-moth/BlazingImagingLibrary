@@ -39,7 +39,7 @@ The checking agent then found an overflow the mutations never made: a header cla
 | `oss_fuzz_1525.ntf`, `U_0002A.NTF` | Agree: both refuse them |
 | `test_jp2_ecw33.ntf`, `two_images_jp2.ntf` | Differ: the GDAL built here cannot open JPEG 2000 |
 
-17 of 19 agree. `i_6130a_truncated.ntf` holds four extensions in a TRE_OVERFLOW segment, and `invalid_udid.ntf` a damaged extension area; both agree only since the reader reads overflow and keeps reading past damage (proposed as M27 in the user manual's chapter 24).
+17 of 19 agree. `i_6130a_truncated.ntf` holds four extensions in a TRE_OVERFLOW segment, and `invalid_udid.ntf` a damaged extension area; both agree only since the reader reads overflow and keeps reading past damage (specification section 3.3, version 73).
 
 To repeat it, with GDAL installed:
 

@@ -6,14 +6,15 @@
 //!
 //! NITF's headers are fields one after another, each of a stated length. Some are present only
 //! when an earlier field has a given value, some repeat as often as an earlier field says, and
-//! some take their length from an earlier field. Section 14.1's locator, an offset and a length,
-//! cannot say that, so a layout here is a list of items read in order: a field with its length
-//! and the condition for its presence, or a run of items repeated a counted number of times.
-//! This form is a proposal to the author (the user manual's chapter 24, M21).
+//! some take their length from an earlier field. Section 14.1 describes such headers by an
+//! ordered layout, and a layout here is one: a list of items read in order, each a field with
+//! its length and the condition for its presence, or a run of items repeated a counted number of
+//! times.
 //!
 //! The fields follow MIL-STD-2500A for NITF 2.0 and MIL-STD-2500C for NITF 2.1 and NSIF 1.0,
-//! and STDI-0002 for the extensions. Native names are the standard's; a field that repeats
-//! carries its number in square brackets, counted from 1, as section 14.1 says.
+//! and STDI-0002 for the extensions. Native names are the standard's; a field in a counted run
+//! carries its place in square brackets, counted from 1, one number for each run, as section
+//! 14.1 says.
 
 use crate::fields::{Encoding, FieldDef, Handling, ValueType};
 
@@ -607,7 +608,7 @@ pub fn check_extension_code(code: &str) -> Result<(), String> {
             "{code:?}: an extension tag is printable characters, with no spaces"
         ));
     }
-    // A code of wildcards alone would claim every extension (proposed in M30).
+    // A code of wildcards alone would claim every extension (section 14.1).
     if fixed == 0 {
         return Err(format!(
             "{code:?}: an extension tag needs a character besides `*`"
@@ -622,9 +623,8 @@ pub fn check_extension_code(code: &str) -> Result<(), String> {
 }
 
 /// Whether `tag` is in the family `code` names: `*` stands for any run of characters,
-/// including none, as proposed in M30 of the user manual's chapter 24. One pass over each,
-/// returning to the last `*` on a mismatch, so the work is bounded by the lengths' product
-/// however many wildcards a code holds.
+/// including none, as section 14.1 says. One pass over each, returning to the last `*` on a
+/// mismatch, so the work is bounded by the lengths' product however many wildcards a code holds.
 fn matches(code: &[u8], tag: &[u8]) -> bool {
     let (mut c, mut t) = (0, 0);
     // The last `*` seen, and the place in the tag it was tried against.
@@ -650,7 +650,7 @@ fn matches(code: &[u8], tag: &[u8]) -> bool {
 
 /// The layout of an extension, by its tag, where BIL has one. Where several definitions match,
 /// a code with no wildcard is preferred, then the code with the most characters fixed, as
-/// proposed in M30.
+/// section 14.1 says.
 pub(crate) fn extension_layout(tag: &str) -> Option<&'static [Item]> {
     EXTENSIONS
         .iter()
@@ -870,7 +870,7 @@ mod tests {
         // Many wildcards cost no more than a few.
         let many = [b"*".repeat(200), b"X".to_vec()].concat();
         assert!(!matches(&many, &b"RPC00B".repeat(50)));
-        // No two of BIL's own codes tie under M30's ranking.
+        // No two of BIL's own codes tie under section 14.1's ranking.
         let rank = |c: &str| (!c.contains('*'), c.chars().filter(|&x| x != '*').count());
         for (i, (a, _)) in EXTENSIONS.iter().enumerate() {
             for (b, _) in &EXTENSIONS[i + 1..] {
