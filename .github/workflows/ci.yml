@@ -36,6 +36,10 @@ jobs:
           }
       - name: Build
         run: cargo build --release
+      - name: Tests of the bil crate
+        # Built without optimization, so integer overflow on corrupt input panics and fails the
+        # tests rather than wrapping silently. Includes 20,000 corrupt NITF files.
+        run: cargo test -p bil
       - name: Experiment 1, correctness
         # Bitwise Window independence and agreement across instruction sets, and accuracy.
         run: cargo run --release --bin exp1 -- --check
@@ -118,6 +122,46 @@ jobs:
             exit 1
           }
 
+  gdal-errors:
+    # Experiment 3's part for GDAL: NITF and TIFF files read by GDAL behind BIL's C layer, with
+    # GDAL's own state (error handlers, configuration options, driver registry, open datasets,
+    # memory files, block cache) compared before and after. GDAL comes from Ubuntu's libgdal-dev;
+    # the layer is built only here, through the experiment's gdal feature.
+    name: gdal errors (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    defaults:
+      run:
+        working-directory: experiments/exp3-c-errors
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: GDAL
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libgdal-dev
+          echo "::notice::GDAL $(gdal-config --version)"
+      - name: Lint
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --release --all-targets --features gdal --message-format=short -- -D warnings 2>&1 | tee clippy.txt || {
+            grep -E "error|warning|panicked" clippy.txt | head -20 | sed 's/^/::error::/'
+            exit 1
+          }
+      - name: Experiment 3, corrupt files through GDAL
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --release --features gdal -- --gdal --check 2>&1 | tee exp3-gdal.txt || {
+            grep -E "error|panicked|Passed: \*\*false" exp3-gdal.txt | head -20 | cut -c1-900 | sed 's/^/::error::/'
+            exit 1
+          }
+
   latest-stable:
     # Reports lints that a newer compiler adds, without failing the build.
     name: lints on latest stable
@@ -172,8 +216,9 @@ jobs:
   test-data:
     # Downloads the real test files and checks them against testdata/manifest.toml.
     # Unpinned checksums, and the files each source offers, are reported as annotations.
+    # Then compares BIL's NITF reader with GDAL's on every NITF file fetched.
     name: test data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/cache@v4
@@ -183,4 +228,24 @@ jobs:
           restore-keys: testdata-
       - name: Fetch and check
         run: python3 testdata/fetch.py --list
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: GDAL, the reference
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libgdal-dev
+          cc -O2 -Wall -Wextra -Werror testdata/nitf_reference.c -o nitf_reference $(gdal-config --cflags) $(gdal-config --libs)
+      - name: The NITF reader against GDAL
+        shell: bash
+        run: |
+          cargo build --release --example nitf_dump
+          find testdata/cache -iname '*.ntf' -print0 | sort -z | xargs -0 python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_reference
+      - name: The NITF reader against GDAL, on GDAL's own NITF test files
+        # The 19 NITF files of GDAL 3.8.4's test suite: masked images, extensions that
+        # overflow, a damaged extension area, files with no images and files both refuse.
+        shell: bash
+        run: |
+          git clone -q --depth 1 --branch v3.8.4 --filter=blob:none --sparse https://github.com/OSGeo/gdal gdal-tests
+          git -C gdal-tests sparse-checkout set autotest/gdrivers/data/nitf
+          find gdal-tests/autotest/gdrivers/data/nitf -iname '*.ntf' -o -iname '*.nsf' | sort | tr '\n' '\0' | xargs -0 python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_reference
 

@@ -4,7 +4,8 @@
 //! The Blazing Imaging Library.
 //!
 //! **Early preview.** This release holds the vector layer and the first slice-function kernels
-//! from the project's first experiment. The reading interface the specification describes is not
+//! from the project's first experiment, and Tier 1's NITF container reader, which reads headers,
+//! extensions and uncompressed pixels. The reading interface the specification describes is not
 //! here yet. See <https://github.com/code-moth/BlazingImagingLibrary>.
 
 // The kernels stay close to the specification's formulas.
@@ -14,5 +15,10 @@
     clippy::excessive_precision
 )]
 
+pub mod fields;
+pub mod io;
 pub mod kernels;
+#[cfg(feature = "nitf")]
+pub mod nitf;
 pub mod simd;
+pub mod types;

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 license = "LGPL-2.1-or-later"
-description = "BIL experiment 3: containing the errors of C libraries, libjpeg-turbo and OpenJPEG, behind a C layer"
+description = "BIL experiment 3: containing the errors of C libraries, libjpeg-turbo, OpenJPEG and GDAL, behind a C layer"
 build = "build.rs"
 
 [[bin]]
@@ -12,6 +12,10 @@ name = "exp3"
 path = "src/main.rs"
 
 [dependencies]
+
+[features]
+# GDAL's part, built where libgdal-dev is installed; elsewhere a stand-in is linked.
+gdal = []
 
 [profile.release]
 opt-level = 3

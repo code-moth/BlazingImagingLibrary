@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //! Experiment 3 of the implementability assessment: containing C libraries' errors.
 //!
-//! libjpeg-turbo and OpenJPEG decode corrupt files behind BIL's C layer (`c/shim.c`). The
-//! question is whether a corrupt file can crash the process, end it, print, hang it, leak, or
-//! change state the whole process shares (section 10.3 of the specification; H2 of the
-//! assessment).
+//! libjpeg-turbo and OpenJPEG decode corrupt files behind BIL's C layer (`c/shim.c`), and so, with
+//! `--gdal`, does GDAL (`c/gdal.c`), reading NITF and TIFF. The question is whether a corrupt file
+//! can crash the process, end it, print, hang it, leak, or change state the whole process shares,
+//! GDAL's own included (section 10.3 of the specification; H2 of the assessment).
 //!
 //! The program is its own supervisor. It starts copies of itself as workers, each decoding a
 //! range of corrupt files made by a seeded mutation of valid ones, and watches each worker's
@@ -12,8 +12,9 @@
 //! index of each file before decoding it, so a crash or a hang names the file, which can be made
 //! again from its index alone.
 //!
-//!     cargo run --release -- --check      # as CI runs it
-//!     cargo run --release                 # more files
+//!     cargo run --release -- --check                         # as CI runs it
+//!     cargo run --release                                    # more files
+//!     cargo run --release --features gdal -- --gdal --check  # GDAL's part, as CI runs it
 
 use std::ffi::{c_char, c_int, CStr};
 use std::io::{BufRead, BufReader, Write};
@@ -97,6 +98,41 @@ extern "C" {
     fn bil_fp_clear();
     fn opj_version() -> *const c_char;
     fn bil_state_poke(what: c_int, undo: c_int) -> c_int;
+    // GDAL's layer, or with the `gdal` feature off, its stand-in.
+    fn bil_gdal_init() -> *const c_char;
+    fn bil_gdal_decode(
+        data: *const u8,
+        len: usize,
+        format: c_int,
+        limits: *const Limits,
+        out: *mut *mut u8,
+        out_len: *mut usize,
+        info: *mut Info,
+        message: *mut c_char,
+        cap: usize,
+    ) -> c_int;
+    fn bil_gdal_encode(
+        pixels: *const u8,
+        width: u32,
+        height: u32,
+        components: u32,
+        format: c_int,
+        variant: c_int,
+        out: *mut *mut u8,
+        out_len: *mut usize,
+        message: *mut c_char,
+        cap: usize,
+    ) -> c_int;
+    fn bil_gdal_decode_unprotected(data: *const u8, len: usize, format: c_int) -> c_int;
+    fn bil_gdal_state_describe(buf: *mut c_char, cap: usize) -> usize;
+    fn bil_gdal_state_poke(what: c_int, undo: c_int) -> c_int;
+}
+
+/// GDAL's version, after registering the drivers its layer uses, or `None` where the program was
+/// built without the `gdal` feature.
+fn gdal_init() -> Option<String> {
+    let v = unsafe { bil_gdal_init() };
+    (!v.is_null()).then(|| unsafe { CStr::from_ptr(v) }.to_string_lossy().into_owned())
 }
 
 /// The limits every decode here is given: section 10.3's limits, at sizes chosen for the
@@ -111,6 +147,10 @@ enum Codec {
     Jpeg,
     J2k,
     Jp2,
+    /// NITF, read by GDAL.
+    Nitf,
+    /// TIFF, read by GDAL's GeoTIFF driver.
+    Tiff,
 }
 
 impl Codec {
@@ -119,6 +159,8 @@ impl Codec {
             Codec::Jpeg => "jpeg",
             Codec::J2k => "j2k",
             Codec::Jp2 => "jp2",
+            Codec::Nitf => "nitf",
+            Codec::Tiff => "tiff",
         }
     }
     fn parse(s: &str) -> Codec {
@@ -126,15 +168,22 @@ impl Codec {
             "jpeg" => Codec::Jpeg,
             "j2k" => Codec::J2k,
             "jp2" => Codec::Jp2,
+            "nitf" => Codec::Nitf,
+            "tiff" => Codec::Tiff,
             _ => panic!("unknown codec {s}"),
         }
     }
+    /// The format number the C layer takes: OpenJPEG's codestream or JP2 file, or GDAL's NITF or
+    /// TIFF.
     fn format(self) -> c_int {
-        if self == Codec::Jp2 {
-            2
-        } else {
-            0
+        match self {
+            Codec::Jp2 => 2,
+            Codec::Tiff => 1,
+            _ => 0,
         }
+    }
+    fn is_gdal(self) -> bool {
+        matches!(self, Codec::Nitf | Codec::Tiff)
     }
 }
 
@@ -149,6 +198,18 @@ enum Outcome {
     Error(String),
     /// Refused before decoding, by the limits.
     Refused,
+}
+
+impl Outcome {
+    /// What BIL would deliver. A warning is an error (section 3.3), so a decode with warnings
+    /// delivers no samples, and only its outcome counts. That matters: on a corrupt JPEG tile,
+    /// GDAL's GeoTIFF driver returns, with warnings, samples from a buffer it never wrote.
+    fn delivered(&self) -> Outcome {
+        match self {
+            Outcome::Warned(info, _) => Outcome::Warned(*info, 0),
+            other => other.clone(),
+        }
+    }
 }
 
 fn fnv(bytes: &[u8]) -> u64 {
@@ -204,6 +265,21 @@ fn decode_with(codec: Codec, data: &[u8], limits: &Limits, keep: bool) -> (Outco
                 // Native 32-bit samples, read as their bytes.
                 (s, out.cast(), len * 4)
             }
+            Codec::Nitf | Codec::Tiff => {
+                let (mut out, mut len) = (std::ptr::null_mut(), 0);
+                let s = bil_gdal_decode(
+                    data.as_ptr(),
+                    data.len(),
+                    codec.format(),
+                    limits,
+                    &mut out,
+                    &mut len,
+                    &mut info,
+                    message.as_mut_ptr(),
+                    message.len(),
+                );
+                (s, out, len)
+            }
         };
         if !bytes.is_null() {
             let view = std::slice::from_raw_parts(bytes, len);
@@ -229,11 +305,15 @@ fn decode_with(codec: Codec, data: &[u8], limits: &Limits, keep: bool) -> (Outco
     (outcome, samples, if keep { 0 } else { left })
 }
 
+/// The process's state, and GDAL's where it is built.
 fn state() -> String {
     // Bytes, passed as C chars, whose signedness differs between processors.
     let mut buf = vec![0u8; 16384];
     let n = unsafe { bil_state_describe(buf.as_mut_ptr().cast::<c_char>(), buf.len()) };
-    String::from_utf8_lossy(&buf[..n]).into_owned()
+    let mut text = String::from_utf8_lossy(&buf[..n]).into_owned();
+    let n = unsafe { bil_gdal_state_describe(buf.as_mut_ptr().cast::<c_char>(), buf.len()) };
+    text.push_str(&String::from_utf8_lossy(&buf[..n]));
+    text
 }
 
 // ---------------------------------------------------------------- seed files
@@ -278,6 +358,8 @@ struct Seed {
     width: u32,
     height: u32,
     components: u32,
+    /// Whether it was coded with loss, so that it decodes only close to `pixels`.
+    lossy: bool,
 }
 
 fn encode(codec: Codec, pixels: &[u8], w: u32, h: u32, comps: u32, variant: u32) -> Vec<u8> {
@@ -309,6 +391,18 @@ fn encode(codec: Codec, pixels: &[u8], w: u32, h: u32, comps: u32, variant: u32)
                 message.as_mut_ptr(),
                 message.len(),
             ),
+            Codec::Nitf | Codec::Tiff => bil_gdal_encode(
+                pixels.as_ptr(),
+                w,
+                h,
+                comps,
+                codec.format(),
+                variant as c_int,
+                &mut out,
+                &mut len,
+                message.as_mut_ptr(),
+                message.len(),
+            ),
         }
     };
     let text = unsafe { CStr::from_ptr(message.as_ptr()) }.to_string_lossy();
@@ -319,8 +413,13 @@ fn encode(codec: Codec, pixels: &[u8], w: u32, h: u32, comps: u32, variant: u32)
 }
 
 /// The valid files the corrupt ones are made from: for each codec, gray and color, small and
-/// odd sizes, and for JPEG a progressive file, for JPEG 2000 a tiled one.
+/// odd sizes, and for JPEG a progressive file, for JPEG 2000 a tiled one. For NITF and TIFF,
+/// each shape is one of the four variants `bil_gdal_encode` lists: uncompressed, blocked or
+/// tiled, and compressed losslessly and with JPEG.
 fn seeds(codec: Codec) -> Vec<Seed> {
+    if codec.is_gdal() {
+        gdal_init().expect("NITF and TIFF need the program built with the gdal feature");
+    }
     let shapes = [
         (64, 48, 1, 0),
         (96, 80, 3, 1),
@@ -331,8 +430,15 @@ fn seeds(codec: Codec) -> Vec<Seed> {
         .iter()
         .enumerate()
         .map(|(i, &(w, h, comps, variant))| {
+            let variant = if codec.is_gdal() { i as u32 } else { variant };
             let pixels = picture(w, h, comps, 77 + i as u64);
             let data = encode(codec, &pixels, w, h, comps, variant);
+            let lossy = match codec {
+                Codec::Jpeg => true,
+                Codec::J2k | Codec::Jp2 => false,
+                Codec::Nitf => variant % 2 == 1,
+                Codec::Tiff => variant == 3,
+            };
             Seed {
                 codec,
                 data,
@@ -340,6 +446,7 @@ fn seeds(codec: Codec) -> Vec<Seed> {
                 width: w,
                 height: h,
                 components: comps,
+                lossy,
             }
         })
         .collect()
@@ -349,16 +456,46 @@ fn seeds(codec: Codec) -> Vec<Seed> {
 
 /// The corrupt file of a given index: a seed, changed by one to eight mutations chosen by a
 /// generator seeded with the index, so any file can be made again from its index.
+///
+/// NITF's headers are fixed-length text fields, its lengths, counts and sizes written in digits,
+/// so NITF files also have two mutations of their own: a digit changed in the headers, and a
+/// field of digits set to all nines or all zeros. Every other format draws as before, so its
+/// files are the same as in earlier runs.
 fn corrupt(seeds: &[Seed], index: u64) -> Vec<u8> {
     let mut rng = Rng(index.wrapping_mul(0x2545F4914F6CDD1D) ^ 0x5EED);
-    let mut d = seeds[rng.below(seeds.len())].data.clone();
+    let seed = &seeds[rng.below(seeds.len())];
+    let kinds = if seed.codec == Codec::Nitf { 12 } else { 10 };
+    let mut d = seed.data.clone();
     for _ in 0..1 + rng.below(8) {
         if d.is_empty() {
             d.push(0);
         }
         let len = d.len();
         let at = rng.below(len);
-        match rng.below(10) {
+        match rng.below(kinds) {
+            // Change a digit in the headers, the first few kilobytes.
+            10 => {
+                let digits: Vec<usize> = (0..len.min(4096))
+                    .filter(|&i| d[i].is_ascii_digit())
+                    .collect();
+                if let Some(&i) = digits.get(rng.below(digits.len())) {
+                    d[i] = b'0' + rng.below(10) as u8;
+                }
+            }
+            // Set a run of digits, a field, to all nines or all zeros.
+            11 => {
+                let digits: Vec<usize> = (0..len.min(4096))
+                    .filter(|&i| d[i].is_ascii_digit())
+                    .collect();
+                if let Some(&i) = digits.get(rng.below(digits.len())) {
+                    let fill = if rng.below(2) == 0 { b'9' } else { b'0' };
+                    let mut j = i;
+                    while j < len && d[j].is_ascii_digit() {
+                        d[j] = fill;
+                        j += 1;
+                    }
+                }
+            }
             // Flip a bit.
             0 => d[at] ^= 1 << rng.below(8),
             // Set a byte to anything.
@@ -433,6 +570,8 @@ fn worker(codec: Codec, start: u64, count: u64) {
     let mut leaked = 0i64;
     let mut shown = 0;
     let mut messages = std::collections::BTreeMap::<String, u64>::new();
+    // Every outcome, for finding the file on which two runs differ.
+    let trace = std::env::var_os("EXP3_TRACE").is_some();
     for i in start..start + count {
         writeln!(out, "i {i}").unwrap();
         out.flush().unwrap();
@@ -443,7 +582,10 @@ fn worker(codec: Codec, start: u64, count: u64) {
         if took > slowest {
             (slowest, slowest_at) = (took, i);
         }
-        digest = fnv(format!("{digest} {outcome:?}").as_bytes());
+        digest = fnv(format!("{digest} {:?}", outcome.delivered()).as_bytes());
+        if trace {
+            writeln!(out, "o {i} {:?}", outcome.delivered()).unwrap();
+        }
         if i >= start + WARMUP && left != 0 {
             leaked += left;
             if shown < 20 {
@@ -451,7 +593,9 @@ fn worker(codec: Codec, start: u64, count: u64) {
                 shown += 1;
             }
         }
-        if i % 10 == 0 && decode_with(codec, &data, &LIMITS, false).0 != outcome {
+        if i % 10 == 0
+            && decode_with(codec, &data, &LIMITS, false).0.delivered() != outcome.delivered()
+        {
             differ += 1;
             writeln!(out, "nondeterministic {i}").unwrap();
         }
@@ -584,35 +728,64 @@ fn main() {
             control(Codec::parse(&args[1]));
             return;
         }
+        Some("--dump") => {
+            // Writes one corrupt file, made again from its index, for a closer look.
+            let codec = Codec::parse(&args[1]);
+            let index: u64 = args[2].parse().unwrap();
+            std::fs::write(&args[3], corrupt(&seeds(codec), index)).unwrap();
+            return;
+        }
         Some("--limits") => {
-            limits();
+            if args.get(1).is_some_and(|a| a == "gdal") {
+                gdal_limits();
+            } else {
+                limits();
+            }
             return;
         }
         _ => {}
     }
-    // The OpenJPEG header in vendor/ describes 2.5.0, and nothing else checks that the library
-    // linked is the same.
-    let opj = unsafe { CStr::from_ptr(opj_version()) }
-        .to_string_lossy()
-        .into_owned();
-    assert_eq!(
-        opj, "2.5.0",
-        "the OpenJPEG linked is not the version of the header in vendor/"
-    );
     let check = args.iter().any(|a| a == "--check");
-    let per_codec: [(Codec, u64); 3] = if check {
-        [
-            (Codec::Jpeg, 400_000),
-            (Codec::J2k, 80_000),
-            (Codec::Jp2, 40_000),
+    let gdal = args.iter().any(|a| a == "--gdal");
+    if gdal {
+        match gdal_init() {
+            Some(version) => println!(
+                "GDAL {version}, with its NITF, GeoTIFF, JPEG and MEM drivers registered one by \
+                 one.\n"
+            ),
+            None => {
+                println!(
+                    "GDAL's part needs the program built with the gdal feature, where libgdal-dev \
+                     is installed: cargo run --release --features gdal -- --gdal"
+                );
+                std::process::exit(2);
+            }
+        }
+    } else {
+        // The OpenJPEG header in vendor/ describes 2.5.0, and nothing else checks that the
+        // library linked is the same.
+        let opj = unsafe { CStr::from_ptr(opj_version()) }
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            opj, "2.5.0",
+            "the OpenJPEG linked is not the version of the header in vendor/"
+        );
+    }
+    let scale = if check { 1 } else { 10 };
+    let per_codec: Vec<(Codec, u64)> = if gdal {
+        vec![
+            (Codec::Nitf, 40_000 * scale),
+            (Codec::Tiff, 400_000 * scale),
         ]
     } else {
-        [
-            (Codec::Jpeg, 4_000_000),
-            (Codec::J2k, 800_000),
-            (Codec::Jp2, 400_000),
+        vec![
+            (Codec::Jpeg, 400_000 * scale),
+            (Codec::J2k, 80_000 * scale),
+            (Codec::Jp2, 40_000 * scale),
         ]
     };
+    let codecs: Vec<Codec> = per_codec.iter().map(|&(c, _)| c).collect();
     let mut all_ok = true;
     let mut report = |name: &str, ok: bool, detail: String| {
         all_ok &= ok;
@@ -622,10 +795,11 @@ fn main() {
         }
     };
 
-    // 1. The seeds decode, and JPEG 2000 losslessly.
+    // 1. The seeds decode: those coded with loss closely, the others sample for sample.
     let mut exact = true;
     let mut worst_psnr = f64::INFINITY;
-    for codec in [Codec::Jpeg, Codec::J2k, Codec::Jp2] {
+    let mut lossy_count = 0;
+    for &codec in &codecs {
         for s in seeds(codec) {
             let (outcome, samples) = decode(s.codec, &s.data, &LIMITS);
             let info = match outcome {
@@ -636,7 +810,8 @@ fn main() {
                 (info.width, info.height, info.components),
                 (s.width, s.height, s.components)
             );
-            if codec == Codec::Jpeg {
+            if s.lossy {
+                lossy_count += 1;
                 let mse = samples
                     .iter()
                     .zip(&s.pixels)
@@ -651,6 +826,9 @@ fn main() {
                         s.width, s.height, s.components
                     );
                 }
+            } else if codec.is_gdal() {
+                // 8-bit samples, pixel-interleaved, as they were given.
+                exact &= samples == s.pixels;
             } else {
                 // Planes of 32-bit samples, one component after another.
                 let n = (s.width * s.height) as usize;
@@ -664,39 +842,87 @@ fn main() {
             }
         }
     }
+    let kinds = if gdal {
+        "NITF and TIFF files, uncompressed, blocked or tiled, lossless and JPEG,"
+    } else {
+        "JPEG, JPEG 2000 codestreams and JP2 files"
+    };
     report(
         "Valid files",
         exact && worst_psnr > 30.0,
-        format!("12 seeds of JPEG, JPEG 2000 codestreams and JP2 files decode: JPEG at {worst_psnr:.1} dB at worst, against at least 30; JPEG 2000 losslessly, sample for sample: {exact}"),
+        format!("{} seeds of {kinds} decode: the {lossy_count} coded with loss at {worst_psnr:.1} dB at worst, against at least 30; the others losslessly, sample for sample: {exact}", codecs.len() * 4),
     );
 
     // 2. The controls: libjpeg's own error handling ends the process and prints; that is what
-    // the layer prevents. OpenJPEG with no handlers set is watched for printing.
-    let jpeg_control = child(
-        &["--control".into(), "jpeg".into()],
-        Duration::from_secs(30),
-    );
-    let ended =
-        jpeg_control.status == Some(1) && !jpeg_control.stdout.iter().any(|l| l == "returned");
-    let printed = jpeg_control.stderr.trim().to_string();
-    let j2k_control = child(&["--control".into(), "j2k".into()], Duration::from_secs(30));
-    let j2k_printed = j2k_control.stderr.trim().to_string();
-    report(
-        "Without the layer",
-        ended && !printed.is_empty(),
-        format!(
-            "libjpeg's own handler ended the process with status {:?} and printed {:?}; OpenJPEG with no handlers set {} and printed {}",
-            jpeg_control.status,
-            printed,
-            if j2k_control.stdout.iter().any(|l| l == "returned") { "returned" } else { "did not return" },
-            if j2k_printed.is_empty() { "nothing".to_string() } else { format!("{j2k_printed:?}") },
-        ),
-    );
+    // the layer prevents. OpenJPEG with no handlers set is watched for printing. GDAL's default
+    // handler prints.
+    if gdal {
+        let nitf = child(
+            &["--control".into(), "nitf".into()],
+            Duration::from_secs(30),
+        );
+        let tiff = child(
+            &["--control".into(), "tiff".into()],
+            Duration::from_secs(30),
+        );
+        let returned = |r: &Run| r.stdout.iter().any(|l| l == "returned");
+        let shown = |r: &Run| {
+            let e = r.stderr.trim();
+            if e.is_empty() {
+                "nothing".to_string()
+            } else {
+                format!("{e:?}")
+            }
+        };
+        report(
+            "Without the layer",
+            returned(&nitf) && returned(&tiff) && !nitf.stderr.trim().is_empty() && !tiff.stderr.trim().is_empty(),
+            format!(
+                "GDAL's own handler, given a NITF file and a TIFF file that are neither, printed {} and {}, and returned: {}",
+                shown(&nitf),
+                shown(&tiff),
+                returned(&nitf) && returned(&tiff),
+            ),
+        );
+    } else {
+        let jpeg_control = child(
+            &["--control".into(), "jpeg".into()],
+            Duration::from_secs(30),
+        );
+        let ended =
+            jpeg_control.status == Some(1) && !jpeg_control.stdout.iter().any(|l| l == "returned");
+        let printed = jpeg_control.stderr.trim().to_string();
+        let j2k_control = child(&["--control".into(), "j2k".into()], Duration::from_secs(30));
+        let j2k_printed = j2k_control.stderr.trim().to_string();
+        let j2k_returned = if j2k_control.stdout.iter().any(|l| l == "returned") {
+            "returned"
+        } else {
+            "did not return"
+        };
+        let j2k_shown = if j2k_printed.is_empty() {
+            "nothing".to_string()
+        } else {
+            format!("{j2k_printed:?}")
+        };
+        report(
+            "Without the layer",
+            ended && !printed.is_empty(),
+            format!(
+                "libjpeg's own handler ended the process with status {:?} and printed {printed:?}; \
+                 OpenJPEG with no handlers set {j2k_returned} and printed {j2k_shown}",
+                jpeg_control.status,
+            ),
+        );
+    }
 
     // 3. Resource limits: a header that claims an enormous Image is refused before decoding,
     // with no memory taken for it; and a progressive JPEG with more scans than the layer
     // allows is stopped. In a child, where heap is counted exactly.
-    let run = child(&["--limits".into()], Duration::from_secs(60));
+    let mut limit_args = vec!["--limits".to_string()];
+    if gdal {
+        limit_args.push("gdal".into());
+    }
+    let run = child(&limit_args, Duration::from_secs(60));
     let refused: usize = field(&run.stdout, "refused=")
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
@@ -704,33 +930,57 @@ fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(i64::MAX);
     let scans = field(&run.stdout, "scans=").unwrap_or_default();
-    report(
-        "Limits",
-        refused == 3 && taken == 0 && scans == "stopped" && run.status == Some(0),
-        format!("headers claiming 65,000 × 65,000 pixels for JPEG and 65,536 × 65,536 for a codestream and a JP2 file, refused before decoding: {refused} of 3; heap left: {taken} bytes; a progressive JPEG with one scan repeated 600 times: {scans}"),
-    );
+    if gdal {
+        report(
+            "Limits",
+            refused == 3 && taken == 0 && run.status == Some(0),
+            format!("headers claiming 65,000 × 65,000 pixels for NITF and TIFF, and a TIFF block of 7.85 GB in an Image of 24 MB, refused before decoding: {refused} of 3; heap left: {taken} bytes{}", if run.status == Some(0) { String::new() } else { format!(" (the child ended with {:?}, signal {:?}: {:?})", run.status, run.signal, run.stderr.chars().take(300).collect::<String>()) }),
+        );
+    } else {
+        report(
+            "Limits",
+            refused == 3 && taken == 0 && scans == "stopped" && run.status == Some(0),
+            format!("headers claiming 65,000 × 65,000 pixels for JPEG and 65,536 × 65,536 for a codestream and a JP2 file, refused before decoding: {refused} of 3; heap left: {taken} bytes; a progressive JPEG with one scan repeated 600 times: {scans}"),
+        );
+    }
 
     // 4. The check of the check: each kind of change the comparison of process state is meant
     // to notice, made and undone, is noticed.
     let mut noticed = 0;
     let mut made = 0;
-    for what in 1..=3 {
+    let pokes: Vec<(bool, c_int)> = (1..=3)
+        .map(|w| (false, w))
+        .chain((1..=7).filter(|_| gdal).map(|w| (true, w)))
+        .collect();
+    for (in_gdal, what) in pokes {
+        let poke = |undo| unsafe {
+            if in_gdal {
+                bil_gdal_state_poke(what, undo)
+            } else {
+                bil_state_poke(what, undo)
+            }
+        };
         let before = state();
-        if unsafe { bil_state_poke(what, 0) } == 1 {
+        if poke(0) == 1 {
             made += 1;
             let changed = state() != before;
-            unsafe { bil_state_poke(what, 1) };
+            poke(1);
             let restored = state() == before;
             if std::env::var_os("EXP3_DEBUG").is_some() {
-                eprintln!("poke {what}: changed {changed}, restored {restored}");
+                eprintln!("poke {in_gdal} {what}: changed {changed}, restored {restored}");
             }
             noticed += usize::from(changed && restored);
         }
     }
+    let changes = if gdal {
+        "flush-to-zero, a signal handler, the file mode mask; and in GDAL a global and a thread's configuration option, an error handler pushed, a driver registered, a dataset left open, a file left in memory, the last error"
+    } else {
+        "flush-to-zero, a signal handler, the file mode mask"
+    };
     report(
         "The state comparison",
         made > 0 && noticed == made,
-        format!("of {made} changes made and undone (flush-to-zero, a signal handler, the file mode mask), each noticed, and its undoing seen as the same state: {noticed} of {made}"),
+        format!("of {made} changes made and undone ({changes}), each noticed, and its undoing seen as the same state: {noticed} of {made}"),
     );
 
     // 5. Corrupt files, in workers.
@@ -917,6 +1167,72 @@ fn limits() {
     println!("scans={scans}");
 }
 
+/// GDAL's limits, checked in a child: a NITF file and a TIFF file whose headers claim
+/// 65,000 × 65,000 pixels, and a TIFF file whose one block would take 7.85 GB.
+fn gdal_limits() {
+    let mut files = Vec::new();
+    // NITF: the first seed, 64 × 48 pixels in one block. The image subheader gives NROWS and
+    // NCOLS, then, after the bands, one block per row and column (NBPR, NBPC) and the block's
+    // size (NPPBH, NPPBV). A block size of 0 with one block means the whole Image, as
+    // MIL-STD-2500C allows, so the claimed size stays consistent.
+    let mut d = seeds(Codec::Nitf)[0].data.clone();
+    let replace = |d: &mut Vec<u8>, from: &[u8], to: &[u8]| {
+        let at = d
+            .windows(from.len())
+            .position(|w| w == from)
+            .unwrap_or_else(|| panic!("{:?} not found", String::from_utf8_lossy(from)));
+        d[at..at + to.len()].copy_from_slice(to);
+    };
+    replace(&mut d, b"0000004800000064", b"0006500000065000");
+    replace(&mut d, b"0001000100640048", b"0001000100000000");
+    files.push((Codec::Nitf, d));
+    // TIFF: the first seed, in strips, little-endian. Its width, length and rows per strip, so
+    // that one strip still covers the Image.
+    let mut d = seeds(Codec::Tiff)[0].data.clone();
+    assert_eq!(
+        &d[..4],
+        b"II*\0",
+        "the TIFF seed is classic little-endian TIFF"
+    );
+    let ifd = u32::from_le_bytes(d[4..8].try_into().unwrap()) as usize;
+    let count = usize::from(u16::from_le_bytes([d[ifd], d[ifd + 1]]));
+    for e in 0..count {
+        let at = ifd + 2 + 12 * e;
+        let tag = u16::from_le_bytes([d[at], d[at + 1]]);
+        let kind = u16::from_le_bytes([d[at + 2], d[at + 3]]);
+        if matches!(tag, 256 | 257 | 278) {
+            // SHORT (3) or LONG (4), held in the entry itself.
+            let v = 65_000u32.to_le_bytes();
+            let n = if kind == 3 { 2 } else { 4 };
+            d[at + 8..at + 8 + n].copy_from_slice(&v[..n]);
+        }
+    }
+    files.push((Codec::Tiff, d));
+    // TIFF file 1,197,389 of the corrupt files: 40 × 40 pixels of 14,974 bands, within the
+    // limits, in one tile of 16 × 32,784 pixels, for which GDAL asks 7.85 GB at once. It is
+    // refused by the cap on a library's working memory, twice max_decoded_bytes.
+    files.push((Codec::Tiff, corrupt(&seeds(Codec::Tiff), 1_197_389)));
+    // GDAL sets up some things once, on its first read with a driver; that is not memory taken
+    // for a refused file.
+    for codec in [Codec::Nitf, Codec::Tiff] {
+        for s in seeds(codec) {
+            decode_with(codec, &s.data, &LIMITS, false);
+        }
+    }
+    let heap0 = unsafe { bil_heap_in_use() };
+    let mut refused = 0;
+    for (codec, d) in &files {
+        let outcome = decode_with(*codec, d, &LIMITS, false).0;
+        if std::env::var_os("EXP3_DEBUG").is_some() {
+            eprintln!("{}: {outcome:?}", codec.name());
+        }
+        refused += usize::from(outcome == Outcome::Refused);
+    }
+    let taken = unsafe { bil_heap_in_use() } as i64 - heap0 as i64;
+    println!("refused={refused}");
+    println!("taken={taken}");
+}
+
 /// The floating-point exception flags `bil_fp_flags` reports, by name.
 fn flag_names(flags: u32) -> String {
     let names: &[(u32, &str)] = if cfg!(target_arch = "x86_64") {
@@ -968,6 +1284,9 @@ fn control(codec: Codec) {
     unsafe {
         match codec {
             Codec::Jpeg => bil_jpeg_decode_unprotected(d.as_ptr(), d.len()),
+            Codec::Nitf | Codec::Tiff => {
+                bil_gdal_decode_unprotected(d.as_ptr(), d.len(), codec.format())
+            }
             _ => bil_j2k_decode_unprotected(d.as_ptr(), d.len(), codec.format()),
         };
     }

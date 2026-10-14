@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 6</p>
+      <p class="eyebrow">Manual · Version 7</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>6</dd></div><div><dt>As of</dt><dd>13 October 2026</dd></div><div><dt>Specification</dt><dd>Version 71</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>7</dd></div><div><dt>As of</dt><dd>14 October 2026</dd></div><div><dt>Specification</dt><dd>Version 71</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF container reader built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -424,7 +424,7 @@ cargo run --release --bin exp1b              # with the speed tables
 <p><strong>Everything beyond 2D is selected, never ranged.</strong> Rows and columns are read as a range, through a Window. A frame and a component are chosen one at a time. A read across frames is therefore outside BIL: a caller reads frame by frame.</p>
 <h2 id="5-opening-a-source">5. Opening a Source</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified.</p>
+<p><strong>Status:</strong> Specified. Opening a NITF file, which reads its file header and image subheaders and nothing more, is built in the NITF reader, without <code>OpenOptions</code> (chapter 23).</p>
 </blockquote>
 <pre><code class="language-python">import bil
 
@@ -910,7 +910,7 @@ one_more  = image.read_slice(&quot;color.rgb.green&quot;, window, level=&quot;st
 <p><strong>Every Slice reports its Level name,</strong> <code>level3</code>, <code>stored2</code> or <code>stored2.level1</code>, so a stored value is never mistaken for a computed one.</p>
 <h2 id="9-missing-data">9. Missing data</h2>
 <blockquote>
-<p><strong>Status:</strong> Prototyped: NaN, both weightings, <code>missing_value</code>, stored NaN, and <code>pixel.mask</code>, checked against an independent reference. Fill values and corrupt blocks are specified.</p>
+<p><strong>Status:</strong> Prototyped: NaN, both weightings, <code>missing_value</code>, stored NaN, and <code>pixel.mask</code>, checked against an independent reference. Built: NITF's blocks never recorded and pad pixels, marked in a Fragment's validity mask (chapter 23). Other fill values and corrupt blocks are specified.</p>
 </blockquote>
 <p><strong>NaN marks a value with no data behind it.</strong> That covers pixels never recorded, pixels never imaged, pixels a format marks with a fill value, pixels a bad-pixel map marks, and, with <code>corrupt_as_missing</code>, corrupt blocks. Every Slice is NaN there, whichever function made it, and the read's status is <code>Partial</code>, or <code>Missing</code> if every pixel is.</p>
 <p><strong>In a Fragment</strong> a missing pixel is marked in the Fragment's validity mask. A Fragment is still a full array, and the stored values at missing positions mean nothing.</p>
@@ -984,7 +984,7 @@ filled.status      # still Partial
 <p><strong>Stored NaN.</strong> In float data, a stored NaN is always missing, the same as a masked pixel, whether or not the Image has a mask. Float formats therefore report <code>may_have_missing</code> unless they rule NaN out.</p>
 <h2 id="10-fragments-the-native-pixels">10. Fragments: the native pixels</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. Borrowing from a mapped file, <code>Shared</code>, <code>Private</code> and <code>Off</code> mapping, strided views for a <code>step</code>, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would.</p>
+<p><strong>Status:</strong> Specified. Borrowing from a mapped file, <code>Shared</code>, <code>Private</code> and <code>Off</code> mapping, strided views for a <code>step</code>, and the alignment rule are prototyped in experiment 5, through NumPy (chapter 23). The other experiments hold whole Images in memory as interleaved native samples, as a Fragment would. Owned Fragments of uncompressed NITF, with their pixel type, significant bits and validity mask, are built (chapter 23).</p>
 </blockquote>
 <p>A Fragment is the stored pixels of a Window, unaltered: not converted, scaled or reordered. Read one when you need exact values, the native sample type, or data to pass to code that expects it.</p>
 <pre><code class="language-python">fragment = image.read_fragment(window)               # level0 by default
@@ -1401,7 +1401,7 @@ sweep = image.open_reader(access_pattern=bil.AccessPattern.Sequential)  # one Re
 </ul>
 <h2 id="16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. Domain profiles are new in specification version 68.</p>
+<p><strong>Status:</strong> Specified. Domain profiles are new in specification version 68. Fields of NITF headers and extensions, read through definitions, extracted by group when first asked for and held, with repeats numbered and dots escaped, are built in the NITF reader (chapter 23).</p>
 </blockquote>
 <p><strong>Fields.</strong> Metadata is named fields with values. A name is a namespace, then the native name, spelled as the file or its specification spells it: <code>nitf.file_header.FTITLE</code>, <code>dicom.PatientName</code>.</p>
 <pre><code class="language-python">image.list_field_groups()                          # [&quot;nitf.image_subheader&quot;, &quot;nitf.RPC00B&quot;, ...]
@@ -1756,7 +1756,7 @@ out.close()
 </ul>
 <h2 id="19-safety-and-containment">19. Safety and containment</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. The C layer that keeps libjpeg-turbo's and OpenJPEG's errors from crashing, ending or printing in the caller's process, and the limits checked before pixel memory is taken, are prototyped in experiment 3 (chapter 23).</p>
+<p><strong>Status:</strong> Specified. The C layer that keeps the errors of libjpeg-turbo, OpenJPEG and GDAL from crashing, ending or printing in the caller's process, and from changing state the process shares, and the limits checked before pixel memory is taken, are prototyped in experiment 3 (chapter 23). The NITF reader's checks, among them the check always made on uncompressed data, are built (chapter 23).</p>
 </blockquote>
 <p>BIL is used on closed networks and with data that must not leak, and imagery files often come from outside. Two rules and four measures follow.</p>
 <p><strong>No network unless asked.</strong> BIL connects only to read a remote Source, a stream or a remote terrain store you named. It fetches no default terrain, grids or updates, and reports nothing about its use. A reference inside a file is reported, and followed only if you allow. PROJ's grid downloading is off, and XML parsing fetches nothing.</p>
@@ -2071,15 +2071,90 @@ bil_close_source(source);
 <p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
 <h2 id="23-what-runs-today">23. What runs today</h2>
 <blockquote>
-<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer and kernels) and Prototyped (experiments 1, 1b, 3 and 5).</p>
+<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer, kernels and NITF container reader) and Prototyped (experiments 1, 1b, 3 and 5).</p>
 </blockquote>
-<p>Four pieces of code exist. The <code>bil</code> crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. Experiment 5 maps files and hands their bytes to NumPy without a copy. Experiment 3 puts two C libraries behind a C layer and feeds them corrupt files.</p>
-<p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer and the kernels.</p>
+<p>Five pieces of code exist. The <code>bil</code> crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. The crate also holds Tier 1's NITF container reader, the first reading of real files. Experiment 5 maps files and hands their bytes to NumPy without a copy. Experiment 3 puts three C libraries behind a C layer and feeds them corrupt files.</p>
+<p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer, the kernels and the NITF reader.</p>
 <ul>
 <li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code>, <code>Avx512</code> and <code>Neon</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. NEON is tested only in CI, on Linux and macOS on ARM, where it agrees bitwise with scalar code; its speed has not yet been measured.</li>
 <li><strong><code>kernels</code>:</strong> the arithmetic of the pass. <code>halve</code> and <code>halve_row</code> make each <code>bilinear</code> halving, and <code>blur5</code> and <code>blur5_row</code> each <code>binomial5</code> halving; <code>halve_weighted</code>, <code>halve_row_weighted</code>, <code>halve_over</code> and their <code>blur5</code> counterparts the halvings with missing data; <code>min3_present</code> and <code>min3_row</code> the range reduction; <code>polar0</code>, <code>phase_from</code>, <code>hsv0</code> and <code>hue_from</code> the slice functions; and <code>atan2</code> and <code>cos_sin_turns</code> the transcendental functions, BIL's own, built only from correctly rounded operations.</li>
 </ul>
 <p>The kernels are <code>unsafe</code> and work on raw rows. They are BIL's internals, not its interface, and callers will never use them directly.</p>
+<p><strong>The NITF container reader</strong> (<code>bil::nitf</code>, behind the crate's <code>nitf</code> build feature, on by default) reads NITF 2.0, NITF 2.1 and NSIF 1.0 with no dependency. Opening reads the file header and the image subheaders, and nothing else. Each image segment is an Image. Headers and extensions are read through field definitions (section 14.1), and an extension is extracted as a group when first asked for, then held. Uncompressed pixels are read here; compressed blocks are a codec's, and the reader says where they lie and which codec they need.</p>
+<pre><code class="language-rust">use bil::nitf::{NitfSource, Scope};
+use bil::types::Window;
+
+let source = NitfSource::open(std::fs::File::open(&quot;scene.ntf&quot;)?)?;
+let info = source.image_info(0)?;                     // rows, cols, bands, pixel type, IC, IMODE, blocks
+source.list_field_groups(Scope::Image(0))?;           // [&quot;nitf.image_subheader&quot;, &quot;nitf.RPC00B&quot;, ...]
+let title = source.read_field(Scope::Source, &quot;nitf.file_header.FTITLE&quot;)?;
+title.value();                                        // decoded on first read, then held
+let lat = source.read_field(Scope::Image(0), &quot;nitf.RPC00B.LAT_OFF&quot;)?;
+(lat.value(), lat.unit());                            // (Float(38.8895), Some(&quot;deg&quot;))
+let storage = source.describe_storage(0)?;            // blocks with their byte ranges, in file order
+let fragment = source.read_fragment(0, Window { row_start: 0, col_start: 0, row_count: 512, col_count: 512 })?;
+fragment.validity;                                    // pixels in blocks never recorded, and pad pixels
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Reader type or call</th>
+<th>Specification counterpart</th>
+<th>Difference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NitfSource::open(reader)</code></td>
+<td><code>open_source</code></td>
+<td>Reads from any <code>ReadAt</code>: a file or bytes in memory. No <code>OpenOptions</code>: no limits beyond the check always made, no mapping, so every Fragment is owned.</td>
+</tr>
+<tr>
+<td><code>image_count</code>, <code>image_info(i)</code></td>
+<td><code>image_count</code>, <code>ImageInfo</code></td>
+<td><code>ImageInfo</code> here is NITF's own: rows, columns, bands, pixel type, compression code and codec, IMODE, blocks</td>
+</tr>
+<tr>
+<td><code>list_field_groups</code>, <code>read_field_group</code>, <code>read_field</code>, <code>release_metadata</code></td>
+<td>The calls of section 14.4</td>
+<td>Each takes a <code>Scope</code>, the Source or one Image, since there is no Image object yet. A group's <code>status</code> is <code>Partial</code> where some of its items could not be read.</td>
+</tr>
+<tr>
+<td><code>describe_storage(i)</code></td>
+<td><code>describe_storage</code></td>
+<td>The same <code>Storage</code></td>
+</tr>
+<tr>
+<td><code>read_fragment(i, window)</code></td>
+<td><code>read_fragment(window, level)</code></td>
+<td>Uncompressed data only, full resolution only; the <code>Window</code> has no <code>step</code> or <code>frame</code></td>
+</tr>
+<tr>
+<td><code>Fragment { window, pixel_type, strides, data, validity }</code></td>
+<td><code>Fragment</code></td>
+<td>Owned, pixel-interleaved, in native byte order; no <code>status</code> or <code>is_borrowed</code> yet</td>
+</tr>
+<tr>
+<td><code>bil::fields</code>: <code>Field</code>, <code>FieldGroup</code>, <code>FieldName</code>, <code>FieldDef</code>, <code>Value</code></td>
+<td>Section 14.1</td>
+<td>Definitions are Rust tables; <code>add_field_definitions</code> and definitions from files are still to come</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>What it reads.</strong> Every IMODE (B, P, R and S); unsigned and signed integers of 8, 16, 32 and 64 bits, 12-bit and 1-bit packed samples, float32, float64 and complex float32; more than nine bands; block mask tables, with blocks stored in any order, blocks never recorded, and pad pixels (judged as proposed in M24), all marked in the validity mask; significant bits and justification as <code>significant_bits</code> and <code>bit_shift</code>; several Images in one file; and extensions in the header's own data and, read when first asked for, in TRE_OVERFLOW segments. RPC00A and RPC00B are read field by field, with units; other extensions are listed with their data as bytes, as <code>CEDATA</code>, the standard's name for it. Fields in runs carry their numbers as proposed in M26, ONAME and OPHONE are <code>Identity</code> as proposed in M25, and compressed blocks name their codec as proposed in M29. A field the definitions name that a file leaves out, such as IGEOLO where ICORDS is blank, is delivered as <code>Missing</code>.</p>
+<p><strong>What it checks.</strong> Every length and count is checked against the file before it is used, so no allocation exceeds the file or the Window asked for. Uncompressed data that claims more pixels than the file holds is refused at open (section 10.3). As proposed in M27, a damaged extension area does not stop the rest: the extensions read before the damage are listed, and the header's group is <code>Partial</code>, its raw bytes still readable as a field.</p>
+<p><strong>How it is tested</strong></p>
+<ul>
+<li><strong>Synthetic files</strong> (<code>crates/bil/tests/nitf.rs</code>), written field by field by a small writer independent of the reader: every IMODE with every sample layout above, read whole and through random Windows across block edges, sample for sample; masks, pad pixels and storage order; every kind of field and extension; NITF 2.0; several images.</li>
+<li><strong>Corrupt files.</strong> 20,000 seeded corruptions of those files, in every CI run, without optimization, so an integer overflow fails the test: every one opens or is refused, and every read delivers or fails. A million more were run once with overflow checks. Section 10.3 also asks for coverage-guided fuzzing before release, which this workspace cannot fetch. The checking agent found an overflow the mutations had missed, a header claiming blocks too large to count; it is fixed, and that file is now a test.</li>
+<li><strong>Against GDAL</strong> (<code>testdata/compare_nitf.py</code>). BIL's <code>nitf_dump</code> example and a GDAL program (<code>testdata/nitf_reference.c</code>) print the same facts for a file: version, Images, header fields, size and sample type, extensions, and a hash of every uncompressed Image's pixels. CI compares them on the 22 real NITF files of <code>testdata/manifest.toml</code> and on the 19 NITF files of GDAL 3.8.4's own test suite, among them masked files, files with no image segments, a damaged extension area and extensions in a TRE_OVERFLOW segment.</li>
+</ul>
+<p><code>crates/bil/tests/RESULTS-nitf.md</code> has the results of both.</p>
+<pre><code class="language-sh">cargo test -p bil                                              # the reader's tests
+cargo run --release --example nitf_dump -- scene.ntf           # what the reader finds
+python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_reference *.ntf
+</code></pre>
+<p><strong>What it leaves.</strong> Compressed blocks, which go to codecs: JPEG 2000 first, for Tier 1. Reduced-resolution sets, which become stored levels. The subheaders of graphics, labels, text, data extension and reserved extension segments as field groups. Geocoding from IGEOLO and RPC00B, and the dictionary items the fields provide. <code>OpenOptions</code> and its limits.</p>
 <p><strong>Experiment 1b</strong> (<code>experiments/exp1-fused-loop</code>) is the rolling pass of specification section 12: every Slice and every Level of a request in one pass, on a ring of three rows for each Level, written straight into the caller's buffers.</p>
 <pre><code class="language-rust">use bil_exp1::{Func, Image, LevelMethod, MissingWeights, Pass, ReadOptions, Samples, Window};
 use bil_exp1::simd::Isa;
@@ -2229,15 +2304,16 @@ source.close()                      # the arrays stay valid; the mapping goes wi
 python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
 </code></pre>
 <p><code>RESULTS.md</code> beside it has the full results.</p>
-<p><strong>Experiment 3</strong> (<code>experiments/exp3-c-errors</code>) is the C layer of section 10.3's "Untrusted files" for two libraries, libjpeg-turbo and OpenJPEG. Every call goes through a C function that returns a status whatever the library does: libjpeg's fatal errors, which by default print and end the process, come back as errors; warnings are counted, never printed; and a header's claimed size is checked against the limits before any pixel memory is taken. Over 5.2 million corrupt files, made by seeded mutation of valid ones, nothing crashed, ended the process, hung, printed, leaked or changed state the whole process shares. It is a program, not an interface; nothing in it is called by a user.</p>
+<p><strong>Experiment 3</strong> (<code>experiments/exp3-c-errors</code>) is the C layer of section 10.3's "Untrusted files" for three libraries, libjpeg-turbo, OpenJPEG and GDAL. Every call goes through a C function that returns a status whatever the library does: libjpeg's fatal errors, which by default print and end the process, come back as errors; warnings are counted, never printed; and a header's claimed size is checked against the limits before any pixel memory is taken. GDAL is held to its own calls scoped to the calling thread and the dataset: an error handler pushed and popped, configuration options set for the thread and put back, its drivers registered one by one, and each Source opened with only its driver allowed. Over 5.2 million corrupt JPEG and JPEG 2000 files, and 4.4 million NITF and TIFF files read through GDAL, made by seeded mutation of valid ones, nothing crashed, ended the process, hung, printed, leaked or changed state the whole process shares, GDAL's own included. GDAL's part found two things: GDAL returned, with only warnings, pixels it had never written, and a corrupt TIFF file asked GDAL for 7.85 GB for one block, which the layer now refuses. It is a program, not an interface; nothing in it is called by a user.</p>
 <pre><code class="language-sh">cd experiments/exp3-c-errors
-cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0, as Ubuntu 24.04 has
+cargo run --release -- --check                          # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0, as Ubuntu 24.04 has
+cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
-<p>It runs in CI on Linux on x86 and ARM. GDAL, the other library the assessment names, is still to come. <code>RESULTS.md</code> beside it has the full results.</p>
-<p><strong>What comes next</strong> in code: the Tier 1 readers, with the Fragment cache, Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 to 70 change in this code.</strong> Nothing. The pass already reads its rows top to bottom, which is the storage order of strips and of tiles stored row by row. Access patterns and domain profiles bear on the cache, the Readers, the input layer, the readers of GeoTIFF and NITF, and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
+<p><strong>What comes next</strong> in code: JPEG 2000 blocks from the NITF reader through OpenJPEG; then the GeoTIFF reader, the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p><strong>What specification versions 68 to 71 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need. Access patterns and domain profiles still bear on the cache, the Readers, the input layer, the GeoTIFF reader and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 to 70 found the points below. Each goes to the author as a proposal. Those ruled on are listed first, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 71, and the code beside it, found the points below. Each goes to the author as a proposal. Those ruled on are listed first, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2375,7 +2451,63 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 </tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> None at present.</p>
+<p><strong>Open, for the author.</strong> Found writing GDAL's part of experiment 3 and the NITF reader. Each is a proposal; the code does what it proposes until the author rules.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Found</th>
+<th>Proposed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M21</td>
+<td><strong>Field definitions for headers whose layout depends on their own fields.</strong> Section 14.1's locator is an offset and a length. NITF's headers cannot be described that way: IGEOLO is present only when ICORDS is not blank, COMRAT only for compressed data, a run of band fields repeats as often as NBANDS, or XBANDS where NBANDS is 0, and the lookup tables take their length from NELUT. Most extensions are the same.</td>
+<td>A second form of locator for such formats: a header's fields as an ordered layout, each with <code>length</code> (a number, or another field's value less a number), and an optional <code>present_if</code> (another field's stored bytes among some values, not among them, or above zero); and runs of fields repeated by a <code>count</code> (a number, another field's value, or one field's value or another's where that is 0). In a file: <code>{"layout": "nitf.image_subheader", "after": "ICORDS", "length": 60, "present_if": {"field": "ICORDS", "not": [" "]}}</code>. The NITF reader's definitions are in this form, as Rust tables (<code>crates/bil/src/nitf/defs.rs</code>).</td>
+</tr>
+<tr>
+<td>M22</td>
+<td><strong>A cap on a library's working memory where the library offers none.</strong> Section 10.3 caps it "where the library allows a cap". GDAL allows none, and a corrupt TIFF file of 1,288 bytes, whose Image of 24 MB is within every limit, asked GDAL for 7.85 GB for one block; Linux granted it and then ended the process (experiment 3).</td>
+<td>Where a library offers no cap, the driver refuses a block whose declared size, over every component, exceeds twice <code>max_decoded_bytes</code>, before reading it, and the refusal is an error. Experiment 3's GDAL layer does this, counting every band even where a driver would read one at a time.</td>
+</tr>
+<tr>
+<td>M23</td>
+<td><strong>Registering GDAL's drivers when GDAL is shared.</strong> Section 10.5 forbids loading plugins from search paths, so BIL cannot call <code>GDALAllRegister</code>. Registering drivers at all changes GDAL's registry, which a caller who loads the same GDAL, as rasterio does, shares.</td>
+<td>BIL registers the drivers it uses one by one, which adds and never removes, loads no plugin, and leaves a later <code>GDALAllRegister</code> by another package working; and it opens each Source with only the driver it chose allowed. The other routes: leaving registration to the caller, which breaks "installing BIL is enough"; or <code>GDALAllRegister</code> with plugins turned off, which takes a global configuration option. Experiment 3 does the first.</td>
+</tr>
+<tr>
+<td>M24</td>
+<td><strong>Which NITF pixels are pad pixels.</strong> A block mask table may state a pad value (TPXCD), and per block whether pad pixels occur (the TMR records). The standard does not say how pad is judged across bands.</td>
+<td>A pixel is missing when every one of its samples holds the pad value, anywhere in the Image, whether or not its block's TMR record is set.</td>
+</tr>
+<tr>
+<td>M25</td>
+<td><strong>The originator's name and telephone</strong> (ONAME, OPHONE) name a person. Section 14.3 asks definitions to flag identity fields; it names DICOM's patient name, not NITF's.</td>
+<td>Flag ONAME and OPHONE as <code>Identity</code>. Titles and comments (FTITLE, IID2, ICOM) can hold anything and stay <code>Ordinary</code>; security fields are <code>Marking</code>.</td>
+</tr>
+<tr>
+<td>M26</td>
+<td><strong>Fields in counted runs.</strong> NITF names a run's fields by their place: IREPBANDn for band n, LISHn for image segment n, LUTDnm for band n's table m. Section 14.1 numbers only a name that occurs more than once, and once only.</td>
+<td>A field in a counted run always carries its place in the run, even when the run has one entry, since the number says which band or segment it belongs to: <code>IREPBAND[1]</code> in a one-band Image, <code>LISH[1]</code>, <code>ICOM[1]</code>. A field inside two runs carries one number for each, outermost first: <code>LUTD[2][1]</code> for band 2's first table.</td>
+</tr>
+<tr>
+<td>M27</td>
+<td><strong>What corrupt structure stops a Source from opening.</strong> Section 3.3 makes corrupt data an error and lets a field group be <code>Partial</code>; it does not say which damage fails the open.</td>
+<td>The open fails where the structure that locates Images cannot be trusted: a header or segment that runs past the file, block numbers that do not cover the Image, uncompressed data larger than its segment. Damage within an extension area does not: the extensions before it are listed, the header's group is <code>Partial</code>, and the pixels can still be read. GDAL opens some files that run past their end, and BIL refuses them.</td>
+</tr>
+<tr>
+<td>M28</td>
+<td><strong>The example tag in section 14.1,</strong> <code>VNDRTRE</code>, has seven letters; NITF extension tags have six.</td>
+<td>Use a six-letter tag, such as <code>VNDRTA</code>.</td>
+</tr>
+<tr>
+<td>M29</td>
+<td><strong>Codec names for NITF's compression codes.</strong> A driver names the codec its blocks need, and section 10 lists codecs by library, not by name.</td>
+<td>snake_case names for what is coded, not the library: <code>jpeg</code> (C3, M3), <code>jpeg2000</code> (C8, M8), <code>bilevel</code> (C1, M1), <code>vector_quantization</code> (C4, M4), <code>lossless_jpeg</code> (C5, M5), <code>downsampled_jpeg</code> (I1), and <code>nitf_</code> with the code for any other, such as <code>nitf_c7</code>.</td>
+</tr>
+</tbody>
+</table></div>
 <p><strong>How this list is kept.</strong> Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.</p>
 <h2 id="appendix-where-each-call-is-described">Appendix: where each call is described</h2>
 <div class="table-wrap"><table>
@@ -2477,7 +2609,7 @@ cargo run --release -- --check   # needs libjpeg-turbo 2.1.5 and OpenJPEG 2.5.0,
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 6, written beside the code against version 71 of the Blazing Imaging Library (BIL) specification, as of 13 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 7, written beside the code against version 71 of the Blazing Imaging Library (BIL) specification, as of 14 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

@@ -142,7 +142,7 @@ cargo run --release --bin exp1b -- --check  # correctness only, as CI runs it
 cargo run --release --bin exp1 -- --check   # experiment 1's own check
 ```
 
-**Experiment 3, containing C errors.** libjpeg-turbo and OpenJPEG behind a C layer of BIL's, fed 5.2 million corrupt files: nothing crashed, ended the process, hung, printed, leaked or changed state the whole process shares. Without the layer, libjpeg's first corrupt file prints and ends the process. GDAL, the other library the experiment names, is still to come.
+**Experiment 3, containing C errors.** libjpeg-turbo and OpenJPEG behind a C layer of BIL's, fed 5.2 million corrupt files, and GDAL, fed 4.4 million corrupt NITF and TIFF files: nothing crashed, ended the process, hung, printed, leaked or changed state the whole process shares, GDAL's own error handlers, configuration options and driver registry included. Without the layer, libjpeg's first corrupt file prints and ends the process. GDAL returned, with only warnings, pixels it had never written, which BIL treats as errors, and one corrupt file asked GDAL for 7.85 GB for one block, which the layer now refuses.
 
 **Experiment 5, borrowed NumPy arrays.** A Python extension module maps a file and hands its bytes to NumPy with no copy. The arrays stay valid after their Source is closed and dropped, under eight threads, are read-only under `Shared` mapping and the caller's own under `Private`, and leak nothing over 50,000 reads. Every read releases the interpreter lock.
 
@@ -151,7 +151,14 @@ cargo build --release -p bil-exp5
 python3 -I experiments/exp5-borrowed-arrays/check.py target/release   # needs NumPy
 ```
 
-CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the vector code is NEON, experiment 5 with Python 3.12 everywhere and Python 3.11 on Linux, and experiment 3 on Linux on x86 and ARM.
+**The NITF container reader,** the first of Tier 1's readers, in the `bil` crate. It reads NITF 2.0, NITF 2.1 and NSIF 1.0 with no dependency: headers and extensions as fields through definitions, extracted when first asked for, and uncompressed pixels of every interleave and sample layout, with blocks never recorded and pad pixels marked missing, as proposed to the author. CI compares it with GDAL on the 22 real NITF test files and on the NITF files of GDAL's own test suite, and feeds it 20,000 corrupt files.
+
+```sh
+cargo test -p bil
+cargo run --release --example nitf_dump -- scene.ntf
+```
+
+CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the vector code is NEON, experiment 5 with Python 3.12 everywhere and Python 3.11 on Linux, and experiment 3 on Linux on x86 and ARM; and it compares the NITF reader with GDAL on the real test files it fetches.
 
 ## What is here
 
@@ -159,12 +166,12 @@ CI runs the checks on Linux on x86 and ARM, Windows, and macOS on ARM, where the
 | --- | --- |
 | `flyer.pdf`, `flyer.html` | The two-page flyer, and the page it is printed from |
 | `docs/` | The specification, the user manual, reviews and assessments, the flyer's page images, and the scripts that render them |
-| `crates/bil/` | The `bil` crate: so far, the vector layer and kernels from experiment 1 |
+| `crates/bil/` | The `bil` crate: so far, the vector layer and kernels from experiment 1, and the NITF container reader |
 | `crates/bil-sys/`, `python/` | The native bindings and Python packages: early releases that hold the names |
 | `experiments/exp1-fused-loop/` | Experiments 1 and 1b |
 | `experiments/exp3-c-errors/` | Experiment 3, a workspace of its own |
 | `experiments/exp5-borrowed-arrays/` | Experiment 5 |
-| `testdata/` | The manifest of real test files, pinned by checksum, and the script that fetches them |
+| `testdata/` | The manifest of real test files, pinned by checksum, the script that fetches them, and the comparison of the NITF reader with GDAL |
 | `deny.toml`, `deny-tests.toml` | License and source checks for what ships, and for test-only code |
 | `CLAUDE.md` | Working notes: the state of the work and the next step |
 
