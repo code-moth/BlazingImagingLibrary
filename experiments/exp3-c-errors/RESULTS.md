@@ -2,7 +2,7 @@ Experiment 3 of the implementability assessment, section 8: containing C librari
 
 ## Result
 
-**Passed for libjpeg-turbo and OpenJPEG,** here and in CI on Linux on x86 and ARM, **and for GDAL** here, with one cap added to the layer that the run showed was needed (below). GDAL's part runs in CI too, against Ubuntu's own package.
+**Passed for libjpeg-turbo and OpenJPEG,** here and in CI on Linux on x86 and ARM, **and for GDAL** here, with one cap added to the layer that the run showed was needed (below). GDAL's part runs in CI too, against Ubuntu's own package, and passes on Linux on x86 and ARM.
 
 | Corrupt files | Decoded | Decoded, with corrupt data recovered from | Errors | Refused by the limits |
 | --- | --- | --- | --- | --- |

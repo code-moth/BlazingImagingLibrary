@@ -51,4 +51,11 @@ cargo build --release --example nitf_dump
 python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_reference gdal-tests/autotest/gdrivers/data/nitf/*.{ntf,NTF,nsf}
 ```
 
-**In CI.** The `test data` job runs the same comparison with Ubuntu 24.04's GDAL 3.8.4, which reads JPEG 2000, on the 22 real NITF files of `testdata/manifest.toml` and on GDAL's 19.
+**In CI.** The `test data` job runs the same comparison with Ubuntu 24.04's GDAL 3.8.4, which reads JPEG 2000, on the 22 real NITF files of `testdata/manifest.toml` and on GDAL's 19, and raises its summary as notices. First run that passed, on 14 October 2026 (commit 4a08a8d):
+
+| Files | Result |
+| --- | --- |
+| GDAL's 19 | 19 agree: the two JPEG 2000 files too, now that GDAL can open them |
+| The manifest's 22 | 22 agree |
+
+Two of the manifest's files hold blocks never recorded, which BIL marks missing: `v_3301c.ntf`, 329,543 pixels, and `v_3301f.ntf`, 202,608. In `v_3301f.ntf` 12 of its 16 blocks are left out, and there GDAL writes the file's pad value where BIL leaves 0. A pixel never recorded holds no value, so the comparison counts differences only at recorded pixels, where the two agree. The first runs, before the comparison made that distinction, reported `v_3301f.ntf` as differing in 589,824 bytes: exactly those 12 blocks of 128 × 128 pixels in 3 bands.

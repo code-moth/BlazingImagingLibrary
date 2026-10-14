@@ -1169,7 +1169,7 @@ fragment.validity;                                    // pixels in blocks never 
 - **Corrupt files.** 20,000 seeded corruptions of those files, in every CI run, without optimization, so an integer overflow fails the test: every one opens or is refused, and every read delivers or fails. A million more were run once with overflow checks. Section 10.3 also asks for coverage-guided fuzzing before release, which this workspace cannot fetch. The checking agent found an overflow the mutations had missed, a header claiming blocks too large to count; it is fixed, and that file is now a test.
 - **Against GDAL** (`testdata/compare_nitf.py`). BIL's `nitf_dump` example and a GDAL program (`testdata/nitf_reference.c`) print the same facts for a file: version, Images, header fields, size and sample type, extensions, and a hash of every uncompressed Image's pixels. CI compares them on the 22 real NITF files of `testdata/manifest.toml` and on the 19 NITF files of GDAL 3.8.4's own test suite, among them masked files, files with no image segments, a damaged extension area and extensions in a TRE_OVERFLOW segment.
 
-`crates/bil/tests/RESULTS-nitf.md` has the results of both.
+In CI all 22 and all 19 agree. Where a mask leaves blocks out, GDAL fills them with the file's pad value and BIL leaves 0 and marks them missing, so the comparison counts only recorded pixels. `crates/bil/tests/RESULTS-nitf.md` has the results of both.
 
 ```sh
 cargo test -p bil                                              # the reader's tests
