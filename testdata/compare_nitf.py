@@ -73,11 +73,11 @@ def compare(bil_lines, gdal_lines, path):
         found = pixel_differences(path, m.group(1), bil_lines)
         if found is None:
             continue
-        recorded, missing, text = found
+        recorded, unrecorded, text = found
         if recorded == 0:
             bil.discard(line)
             gdal.discard(other[0])
-            notes.append(f"image {m.group(1)}: pixels agree where recorded; {missing} bytes of pixels never recorded differ, which GDAL fills")
+            notes.append(f"image {m.group(1)}: pixels agree where recorded; {unrecorded} bytes of pixels never recorded differ, which GDAL fills")
         else:
             notes.append(explain(path, m.group(1), bil_lines, text))
     problems = [f"BIL only: {x}" for x in sorted(bil - gdal)]
@@ -106,6 +106,9 @@ def pixel_differences(path, i, bil_lines):
     size_line = next((l for l in bil_lines if l.startswith(f"image {i} size ")), "")
     m = re.match(r"image \d+ size (\d+) x (\d+) x (\d+)", size_line)
     pixels = int(m.group(1)) * int(m.group(2)) if m else 0
+    bands = int(m.group(3)) if m else 1
+    band_bytes = len(ours) // max(bands, 1)
+    size = band_bytes // pixels if pixels else 1
     try:
         mask = open(os.path.join(PIXELS, f"{name}.{i}.mask"), "rb").read()
     except OSError:
@@ -114,8 +117,8 @@ def pixel_differences(path, i, bil_lines):
     first = []
     for k in range(len(ours)):
         if ours[k] != theirs[k]:
-            # Band after band, so the pixel is the byte's place within its band.
-            p = (k * pixels // len(ours)) % pixels if pixels else 0
+            # Band after band, so the pixel is the byte's place within its band, in samples.
+            p = (k % band_bytes) // size if band_bytes and size else 0
             if mask is not None and p < len(mask) and mask[p] == 0:
                 missing += 1
             else:
