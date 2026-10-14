@@ -162,7 +162,11 @@ def main():
             print(f"{name}: agrees ({summary})")
         for n in notes:
             print(f"    {n}")
+            if actions and not problems:
+                print(f"::notice::{name}: {n}"[:900])
     print(f"{len(paths) - failed} of {len(paths)} files agree")
+    if actions:
+        print(f"::notice::NITF reader against GDAL: {len(paths) - failed} of {len(paths)} files agree")
     sys.exit(1 if failed else 0)
 
 
