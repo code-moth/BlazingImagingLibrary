@@ -1,6 +1,6 @@
 # Blazing Imaging Library (BIL) Specification
 
-Oct 12, 2026 · @Master
+Oct 14, 2026 · @Master
 
 ## 1. Purpose and scope
 
@@ -2290,8 +2290,8 @@ Geocoding, normalization parameters and coordinates are built from metadata, and
 
 | Part | Meaning | Example |
 | --- | --- | --- |
-| `name` | The native name, as a list of parts | `["nitf", "VNDRTRE", "GAIN"]` |
-| `locator` | Where the value is, in the format's own terms | `{"extension": "VNDRTRE", "offset": 12, "length": 6}`, or `{"tag": "0018,1150"}` for DICOM |
+| `name` | The native name, as a list of parts | `["nitf", "VNDRTA", "GAIN"]` |
+| `locator` | Where the value is, in the format's own terms | `{"extension": "VNDRTA", "offset": 12, "length": 6}`, or `{"tag": "0018,1150"}` for DICOM |
 | `value_type` | Text, integer, float, boolean, date and time, bytes, or a list of one of these | `"float"` |
 | `encoding` | How the stored bytes become the value | `"ascii_decimal"`, `"big_endian_u16"` |
 | `unit` | The unit, where there is one | `"dB"` |
@@ -2299,6 +2299,9 @@ Geocoding, normalization parameters and coordinates are built from metadata, and
 | `provides` | The dictionary item it provides, where it is plainly the same (section 14.2) | `"common.exposure_time"` |
 
 The `locator` and `encoding` each format accepts are listed by its driver.
+
+- **Codes up to the format's length.** A locator's code matches the code the file stores with its padding removed, so where a format pads its codes, a code of any length up to the format's own is accepted: a NITF extension tag of one to six characters. Each driver states its formats' limit beside the locators it lists: a longest length where codes are padded, as NITF's tags are, or a fixed length where they are not, as a DICOM tag is. A definition whose code breaks the limit is refused with an error when it is added, rather than never matching.
+- **A family of codes.** A locator's code may hold a wildcard, `*`, so that one definition serves a family of codes, such as `RPC00*` for RPC00A and RPC00B. A field's name keeps the code matched in each file, so native names stay exact: `nitf.RPC00B.LINE_OFF` in a file that holds RPC00B.
 - **Nothing is hidden.** A value with no definition is still listed, under its native code, with its value as bytes.
 
 ### 14.2 The metadata dictionary
@@ -2539,7 +2542,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and seventy-seven have been decided. Each lists the current proposal.
+Two points are not yet settled, and seventy-eight have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2561,6 +2564,7 @@ Two points are not yet settled, and seventy-seven have been decided. Each lists 
 - [x] **Borrowed data and the Python interface, from experiment 5.** Decided: under `Private` mapping, arrays from one Source share their pages, and concurrent writes are the caller's data race; borrowed arrays are read-only under `Shared` mapping only; the Python interface is built on PyO3 (sections 2, 4 and 12).
 - [x] **Libraries' corrupt data and limits, from experiment 3.** Decided: data a library recovers with warnings is corrupt data, an error by default, and its whole block is missing under `corrupt_as_missing`; `max_scans` is a fourth limit, 500 for untrusted Sources; a library's working memory is capped at twice `max_decoded_bytes` where it allows; a refusal is an error; a codec does not expand JPEG 2000 palettes, and the driver applies or reports `cmap` and `cdef` (sections 3.3, 3.4 and 10.3).
 - [x] **Stored NaN and closing in C.** Decided: a stored NaN in float data is always missing, mask or not, and float drivers set `may_have_missing` unless the format rules NaN out; in C, `bil_close_source` frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed, and in Rust dropping the Source closes it (sections 4 and 5).
+- [x] **Codes in locators.** Decided: a locator's code matches the stored code with its padding removed, up to a length each driver states for its formats, and a definition that breaks it is refused when added; a code may hold a wildcard, `*`, for a family of codes, and a field's name keeps the code matched (section 14.1).
 - [ ] **Drivers for the added sensor cases.** The medical, security screening and sonar cases in section 8 name the data but not yet the libraries that read it.
 - [x] **Metadata model.** Decided, for now: metadata is held as named fields, with names taken from self-describing files or from specifications. Fields are extracted on demand and held to be read when needed (section 14).
 - [x] **Markings and identity.** Decided: markings are always written, to the companion file where the format cannot hold them. Identity fields are left empty by default. The caller can override both (section 11).

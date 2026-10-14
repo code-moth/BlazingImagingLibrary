@@ -18,6 +18,8 @@
 
 pub(crate) mod defs;
 
+pub use defs::{check_extension_code, EXTENSION_TAG_LENGTH};
+
 use std::collections::HashMap;
 use std::fmt;
 use std::io;

@@ -588,12 +588,80 @@ pub(crate) static RPC00: &[Item] = &[
     },
 ];
 
-/// The layout of an extension, by its tag, where BIL has one.
-pub(crate) fn extension_layout(tag: &str) -> Option<&'static [Item]> {
-    match tag {
-        "RPC00A" | "RPC00B" => Some(RPC00),
-        _ => None,
+/// The longest extension tag NITF holds: its CETAG field has six characters, padded on the
+/// right with spaces. A definition's code for an extension may be shorter, never longer
+/// (section 14.1, "Codes up to the format's length").
+pub const EXTENSION_TAG_LENGTH: usize = 6;
+
+/// The extensions BIL defines, each by the code or family of codes its locator gives.
+static EXTENSIONS: &[(&str, &[Item])] = &[("RPC00*", RPC00)];
+
+/// Whether a definition's code for an NITF extension can match a tag: one to six printable
+/// characters other than spaces, besides any wildcards, `*`. The error says why not. It is for
+/// adding definitions, which section 14.1 refuses when their code breaks the limit; BIL has no
+/// call to add them yet.
+pub fn check_extension_code(code: &str) -> Result<(), String> {
+    let fixed = code.chars().filter(|&c| c != '*').count();
+    if !code.bytes().all(|b| b.is_ascii_graphic()) {
+        return Err(format!(
+            "{code:?}: an extension tag is printable characters, with no spaces"
+        ));
     }
+    // A code of wildcards alone would claim every extension (proposed in M30).
+    if fixed == 0 {
+        return Err(format!(
+            "{code:?}: an extension tag needs a character besides `*`"
+        ));
+    }
+    if fixed > EXTENSION_TAG_LENGTH {
+        return Err(format!(
+            "{code:?}: an extension tag has at most {EXTENSION_TAG_LENGTH} characters"
+        ));
+    }
+    Ok(())
+}
+
+/// Whether `tag` is in the family `code` names: `*` stands for any run of characters,
+/// including none, as proposed in M30 of the user manual's chapter 24. One pass over each,
+/// returning to the last `*` on a mismatch, so the work is bounded by the lengths' product
+/// however many wildcards a code holds.
+fn matches(code: &[u8], tag: &[u8]) -> bool {
+    let (mut c, mut t) = (0, 0);
+    // The last `*` seen, and the place in the tag it was tried against.
+    let mut star: Option<(usize, usize)> = None;
+    while t < tag.len() {
+        if c < code.len() && code[c] == b'*' {
+            star = Some((c, t));
+            c += 1;
+        } else if c < code.len() && code[c] == tag[t] {
+            c += 1;
+            t += 1;
+        } else if let Some((sc, st)) = star {
+            // Let the `*` take one more character, and try again after it.
+            star = Some((sc, st + 1));
+            c = sc + 1;
+            t = st + 1;
+        } else {
+            return false;
+        }
+    }
+    code[c..].iter().all(|&b| b == b'*')
+}
+
+/// The layout of an extension, by its tag, where BIL has one. Where several definitions match,
+/// a code with no wildcard is preferred, then the code with the most characters fixed, as
+/// proposed in M30.
+pub(crate) fn extension_layout(tag: &str) -> Option<&'static [Item]> {
+    EXTENSIONS
+        .iter()
+        .filter(|(code, _)| matches(code.as_bytes(), tag.as_bytes()))
+        .max_by_key(|(code, _)| {
+            (
+                !code.contains('*'),
+                code.chars().filter(|&c| c != '*').count(),
+            )
+        })
+        .map(|&(_, layout)| layout)
 }
 
 /// The definition of the field with this native name in any of the layouts, where there is
@@ -780,6 +848,36 @@ pub(crate) fn walk(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codes_up_to_six_characters_and_families() {
+        for code in EXTENSIONS.iter().map(|(c, _)| *c) {
+            assert_eq!(check_extension_code(code), Ok(()), "{code}");
+        }
+        for code in ["VNDR", "VNDRTA", "RPC00*", "A*B", "*A**"] {
+            assert_eq!(check_extension_code(code), Ok(()), "{code}");
+        }
+        for code in ["VNDRTRE", "", "*", "**", "VN DR", "ABCDEFG*"] {
+            assert!(check_extension_code(code).is_err(), "{code}");
+        }
+        assert!(extension_layout("RPC00A").is_some());
+        assert!(extension_layout("RPC00B").is_some());
+        assert!(extension_layout("RPC00").is_some());
+        assert!(extension_layout("RPC0").is_none());
+        assert!(extension_layout("XRPC00B").is_none());
+        assert!(matches(b"A*B*", b"AXXBY") && !matches(b"A*B", b"AXXBY"));
+        assert!(matches(b"*B", b"AB") && matches(b"A*", b"A") && !matches(b"A*C", b"AB"));
+        // Many wildcards cost no more than a few.
+        let many = [b"*".repeat(200), b"X".to_vec()].concat();
+        assert!(!matches(&many, &b"RPC00B".repeat(50)));
+        // No two of BIL's own codes tie under M30's ranking.
+        let rank = |c: &str| (!c.contains('*'), c.chars().filter(|&x| x != '*').count());
+        for (i, (a, _)) in EXTENSIONS.iter().enumerate() {
+            for (b, _) in &EXTENSIONS[i + 1..] {
+                assert!(rank(a) != rank(b), "{a} and {b} tie");
+            }
+        }
+    }
 
     #[test]
     fn rpc00_is_1041_bytes() {

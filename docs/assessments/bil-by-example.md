@@ -3,7 +3,7 @@ This document shows BIL in use, through calls a caller would actually write. It 
 **How to read it**
 
 - **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 70. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where.
+- **Only calls the specification defines.** Every call, option and name comes from version 70. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where. Version 10 changes only the example extension tag, to the six-letter `VNDRTA` of specification version 72, since NITF's tags have at most six characters; otherwise it stands as written for version 70.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -653,7 +653,7 @@ source.add_field("caller.task_id", "T-0417")
 source.add_field("common.sun_elevation", 42.1)   # overrides the file, with origin Caller
 
 source.add_field_definitions(vendor_tre_definitions)   # names, types and units for a new NITF extension
-source.read_field("nitf.VNDRTRE.GAIN")
+source.read_field("nitf.VNDRTA.GAIN")
 ```
 
 ### 9.8 Free held metadata
@@ -1070,8 +1070,8 @@ source.load_field_definitions("new_tre.json")
 ```json
 [
   {
-    "name": ["nitf", "VNDRTRE", "GAIN"],
-    "locator": {"extension": "VNDRTRE", "offset": 12, "length": 6},
+    "name": ["nitf", "VNDRTA", "GAIN"],
+    "locator": {"extension": "VNDRTA", "offset": 12, "length": 6},
     "value_type": "float",
     "encoding": "ascii_decimal",
     "unit": "dB",

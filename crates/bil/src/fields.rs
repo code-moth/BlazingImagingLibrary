@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn a_field_without_definition_is_its_bytes() {
         let f = Field::new(
-            FieldName::new(["nitf", "VNDRTRE", "CEDATA"]),
+            FieldName::new(["nitf", "VNDRTA", "CEDATA"]),
             vec![1, 2, 3],
             None,
             Origin::Specified,

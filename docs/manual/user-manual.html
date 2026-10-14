@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 7</p>
+      <p class="eyebrow">Manual · Version 8</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>7</dd></div><div><dt>As of</dt><dd>14 October 2026</dd></div><div><dt>Specification</dt><dd>Version 71</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF container reader built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>8</dd></div><div><dt>As of</dt><dd>14 October 2026</dd></div><div><dt>Specification</dt><dd>Version 72</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF container reader built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 71, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 72, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -1874,11 +1874,12 @@ bil.register_driver(VendorDriver)
 <p><strong>A slice function</strong> gives its two-part name in a family it may use, the representations it accepts, its Slice names (listed, or a rule over the <code>ImageInfo</code>), the kind of each Slice (linear, angle, label or range), its radius, its parameters, the fields it needs, and its kernel. BIL calls the kernel for each block of rows with its inputs already in float32 and its margins read, and does everything else: reading, Levels, delivery and threads. A registered kernel runs as a call for each row block, slower than the core's compiled loop but with every other guarantee.</p>
 <p><strong>A level method</strong> gives its name, weights, radius and alignment. Its weights must be fixed and tied to the Image grid, so results stay independent of the Window.</p>
 <p><strong>Field definitions</strong> name coded fields without rebuilding BIL. Each record gives the native <code>name</code> as a list of parts, a <code>locator</code> in the format's own terms, a <code>value_type</code>, an <code>encoding</code>, a <code>unit</code>, a <code>handling</code>, and the dictionary item it <code>provides</code>, if it is plainly the same.</p>
-<pre><code class="language-json">{&quot;name&quot;: [&quot;nitf&quot;, &quot;VNDRTRE&quot;, &quot;GAIN&quot;],
- &quot;locator&quot;: {&quot;extension&quot;: &quot;VNDRTRE&quot;, &quot;offset&quot;: 12, &quot;length&quot;: 6},
+<pre><code class="language-json">{&quot;name&quot;: [&quot;nitf&quot;, &quot;VNDRTA&quot;, &quot;GAIN&quot;],
+ &quot;locator&quot;: {&quot;extension&quot;: &quot;VNDRTA&quot;, &quot;offset&quot;: 12, &quot;length&quot;: 6},
  &quot;value_type&quot;: &quot;float&quot;, &quot;encoding&quot;: &quot;ascii_decimal&quot;, &quot;unit&quot;: &quot;dB&quot;,
  &quot;handling&quot;: &quot;Ordinary&quot;, &quot;provides&quot;: null}
 </code></pre>
+<p>A locator's code matches the file's code with its padding removed, up to the length its driver states: a NITF extension tag has one to six characters, so <code>VNDR</code> works as well as <code>VNDRTA</code>, and a definition with a longer code is refused when added. A wildcard names a family, <code>{"extension": "RPC00*"}</code>, and each field keeps the code its file holds: <code>nitf.RPC00B.LINE_OFF</code> (section 14.1).</p>
 <p><strong>Domain profiles</strong> are added with <code>add_profile</code> or <code>load_profiles</code> (chapter 16).</p>
 <p><strong>External decoding.</strong> By configuration, any supported format can be decoded in a separate process into BIL's own memory-mapped format, and read from there with every Fragment borrowed. It serves fragile or slow decoders, decoders that cannot load into your process, such as one written in Java, one decoding shared by several processes, and isolation. Your code does not change. The configuration names a folder or shared memory, and there is no default, so nothing is decoded externally until one is chosen.</p>
 <h2 id="21-errors-and-statuses">21. Errors and statuses</h2>
@@ -2139,6 +2140,11 @@ fragment.validity;                                    // pixels in blocks never 
 <td>Section 14.1</td>
 <td>Definitions are Rust tables; <code>add_field_definitions</code> and definitions from files are still to come</td>
 </tr>
+<tr>
+<td><code>bil::nitf::check_extension_code</code>, <code>EXTENSION_TAG_LENGTH</code></td>
+<td>The limit each driver states for its codes (section 14.1)</td>
+<td>NITF's six characters, and the check a definition's code will pass when definitions can be added</td>
+</tr>
 </tbody>
 </table></div>
 <p><strong>What it reads.</strong> Every IMODE (B, P, R and S); unsigned and signed integers of 8, 16, 32 and 64 bits, 12-bit and 1-bit packed samples, float32, float64 and complex float32; more than nine bands; block mask tables, with blocks stored in any order, blocks never recorded, and pad pixels (judged as proposed in M24), all marked in the validity mask; significant bits and justification as <code>significant_bits</code> and <code>bit_shift</code>; several Images in one file; and extensions in the header's own data and, read when first asked for, in TRE_OVERFLOW segments. RPC00A and RPC00B are read field by field, with units; other extensions are listed with their data as bytes, as <code>CEDATA</code>, the standard's name for it. Fields in runs carry their numbers as proposed in M26, ONAME and OPHONE are <code>Identity</code> as proposed in M25, and compressed blocks name their codec as proposed in M29. A field the definitions name that a file leaves out, such as IGEOLO where ICORDS is blank, is delivered as <code>Missing</code>.</p>
@@ -2311,9 +2317,9 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
 <p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
 <p><strong>What comes next</strong> in code: JPEG 2000 blocks from the NITF reader through OpenJPEG; then the GeoTIFF reader, the Fragment cache, Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 to 71 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need. Access patterns and domain profiles still bear on the cache, the Readers, the input layer, the GeoTIFF reader and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What specification versions 68 to 72 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Access patterns and domain profiles still bear on the cache, the Readers, the input layer, the GeoTIFF reader and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 to 71, and the code beside it, found the points below. Each goes to the author as a proposal. Those ruled on are listed first, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 72, and the code beside it, found the points below. Each goes to the author as a proposal. Those ruled on are listed first, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2449,9 +2455,14 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td><strong>Closing in C.</strong> M3 was proposed for Python. Version 70 writes its C form beside it: <code>bil_close_source</code> frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed. In Rust, dropping the Source closes it.</td>
 <td>Accepted as proposed, by the author's ruling (version 71): the C form as written in version 70</td>
 </tr>
+<tr>
+<td>M28</td>
+<td><strong>How long a code in a locator may be.</strong> Section 14.1's example tag, <code>VNDRTRE</code>, has seven letters, but NITF stores an extension's tag in six bytes, padded with spaces; section 14.1 said nothing of codes' lengths, which differ by format.</td>
+<td>Accepted, options (a) and (c) of three, by the author's ruling (version 72): a code matches the stored code with its padding removed, up to a length each driver states for its formats, and a definition that breaks it is refused when added; a code may hold a wildcard, <code>*</code>, for a family of codes, and each field's name keeps the code matched. The example is now <code>VNDRTA</code>. Not adopted: (b), a name apart from the code. The details of the wildcard are M30.</td>
+</tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> Found writing GDAL's part of experiment 3 and the NITF reader. Each is a proposal; the code does what it proposes until the author rules.</p>
+<p><strong>Open, for the author.</strong> Found writing GDAL's part of experiment 3 and the NITF reader, and, for M30, applying the author's ruling on M28. Each is a proposal; the code does what it proposes until the author rules.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -2497,14 +2508,14 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td>The open fails where the structure that locates Images cannot be trusted: a header or segment that runs past the file, block numbers that do not cover the Image, uncompressed data larger than its segment. Damage within an extension area does not: the extensions before it are listed, the header's group is <code>Partial</code>, and the pixels can still be read. GDAL opens some files that run past their end, and BIL refuses them.</td>
 </tr>
 <tr>
-<td>M28</td>
-<td><strong>How long a code in a locator may be.</strong> The example in section 14.1, <code>VNDRTRE</code>, has seven letters, but NITF stores an extension's tag in six bytes (CETAG), padded on the right with spaces, so no NITF file can hold it. Section 14.1 says only that each driver lists the locators it accepts; it says nothing of their lengths, and other formats differ: a DICOM tag is written as eight hexadecimal digits for four stored bytes, a KLV universal key is sixteen bytes, and a KLV local tag varies in length.</td>
-<td>Three options, each allowing for codes of differing length. <strong>(a) Any length up to the format's own.</strong> A locator's code matches the stored code with its padding removed, so NITF tags of one to six characters all work (<code>VNDR</code> as well as <code>VNDRTA</code>). Each driver states its formats' limit beside the locators it lists: a longest length where codes are padded, as in NITF, or a fixed length where they are not, as in DICOM. A definition whose code breaks the limit is refused, with an error saying so, when it is added, rather than never matching. The example becomes <code>VNDRTA</code>, in section 14.1 and in the examples that copy it: chapter 20 of this manual and BIL by Example. <strong>(b) A name apart from the code.</strong> The definition's name may be longer than the code it locates: name <code>["nitf", "VNDRTRE", "GAIN"]</code>, locator <code>{"extension": "VNDRTA"}</code>. Names read better, but the name is no longer the file's own code, against "native names are kept exactly", and two definitions could name one code differently. <strong>(c) A pattern of codes.</strong> A locator may match a family of codes of varying length with a wildcard, <code>{"extension": "VNDR*"}</code>, so one definition serves several versions, as RPC00A and RPC00B share their fields. The name keeps each file's own code, the one matched, so <code>RPC00*</code> yields <code>nitf.RPC00A...</code> in one file and <code>nitf.RPC00B...</code> in another, and native names stay exact. It can join (a). Proposed: (a), with (c) if families are wanted; not (b). The NITF reader matches as (a) does already: it trims a tag's padding before looking for its definition.</td>
-</tr>
-<tr>
 <td>M29</td>
 <td><strong>Codec names for NITF's compression codes.</strong> A driver names the codec its blocks need, and section 10 lists codecs by library, not by name.</td>
 <td>snake_case names for what is coded, not the library: <code>jpeg</code> (C3, M3), <code>jpeg2000</code> (C8, M8), <code>bilevel</code> (C1, M1), <code>vector_quantization</code> (C4, M4), <code>lossless_jpeg</code> (C5, M5), <code>downsampled_jpeg</code> (I1), and <code>nitf_</code> with the code for any other, such as <code>nitf_c7</code>.</td>
+</tr>
+<tr>
+<td>M30</td>
+<td><strong>The wildcard's details,</strong> which the ruling on M28 leaves open: what <code>*</code> stands for; which definition applies where several match a code, as <code>RPC00*</code> and a later <code>RPC00B</code> would; whether a code of wildcards alone is allowed; and how to name a tag that holds a <code>*</code>, a character NITF's tags may contain.</td>
+<td><code>*</code> stands for any run of characters, including none, anywhere in the code; the characters other than <code>*</code> count against the format's limit, and there must be at least one, since <code>*</code> alone would claim every extension. Where several definitions match, a code with no wildcard is preferred, then the code with the most characters fixed; two that tie are refused when the second is added. A <code>*</code> in a code always stands for a run, with no way to name a literal <code>*</code>: a tag holding one is matched only by a family. The NITF reader matches and ranks this way, and refuses a code of wildcards alone (<code>bil::nitf::check_extension_code</code>, and its own definitions keyed by <code>RPC00*</code>); refusing ties will come with the call that adds definitions, which does not exist yet.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2609,7 +2620,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 7, written beside the code against version 71 of the Blazing Imaging Library (BIL) specification, as of 14 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 8, written beside the code against version 72 of the Blazing Imaging Library (BIL) specification, as of 14 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>
