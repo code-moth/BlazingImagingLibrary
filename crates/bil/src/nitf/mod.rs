@@ -1142,8 +1142,10 @@ fn read_mask<R: ReadAt>(reader: &R, info: &ImageInfo) -> Result<MaskTable> {
     });
     let offsets = if bmrlnth == 4 {
         bytes[pad_bytes as usize..(pad_bytes + units * 4) as usize]
-            .chunks_exact(4)
-            .map(|c| match u32::from_be_bytes(c.try_into().unwrap()) {
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&c| match u32::from_be_bytes(c) {
                 0xFFFF_FFFF => Ok(None),
                 v if u64::from(v) >= len - imdatoff => Err(corrupt(format!(
                     "a block at {v}, past the {} bytes of blocks",

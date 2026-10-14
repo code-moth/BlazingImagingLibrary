@@ -75,6 +75,19 @@ fn main() {
             "image {i} size {} x {} x {} {kind}",
             info.rows, info.cols, info.bands
         );
+        // How the pixels are stored, which GDAL does not report: shown only where files differ.
+        println!(
+            "image {i} layout IC {} IMODE {} NBPP {} blocks {} x {} of {} x {} significant {:?} shift {:?}",
+            info.compression,
+            info.imode,
+            info.stored_bits,
+            info.blocks_per_col,
+            info.blocks_per_row,
+            info.block_size.0,
+            info.block_size.1,
+            info.pixel_type.map(|p| p.significant_bits),
+            info.pixel_type.map(|p| p.bit_shift),
+        );
         for (name, label) in IMAGE_FIELDS {
             let field = format!("nitf.image_subheader.{name}");
             // A field the file leaves out is Missing with nothing stored; GDAL omits it.
@@ -115,6 +128,13 @@ fn main() {
                             let at = p * f.strides[1] + b * size;
                             planes.extend_from_slice(&f.data[at..at + size]);
                         }
+                    }
+                    // For a closer look at a difference: the pixels, band after band, as
+                    // nitf_reference.c writes GDAL's.
+                    if let Some(dir) = std::env::var_os("NITF_PIXELS_DIR") {
+                        let name = std::path::Path::new(&path).file_name().unwrap();
+                        let file = format!("{}.{i}.bil", name.to_string_lossy());
+                        std::fs::write(std::path::Path::new(&dir).join(file), &planes).unwrap();
                     }
                     let missing = f
                         .validity

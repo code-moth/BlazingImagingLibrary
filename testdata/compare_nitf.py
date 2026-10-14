@@ -17,10 +17,17 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+
+
+# Where both programs write each Image's pixels, band after band, for a closer look at a
+# difference.
+PIXELS = tempfile.mkdtemp(prefix="nitf-pixels-")
 
 
 def run(program, path):
-    out = subprocess.run([program, path], capture_output=True, text=True, errors="replace")
+    env = dict(os.environ, NITF_PIXELS_DIR=PIXELS)
+    out = subprocess.run([program, path], capture_output=True, text=True, errors="replace", env=env)
     if out.returncode != 0:
         return [f"program failed with status {out.returncode}: {out.stderr.strip()[:300]}"]
     return out.stdout.splitlines()
@@ -38,6 +45,8 @@ def facts(lines):
                 file_ext.append(tag)
             else:
                 image_ext[int(m.group(1))].append(tag)
+            continue
+        if re.match(r"image \d+ layout ", line):
             continue
         m = re.match(r"image (\d+) missing (\d+)", line)
         if m:
@@ -64,6 +73,33 @@ def compare(bil_lines, gdal_lines):
     return problems, notes
 
 
+def explain(path, bil_lines, gdal_lines):
+    """For Images whose pixels differ: how they are stored, and where the samples differ."""
+    notes = []
+    name = os.path.basename(path)
+    for line in bil_lines:
+        m = re.match(r"image (\d+) pixels ", line)
+        if not m or line in gdal_lines:
+            continue
+        i = m.group(1)
+        notes += [l for l in bil_lines if l.startswith(f"image {i} layout ") or l.startswith(f"image {i} size ")]
+        notes += [l for l in bil_lines if l.startswith(f"image {i} field ")]
+        try:
+            ours = open(os.path.join(PIXELS, f"{name}.{i}.bil"), "rb").read()
+            theirs = open(os.path.join(PIXELS, f"{name}.{i}.gdal"), "rb").read()
+        except OSError as e:
+            notes.append(f"image {i}: pixel files missing: {e}")
+            continue
+        if len(ours) != len(theirs):
+            notes.append(f"image {i}: {len(ours)} bytes from BIL, {len(theirs)} from GDAL")
+            continue
+        diff = [k for k in range(len(ours)) if ours[k] != theirs[k]]
+        notes.append(f"image {i}: {len(diff)} of {len(ours)} bytes differ")
+        for k in diff[:8]:
+            notes.append(f"    byte {k}: BIL {ours[k]}, GDAL {theirs[k]}")
+    return notes
+
+
 def main():
     if len(sys.argv) < 4:
         sys.exit(__doc__)
@@ -82,6 +118,10 @@ def main():
                 print(f"    {p}")
                 if actions:
                     print(f"::error::{name}: {p}"[:900])
+            for n in explain(path, bil_lines, gdal_lines):
+                print(f"    {n}")
+                if actions:
+                    print(f"::warning::{name}: {n.strip()}"[:900])
         else:
             print(f"{name}: agrees ({summary})")
         for n in notes:

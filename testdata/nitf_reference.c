@@ -18,6 +18,9 @@
 #include "cpl_string.h"
 #include "gdal.h"
 
+/* The file given, for naming the pixel files. */
+static const char *source_path = "";
+
 static uint64_t fnv(uint64_t h, const unsigned char *p, size_t n) {
     for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 0x100000001b3ULL;
     return h;
@@ -83,11 +86,23 @@ static void image(GDALDatasetH ds, int i) {
     unsigned char *buf = malloc((size_t)w * h * size);
     uint64_t hash = 0xcbf29ce484222325ULL;
     int ok = buf != NULL;
+    /* For a closer look at a difference: the pixels, band after band, as nitf_dump writes
+     * BIL's. */
+    FILE *out = NULL;
+    const char *dir = getenv("NITF_PIXELS_DIR");
+    if (dir) {
+        const char *base = strrchr(source_path, '/');
+        char name[4096];
+        snprintf(name, sizeof name, "%s/%s.%d.gdal", dir, base ? base + 1 : source_path, i);
+        out = fopen(name, "wb");
+    }
     for (int b = 1; ok && b <= c; b++) {
         ok = GDALRasterIO(GDALGetRasterBand(ds, b), GF_Read, 0, 0, w, h, buf, w, h, t, 0, 0) ==
              CE_None;
         if (ok) hash = fnv(hash, buf, (size_t)w * h * size);
+        if (ok && out) fwrite(buf, 1, (size_t)w * h * size, out);
     }
+    if (out) fclose(out);
     free(buf);
     if (ok)
         printf("image %d pixels %016" PRIx64 "\n", i, hash);
@@ -97,6 +112,7 @@ static void image(GDALDatasetH ds, int i) {
 
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
+    source_path = argv[1];
     GDALAllRegister();
     CPLSetConfigOption("GDAL_PAM_ENABLED", "NO");
     CPLPushErrorHandler(CPLQuietErrorHandler);

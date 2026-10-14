@@ -241,6 +241,7 @@ jobs:
           cargo build --release --example nitf_dump
           find testdata/cache -iname '*.ntf' -print0 | sort -z | xargs -0 python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_reference
       - name: The NITF reader against GDAL, on GDAL's own NITF test files
+        if: success() || failure()
         # The 19 NITF files of GDAL 3.8.4's test suite: masked images, extensions that
         # overflow, a damaged extension area, files with no images and files both refuse.
         shell: bash
