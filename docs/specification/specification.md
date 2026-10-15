@@ -1481,7 +1481,7 @@ A caller can also name the driver explicitly with `open_source_with`.
 | JPEG 2000 codec | [OpenJPEG](https://github.com/uclouvain/openjpeg) | The fallback, and for now the codec for every file: the only open decoder that covers all of Part 1, with region and reduced-resolution decoding |
 | JPEG 2000 codec, on trial | [j2k-native](https://docs.rs/crate/j2k-native/latest) | The Rust path. Becomes the fallback, ahead of OpenJPEG, once it passes BIL's conformance and Codec agreement tests on NITF reference files. |
 | JPEG 2000 codec, preferred once proven | [emuella-j2k](https://github.com/emuella/emuella-j2k) | Written in Rust, so it joins the core directly. Preferred for the profiles it declares, once it passes the same tests. Not yet released. |
-| GeoTIFF | The Rust [`tiff`](https://github.com/image-rs/image-tiff) crate for the directories, with BIL's own reading of chunks and GeoTIFF keys; Deflate through miniz\_oxide, LZW through weezl, PackBits BIL's own | Tier 1's GeoTIFF reader, with no C library. Samples are always as stored (section 4). A mode of the crate that returns stored samples is offered to its maintainers. GDAL is the reference it is tested against. |
+| GeoTIFF | The Rust [`tiff`](https://github.com/image-rs/image-tiff) crate for the directories, with BIL's own reading of chunks and GeoTIFF keys; Deflate through miniz\_oxide, LZW through weezl, PackBits BIL's own | Tier 1's GeoTIFF reader, with no C library. Samples are always as stored (section 4). A mode of the crate that returns stored samples is to be offered to its maintainers. GDAL is the reference it is tested against. |
 | General rasters | GDAL | Broad raster coverage beyond Tier 1. Its JPEG 2000 support is not used. |
 | NITF | A native Rust NITF reader | Tier 1's NITF container reader. Headers and extensions are read through the field definitions of section 14.1. NITRO, which is LGPL 3.0, and GDAL are the references it is tested against. |
 | SICD, SIDD | [SIX](https://github.com/ngageoint/six-library) | SICD, SIDD and CPHD metadata and pixels, in Tier 2. SIX is LGPL 3, so it is assessed under section 10.6 when Tier 2 starts. |
@@ -1688,7 +1688,7 @@ Imagery files often arrive from outside, and BIL hands them to many C and C++ li
 | `max_scans` | A progressive image with thousands of scans, each a pass over the whole image |
 | `max_directories`, `max_subdirectories` | A chain of directories built to be walked without end. These two have defaults, since walking a directory costs little and real files hold few. |
 
-- **No limit is set by default for a trusted Source.** Very large images are BIL's purpose, so any fixed default would turn away real data.
+- **No limit is set by default for a trusted Source.** Very large images are BIL's purpose, so any fixed default would turn away real data. `max_directories` and `max_subdirectories` are the exception: they count structure, not data.
 - **An untrusted Source gets limits.** Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image, bytes per metadata group and 500 progressive scans, each scaled to the size of the file where that makes sense. The caller can raise them.
 - **One check is always made.** For uncompressed data, a header that claims more pixels than the file can hold is rejected.
 - **A library's working memory is capped too.** Where `max_decoded_bytes` is set, the memory a library uses beside its output for one block, such as a progressive JPEG's whole-image coefficients, is capped at twice that limit, where the library allows a cap.

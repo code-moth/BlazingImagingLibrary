@@ -1148,3 +1148,51 @@ fn a_key_listed_twice_carries_its_place() {
     );
     assert!(f("geotiff.keys.GTModelTypeGeoKey").is_err());
 }
+
+/// Sets a LONG or SHORT tag's value in a little-endian classic file's first IFD.
+fn patch_tag(file: &mut [u8], tag: u16, value: u32) {
+    let ifd = u32::from_le_bytes(file[4..8].try_into().unwrap()) as usize;
+    let count = u16::from_le_bytes([file[ifd], file[ifd + 1]]) as usize;
+    for k in 0..count {
+        let e = ifd + 2 + 12 * k;
+        if u16::from_le_bytes([file[e], file[e + 1]]) == tag {
+            file[e + 8..e + 12].copy_from_slice(&value.to_le_bytes());
+            return;
+        }
+    }
+    panic!("no tag {tag}");
+}
+
+/// A chunk whose declared size its stored bytes cannot make is refused before memory is taken
+/// for it, not decoded into a buffer the size of the claim.
+#[test]
+fn a_chunk_larger_than_its_bytes_can_make_is_refused_first() {
+    for compression in [1, 8, 5, 32773] {
+        let mut img = Img::new(1, 1, 4, SampleType::U64);
+        img.tile = Some((16, 16));
+        img.compression = compression;
+        let mut file = write(std::slice::from_ref(&img), false, false);
+        patch_tag(&mut file, 322, 1 << 30);
+        patch_tag(&mut file, 323, 1 << 30);
+        let source = GeoTiffSource::open(file).unwrap();
+        assert!(matches!(
+            source.read_fragment(0, whole(&img)),
+            Err(Error::Corrupt(_))
+        ));
+    }
+}
+
+/// A file cut inside its IFD reads its end, not the placeholder the `tiff` crate is given.
+#[test]
+fn a_cut_ifd_is_corrupt_or_refused_never_filled_in() {
+    let mut img = Img::new(3, 3, 1, SampleType::U8);
+    img.tags.push((270, 2, 40, vec![b'x'; 40]));
+    let file = write(std::slice::from_ref(&img), false, false);
+    for cut in 1..40 {
+        let short = file[..file.len() - cut].to_vec();
+        if let Ok(source) = GeoTiffSource::open(short) {
+            // Whatever it lists came from the file.
+            let _ = source.read_field_group(Scope::Image(0), "tiff.ifd");
+        }
+    }
+}

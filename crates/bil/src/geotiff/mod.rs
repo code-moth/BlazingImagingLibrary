@@ -18,7 +18,8 @@
 //! GDAL_NODATA, is a fill value: a pixel whose every sample holds it is missing (section 4).
 //!
 //! Every offset and count is checked against the file before it is used, so a corrupt file is
-//! an error, never a crash, and no allocation exceeds what the Window asked for. The crate's
+//! an error, never a crash: a chunk is decoded into memory only when its stored bytes could
+//! make that much of it, so what a read takes stays in proportion to the file. The crate's
 //! decoder keeps a place in the file, so it is held under a lock, but only to read fields:
 //! reads of pixels need nothing shared, and run in parallel (M44).
 
@@ -125,8 +126,11 @@ impl<R: ReadAt> Read for At<R> {
             let n = (header - pos).min(buf.len() as u64) as usize;
             buf[..n].copy_from_slice(&self.header[pos as usize..][..n]);
             n
+        } else if pos >= self.size && pos < self.size + GAP {
+            // The file's end, as the file has it.
+            0
         } else if pos >= self.size {
-            let from = ((pos - self.size).min(self.extra.len() as u64)) as usize;
+            let from = ((pos - self.size - GAP).min(self.extra.len() as u64)) as usize;
             let n = (self.extra.len() - from).min(buf.len());
             buf[..n].copy_from_slice(&self.extra[from..][..n]);
             n
@@ -144,7 +148,7 @@ impl<R: ReadAt> Seek for At<R> {
     fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
         let pos = match to {
             SeekFrom::Start(p) => Some(p),
-            SeekFrom::End(d) => (self.size + self.extra.len() as u64).checked_add_signed(d),
+            SeekFrom::End(d) => (self.size + GAP + self.extra.len() as u64).checked_add_signed(d),
             SeekFrom::Current(d) => self.pos.checked_add_signed(d),
         };
         self.pos = pos.ok_or_else(|| {
@@ -270,6 +274,16 @@ pub struct GeoTiffSource<R: ReadAt> {
 /// The most IFDs a chain may hold before it is taken as corrupt: far more than any real file,
 /// few enough that walking them is quick.
 const MAX_IFDS: usize = 100_000;
+
+/// The most SubIFDs an Image may hold (M41).
+const MAX_SUB_IFDS: usize = 1_000;
+
+/// The most bytes of text one tag may hold, as the `tiff` crate's limit on a tag's values (M41).
+const MAX_TEXT_BYTES: u64 = 256 << 20;
+
+/// Bytes left empty between the file's end and the placeholder IFD (`At`), so that a read past
+/// the end finds the end, not the placeholder.
+const GAP: u64 = 16;
 
 fn codec(compression: u16) -> Option<String> {
     Some(
@@ -414,6 +428,11 @@ fn text_bytes<R: ReadAt>(
     let Some(&(at, n)) = text.get(&tag) else {
         return Ok(None);
     };
+    if n > MAX_TEXT_BYTES {
+        return Err(io::Error::other(format!(
+            "{n} bytes of text, more than {MAX_TEXT_BYTES} (M41)"
+        )));
+    }
     let mut bytes = vec![0u8; n as usize];
     reader.read_exact_at(&mut bytes, at)?;
     Ok(Some(bytes))
@@ -422,7 +441,8 @@ fn text_bytes<R: ReadAt>(
 /// Text from its stored bytes, as Latin-1: one string, or a list where the tag holds several,
 /// each ended by NUL.
 fn latin1(bytes: &[u8]) -> Value {
-    let bytes = bytes.strip_suffix(&[0]).unwrap_or(bytes);
+    let end = bytes.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
+    let bytes = &bytes[..end];
     let mut strings: Vec<Value> = bytes
         .split(|&b| b == 0)
         .map(|s| Value::Text(s.iter().map(|&b| char::from(b)).collect()))
@@ -471,11 +491,11 @@ impl<R: ReadAt> GeoTiffSource<R> {
         let place = if bigtiff { 8..16 } else { 4..8 };
         let first = word(&header[place.clone()]);
         let at_extra = if big_endian {
-            size.to_be_bytes()
+            (size + GAP).to_be_bytes()
         } else {
-            size.to_le_bytes()
+            (size + GAP).to_le_bytes()
         };
-        if !bigtiff && size > u64::from(u32::MAX) {
+        if !bigtiff && size + GAP > u64::from(u32::MAX) {
             return Err(Error::Unsupported(
                 "a classic TIFF file of more than 4 GiB".into(),
             ));
@@ -520,7 +540,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
             }
             let dir = decoder.read_directory(pointer).map_err(from_tiff)?;
             next = dir.next();
-            let text = text_entries(&*reader, size, big_endian, bigtiff, pointer.0)?;
+            let text = text_entries(&*reader, size, big_endian, bigtiff, pointer.0)
+                .map_err(|e| corrupt(format!("the IFD at {}: {e}", pointer.0)))?;
             let layout = read_layout(&mut decoder, &dir, &text, &*reader, size);
             ifds.push(Ifd { dir, text, layout });
         }
@@ -610,7 +631,15 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 .as_ref()
                 .map(|l| l.sub_ifds.clone())
                 .unwrap_or_default();
-            for p in pointers.into_iter().take(1_000) {
+            if pointers.len() > MAX_SUB_IFDS {
+                return Err(Error::Unsupported(format!(
+                    "image {} has more than {MAX_SUB_IFDS} SubIFDs (M41)",
+                    image.info.ifd
+                )));
+            }
+            // A SubIFD that cannot be read is skipped: it is not in the chain that locates the
+            // Images, and holds at most an overview (M42).
+            for p in pointers {
                 if p == 0 || p >= size || !seen.insert(p) {
                     continue;
                 }
@@ -762,11 +791,12 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     let part = names::tag_name(code)
                         .map(str::to_string)
                         .unwrap_or_else(|| code.to_string());
-                    if let Some(&(at, n)) = ifd.text.get(&code) {
+                    if ifd.text.contains_key(&code) {
                         // Text is read from its own bytes, every string kept (M36, M39).
-                        let mut bytes = vec![0u8; n as usize];
-                        match self.reader.read_exact_at(&mut bytes, at) {
-                            Ok(()) => fields.push(Field::with_value(
+                        match text_bytes(&*self.reader, &ifd.text, code)
+                            .map(Option::unwrap_or_default)
+                        {
+                            Ok(bytes) => fields.push(Field::with_value(
                                 name.child(part),
                                 bytes.clone(),
                                 latin1(&bytes),
@@ -794,7 +824,12 @@ impl<R: ReadAt> GeoTiffSource<R> {
             }
             "geotiff.keys" => {
                 let ascii = text_bytes(&*self.reader, &ifd.text, 34737)
-                    .map_err(|e| corrupt(format!("GeoAsciiParamsTag: {e}")))?
+                    .map_err(|e| match e.kind() {
+                        io::ErrorKind::Other => {
+                            Error::Unsupported(format!("GeoAsciiParamsTag: {e}"))
+                        }
+                        _ => corrupt(format!("GeoAsciiParamsTag: {e}")),
+                    })?
                     .unwrap_or_default();
                 let keys = read_keys(decoder, &ifd.dir, &ascii, self.big_endian)
                     .map_err(|m| corrupt(format!("GeoTIFF keys: {m}")))?;
@@ -973,9 +1008,23 @@ impl<R: ReadAt> GeoTiffSource<R> {
                         .checked_mul(needed_rows as usize)
                         .filter(|&n| n <= isize::MAX as usize)
                         .ok_or_else(|| Error::Unsupported("a chunk too large to hold".into()))?;
+                    // A declared size the stored bytes cannot make is corrupt, and is refused
+                    // before any memory is taken for it.
+                    if needed as u64 > count.saturating_mul(coding.most_per_byte()) {
+                        return Err(corrupt(format!(
+                            "chunk {index}: {count} bytes cannot hold the {needed} bytes its rows need"
+                        )));
+                    }
                     // Offsets and counts were checked against the file at open.
                     stored.resize(count as usize, 0);
                     self.reader.read_exact_at(&mut stored, offset)?;
+                    if coding == Coding::Lzw && stored.starts_with(&[0, 1]) {
+                        // LZW as written before TIFF 5.0, with its bits reversed: libtiff reads
+                        // it, and BIL does not yet.
+                        return Err(Error::Unsupported(format!(
+                            "chunk {index}: LZW in the form before TIFF 5.0"
+                        )));
+                    }
                     decoded.resize(needed, 0);
                     chunks::decompress(coding, &mut stored, samples.reversed_bits, &mut decoded)
                         .map_err(|m| corrupt(format!("chunk {index}: {m}")))?;

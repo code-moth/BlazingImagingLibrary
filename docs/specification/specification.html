@@ -3780,7 +3780,7 @@ pub struct SliceFunction {
 <tr>
 <td>GeoTIFF</td>
 <td>The Rust <a href="https://github.com/image-rs/image-tiff" target="_blank" rel="noopener"><code>tiff</code></a> crate for the directories, with BIL's own reading of chunks and GeoTIFF keys; Deflate through miniz_oxide, LZW through weezl, PackBits BIL's own</td>
-<td>Tier 1's GeoTIFF reader, with no C library. Samples are always as stored (section 4). A mode of the crate that returns stored samples is offered to its maintainers. GDAL is the reference it is tested against.</td>
+<td>Tier 1's GeoTIFF reader, with no C library. Samples are always as stored (section 4). A mode of the crate that returns stored samples is to be offered to its maintainers. GDAL is the reference it is tested against.</td>
 </tr>
 <tr>
 <td>General rasters</td>
@@ -4156,7 +4156,7 @@ bil.register_driver(VendorDriver)
 </tbody>
 </table></div>
 <ul>
-<li><strong>No limit is set by default for a trusted Source.</strong> Very large images are BIL's purpose, so any fixed default would turn away real data.</li>
+<li><strong>No limit is set by default for a trusted Source.</strong> Very large images are BIL's purpose, so any fixed default would turn away real data. <code>max_directories</code> and <code>max_subdirectories</code> are the exception: they count structure, not data.</li>
 <li><strong>An untrusted Source gets limits.</strong> Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image, bytes per metadata group and 500 progressive scans, each scaled to the size of the file where that makes sense. The caller can raise them.</li>
 <li><strong>One check is always made.</strong> For uncompressed data, a header that claims more pixels than the file can hold is rejected.</li>
 <li><strong>A library's working memory is capped too.</strong> Where <code>max_decoded_bytes</code> is set, the memory a library uses beside its output for one block, such as a progressive JPEG's whole-image coefficients, is capped at twice that limit, where the library allows a cap.</li>

@@ -31,12 +31,13 @@ impl Coding {
 
     /// The most bytes one stored byte can decode to: more than this, and the chunk's declared
     /// size is one its data cannot hold.
-    fn most_per_byte(self) -> u64 {
+    pub(super) fn most_per_byte(self) -> u64 {
         match self {
             Coding::None => 1,
             // A Deflate match of 258 bytes takes 2 bits at the least.
             Coding::Deflate => 1_032,
-            // A 9-bit code can stand for a string of up to 4,096 bytes.
+            // No code is shorter than 9 bits, and none stands for more than 4,096 bytes: a
+            // safe bound, if a loose one.
             Coding::Lzw => 3_641,
             // Two bytes repeat one byte 128 times.
             Coding::PackBits => 64,
