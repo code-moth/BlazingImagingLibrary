@@ -5,11 +5,11 @@ The reader (`bil::geotiff`) against its own tests and against GDAL 3.8.4, as of 
 
 ## Its own tests
 
-`crates/bil/tests/geotiff.rs`, 21 tests, and 4 unit tests in `geotiff/chunks.rs`, in every CI run on all four systems, unoptimized so that an integer overflow fails:
+`crates/bil/tests/geotiff.rs`, 22 tests, and 4 unit tests in `geotiff/chunks.rs`, in every CI run on all four systems, unoptimized so that an integer overflow fails:
 
 - 660 layouts read whole and through random Windows, sample for sample: every sample type of 8 to 64 bits, F16 among them, one to four bands in turn, strips and tiles, chunky and planar, classic and BigTIFF, both byte orders, uncompressed, Deflate and LZW with and without predictors, and PackBits.
 - Integers of 1, 4, 7, 12, 24, 31, 40 and 63 bits, widened; complex samples; a 24-bit float, refused. WhiteIsZero, integer and float, and an extra sample of unspecified meaning, as stored. A first IFD of CIELab or of an unknown interpretation, read; an undefined predictor, listed and refused. Latin-1 text of several strings; no-data rounded to float16.
-- Overviews and masks; storage in file order; no-data in every sample and in one; tags and GeoTIFF keys as fields; unsupported compression; claims past the file; a looping IFD chain; chunks never written; a chunk claiming more than its bytes can make, refused before memory is taken; an IFD cut short.
+- Overviews and masks; storage in file order; no-data in every sample and in one; tags and GeoTIFF keys as fields; unsupported compression; claims past the file; a looping IFD chain; chunks never written; stored levels read through Windows, a center on a Window's edge included; a chunk claiming more than its bytes can make, refused before memory is taken; an IFD cut short.
 - Layouts whose chunks cannot be counted, out-of-range sample formats, a bit count with no values: each is corrupt, not a panic.
 - 20,000 seeded corruptions: each opens or is refused, and each read delivers or fails, with no panic.
 
@@ -19,7 +19,7 @@ The reader (`bil::geotiff`) against its own tests and against GDAL 3.8.4, as of 
 
 | Category | Files | Meaning |
 | --- | --- | --- |
-| agree | 155 | Images, sizes, sample types, overviews and pixels agree; 160 Images pixel for pixel |
+| agree | 155 | Images, sizes, sample types, overviews and pixels agree; 160 Images and 9 stored levels pixel for pixel |
 | refused | 16 | Both refuse the file as damaged, or BIL refuses it and GDAL cannot read its pixels |
 | limit | 45 | BIL lists the file and refuses, with its reason, what it does not yet read |
 | stricter | 6 | BIL refuses as corrupt a file GDAL reads (M42) |
