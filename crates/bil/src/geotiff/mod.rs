@@ -88,6 +88,10 @@ fn from_tiff(e: tiff::TiffError) -> Error {
         tiff::TiffError::IoError(e) => Error::Io(e),
         tiff::TiffError::UnsupportedError(e) => Error::Unsupported(e.to_string()),
         tiff::TiffError::FormatError(e) => corrupt(e.to_string()),
+        // A refusal by a limit, not damage (section 3.3).
+        tiff::TiffError::LimitsExceeded => {
+            Error::Unsupported("a table or chunk larger than the tiff crate's limits (M41)".into())
+        }
         other => corrupt(other.to_string()),
     }
 }
@@ -992,7 +996,6 @@ fn fill(text: &str, t: SampleType) -> Option<Fill> {
             return Some(Fill::NaN);
         }
         let v: f64 = text.parse().ok()?;
-        // As the sample type holds it.
         // As float32 holds it; a value float16 cannot hold exactly matches no sample.
         return Some(Fill::Float(match t {
             SampleType::F32 => f64::from(v as f32),
