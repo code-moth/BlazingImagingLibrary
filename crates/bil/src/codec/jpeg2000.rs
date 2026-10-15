@@ -19,6 +19,9 @@
 //! - **Decoding runs on the calling thread,** set by OpenJPEG's own call. OpenJPEG still reads
 //!   its environment variable `OPJ_NUM_THREADS` when a decoder is made, and where that is set it
 //!   starts threads which the call then stops before anything is decoded (M32).
+//! - **Every tile a read needs is there.** Before decoding, BIL walks the codestream's own
+//!   tile-parts and refuses one cut short or missing a tile the read touches (`codec::tiles`),
+//!   since not every OpenJPEG release reports that.
 //! - **Nothing unwinds into C.** A panic in a callback, such as one from a `ReadAt`, is caught
 //!   and returned as an error.
 
@@ -30,6 +33,7 @@ use std::sync::OnceLock;
 
 use bil_sys::openjpeg as opj;
 
+use crate::codec::tiles;
 use crate::io::ReadAt;
 
 /// What can go wrong decoding JPEG 2000.
@@ -565,6 +569,16 @@ pub fn decode(
                 return Err(s.failure("setting the area"));
             }
         }
+        // OpenJPEG's success is not proof that every tile was there (`tiles`). The area is
+        // known to lie inside the Image by now.
+        let codestream = match format {
+            Format::Jp2 => tiles::jp2_codestream(source, offset, length),
+            Format::Codestream => Ok((offset, length)),
+        };
+        codestream
+            .and_then(|(at, len)| tiles::read(source, at, len))
+            .and_then(|t| t.check(request.area))
+            .map_err(Error::Corrupt)?;
         if opj::opj_decode(codec, stream, s.handles.image) == 0
             || opj::opj_end_decompress(codec, stream) == 0
         {

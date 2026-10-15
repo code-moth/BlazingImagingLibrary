@@ -6,3 +6,4 @@
 
 #[cfg(feature = "openjpeg")]
 pub mod jpeg2000;
+pub mod tiles;
