@@ -101,8 +101,8 @@ fn packbits(raw: &[u8]) -> Vec<u8> {
 
 // ---------------------------------------------------------------- a writer for test files
 
-/// Samples of a width of their own: whole bytes in the file's order, or bits, most significant
-/// first, each row starting on a byte.
+/// Samples of a width of their own: a stream of bits, most significant first, whatever the
+/// file's byte order, each row starting on a byte.
 #[derive(Default)]
 struct BitWriter {
     bytes: Vec<u8>,
@@ -110,16 +110,7 @@ struct BitWriter {
 }
 
 impl BitWriter {
-    fn put(&mut self, v: u64, bits: u32, big: bool) {
-        if bits.is_multiple_of(8) {
-            let le = &v.to_le_bytes()[..bits as usize / 8];
-            if big {
-                self.bytes.extend(le.iter().rev());
-            } else {
-                self.bytes.extend_from_slice(le);
-            }
-            return;
-        }
+    fn put(&mut self, v: u64, bits: u32) {
         for k in (0..bits).rev() {
             if self.used.is_multiple_of(8) {
                 self.bytes.push(0);
@@ -209,7 +200,7 @@ impl Img {
                                     0
                                 };
                                 match self.bits {
-                                    Some(bits) => packed.put(v, bits, big),
+                                    Some(bits) => packed.put(v, bits),
                                     None => row.push(v),
                                 }
                             }

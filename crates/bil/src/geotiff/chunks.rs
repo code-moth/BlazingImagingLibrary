@@ -244,18 +244,15 @@ pub(super) fn row(s: &Samples, src: &mut [u8], values: usize, per: usize, dst: &
         }
         return;
     }
-    // Another width: whole bytes in the file's order, or a stream of bits, most significant
-    // first, widened to the type delivered and sign-extended where signed (M43).
+    // Another width: a stream of bits, most significant first, whatever the file's byte order,
+    // as libtiff and GDAL read it; widened to the type delivered and sign-extended where signed (M43).
     let bits = s.bits as usize;
     dst.reserve(values * size);
     for i in 0..values {
         let v: u64 = if bits.is_multiple_of(8) {
+            // Whole bytes, most significant first.
             let b = &src[i * bits / 8..][..bits / 8];
-            if s.big_endian {
-                b.iter().fold(0, |v, &x| v << 8 | u64::from(x))
-            } else {
-                b.iter().rev().fold(0, |v, &x| v << 8 | u64::from(x))
-            }
+            b.iter().fold(0, |v, &x| v << 8 | u64::from(x))
         } else {
             let mut v = 0u64;
             for k in i * bits..(i + 1) * bits {
@@ -356,16 +353,15 @@ mod tests {
             .map(|b| i16::from_ne_bytes([b[0], b[1]]))
             .collect();
         assert_eq!(i, [0xABC_u16 as i16 - 4096, 0x123, -1]);
-        // 24 bits, in the file's byte order.
+        // 24 bits, most significant first whatever the file's byte order, as GDAL reads them.
         let mut src = [0x01, 0x02, 0x03];
-        dst.clear();
-        let mut s = samples(SampleType::U32, 24, false);
-        row(&s, &mut src, 1, 1, &mut dst);
-        assert_eq!(u32::from_ne_bytes(dst[..4].try_into().unwrap()), 0x030201);
-        dst.clear();
-        s.big_endian = true;
-        row(&s, &mut src, 1, 1, &mut dst);
-        assert_eq!(u32::from_ne_bytes(dst[..4].try_into().unwrap()), 0x010203);
+        for big_endian in [false, true] {
+            dst.clear();
+            let mut s = samples(SampleType::U32, 24, false);
+            s.big_endian = big_endian;
+            row(&s, &mut src, 1, 1, &mut dst);
+            assert_eq!(u32::from_ne_bytes(dst[..4].try_into().unwrap()), 0x010203);
+        }
     }
 
     #[test]
