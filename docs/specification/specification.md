@@ -1,6 +1,6 @@
 # Blazing Imaging Library (BIL) Specification
 
-Oct 14, 2026 · @Master
+Oct 15, 2026 · @Master
 
 ## 1. Purpose and scope
 
@@ -118,7 +118,7 @@ BIL is built in tiers. Each tier is finished before the next is started, so the 
 | Part | In Tier 1 |
 | --- | --- |
 | Formats | GeoTIFF and NITF |
-| Compression | Uncompressed data in both; Deflate in GeoTIFF; JPEG 2000 in NITF |
+| Compression | Uncompressed data in both; Deflate, LZW and PackBits in GeoTIFF; JPEG 2000 in NITF |
 | Core | Fragment, Slice and Window; Levels with `bilinear` and `decimate`; stored levels; the Fragment cache |
 | Slice functions | `pixel.raw`, `complex`, `color` and `spectral.bands` |
 | Geocoding | `image_window`, `affine` and `rational_polynomial`, with a constant-height `surface` |
@@ -408,7 +408,7 @@ For a framing sensor, a frame is one physical collection cycle: one exposure and
 
 Every call returns a result, and everything that is delivered carries a status. This is the one way BIL says how a request turned out.
 
-**A call either delivers or fails.** A call that cannot deliver returns an error and no value. Errors are a file that cannot be opened, a bad argument, a failed read, a limit exceeded and corrupt data.
+**A call either delivers or fails.** A call that cannot deliver returns an error and no value. Errors are a file that cannot be opened, a bad argument, a failed read, a limit exceeded and corrupt data. Every driver reports them through one error type, and a file that no driver recognizes is reported with the formats tried.
 
 **What is delivered carries a status**
 
@@ -424,6 +424,7 @@ Every call returns a result, and everything that is delivered carries a status. 
 - **An unknown name is an error, and a known one with no value is `Missing`.** A field name that is not defined for this Source is an error. A defined field or a dictionary item that has no value here is delivered with status `Missing` and no value. The same holds along an index.
 - **Corrupt data is an error by default.** A caller may ask for a corrupt block to be delivered as missing data instead, and the result is then `Partial`.
     - **What stops an open.** Opening fails where the structure that locates the Images cannot be trusted: a header or segment that runs past the end of the file, block counts that do not cover the Image, or uncompressed data larger than its segment holds. Damage within an extension area does not stop it: the extensions read before the damage are listed, their header's group is `Partial`, and the pixels can still be read.
+    - **In TIFF,** the structure that locates the Images is the chain of IFDs and the chunk tables. Opening fails for a chain that loops or leaves the file, a missing chunk table, a table whose count disagrees with its Image, and a chunk past the end of the file. What a damaged table leaves out is not inferred. An IFD whose layout is sound but whose coding BIL cannot decode, such as an unknown predictor, does not stop the open: it is listed, and its reads fail (section 10, "When no codec accepts an Image").
     - **Recovered data is corrupt data.** A library that decodes a damaged block by filling in what it lost, and warns, as libjpeg does, has met corrupt data. The warning is an error by default.
     - **The whole block is missing.** Under `corrupt_as_missing`, a block a library recovered is marked missing as a whole, since a library does not say which of its pixels it filled in.
 - **A failure never becomes a crash.** A failure inside BIL is caught at the interface and returned as an error.
@@ -442,6 +443,8 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `max_decoded_bytes` | None | Refuse a compressed block that decodes to more than this |
 | `max_field_group_bytes` | None | Refuse a metadata group larger than this |
 | `max_scans` | None, or 500 when `untrusted` is set | Refuse a progressive image with more scans than this (section 10.3) |
+| `max_directories` | 100,000 | Refuse a file whose chain of directories, such as TIFF's IFDs, is longer than this (section 10.3) |
+| `max_subdirectories` | 1,000 | Refuse an Image with more subdirectories, such as TIFF's SubIFDs, than this (section 10.3) |
 | `untrusted` | False | Open the Source as untrusted, for `isolation` (section 10.3) |
 | `companion` | The file's name with `.metadata` added | A companion file to read (section 14.2) |
 | `frame_index` | None | A saved frame index to use instead of scanning (section 3.2) |
@@ -509,6 +512,9 @@ A Fragment is the native pixels of a Window, and it depends on nothing except pi
 - **Significant bits are recorded separately.** A 12-bit sensor is delivered as `U16` with `significant_bits` = 12.
 - **Samples stay where they are stored.** A Fragment does not shift samples. Where the significant bits sit above unused low bits, `bit_shift` records how many low bits are unused.
 - **One-bit data is unpacked.** It cannot be borrowed, so it is delivered as `U8` with `significant_bits` = 1.
+- **Other widths widen.** Integers of any other width up to 64 bits take the smallest of 8, 16, 32 and 64 bits that holds them, signed where the format says so, with `significant_bits` the stored width; 2- and 4-bit samples become `U8`. Complex samples map to the complex types. Floats of 24 bits are refused as unsupported.
+- **Compressed samples are aligned to the right.** A codec delivers whole numbers whatever the container says of storage. A compressed Image of integers takes its type as above from the container's bits per pixel (NITF's NBPP), with `bit_shift` 0 and `significant_bits` the actual bits (NITF's ABPP); NITF's PJUST applies only to uncompressed storage. Coded samples wider than the container states disagree with it, and are corrupt.
+- **Stored, not displayed.** Samples are delivered as stored, whatever the photometric interpretation: TIFF's WhiteIsZero is not inverted, extra samples of unspecified meaning are kept, and a palette Image delivers its indexes, with the palette among its fields.
 
 **Where the significant bits sit.** Formats and decoders differ, and a Fragment reports what it was given.
 
@@ -632,6 +638,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 **Missing pixels.** Where part of the array was never recorded, a Fragment is still a full array, and its validity mask marks the missing positions. This is the same for every sample type. Where a format marks missing data with a fill value, the driver turns it into mask entries. Slices made from the Fragment are NaN at those positions.
 
 - **NITF pad pixels.** Where a NITF block mask table states a pad value, a pixel is missing when every one of its samples holds that value, anywhere in the Image, whether or not its block is flagged as holding pad pixels.
+- **GeoTIFF's no-data value.** `GDAL_NODATA` holds one value, as text, for every band. As for NITF's pad pixels, a pixel is missing when every one of its samples holds it. `nan` means NaN, which is missing anyway (section 3.3). For integers, a value the sample type cannot hold marks nothing. For float16 and float32 the value is rounded to the sample type, as GDAL does for float32, and a value beyond the type's range marks nothing; for float64 it must be held exactly.
 
 **Illustrative shape** (not final)
 
@@ -891,6 +898,7 @@ Because levels are made after the slice function, reduced `power` and reduced `p
 
 - **Listed.** `list_stored_levels` reports each stored level with its name, its size, its scale and position relative to full resolution, its method where the file states one, and whether it is aligned.
 - **Aligned or not.** A stored level is aligned when its samples sit exactly on the Level grid: at the Image pixels whose row and column are multiples of its scale. Many overviews are not. A typical TIFF overview averages pixels 2i and 2i + 1, so its samples sit half a pixel off.
+- **TIFF overviews.** A reduced-resolution IFD that follows its Image, and an Image's SubIFDs, are both its stored levels, finest first. TIFF does not say how an overview was made, so its alignment is reported as unknown and treated as not aligned. A mask IFD (NewSubfileType bit 2) is not an Image; it is read as validity when masks are read.
 - **Named.** Stored levels are named `stored1`, `stored2` and so on, from the finest to the coarsest. The scale is reported and is not part of the name, because stored levels do not always halve.
 - **Read directly.** Naming a stored level, such as `stored2`, in a request's `levels` reads a Slice or a Fragment from it as it stands. The Window is still given in full-resolution rows and columns, and covers the stored pixels whose centers fall inside it.
 - **Used to make a Level.** With `level_source` set to `Stored`, BIL starts from the coarsest stored level that is no coarser than the Level asked for, and makes the remaining halvings with the level method. A stored level qualifies only when it is aligned and what remains is a whole number of halvings. If none qualifies, the Level is computed from full resolution, and `plan` says so.
@@ -1392,6 +1400,7 @@ External drivers use the C interface because Rust has no stable binary interface
 
 - **Conversion stays parallel.** Under `Serial`, only the library call is locked. Conversion to float32, normalization and slice functions still run on several threads (section 12).
 - **A wrapper's lock is not a fault when the library needs it.** A lock is counted against a wrapper only when the library itself does not require one (section 10, the tests for wrappers).
+- **TIFF reads in parallel.** BIL's TIFF driver reads the directories once, when the Source opens; each read then reads and decompresses its own chunks, so the driver is `Parallel`.
 
 **What a registration gives.** `register_plugin` takes a description whose contents follow the plugin's kind. For a slice function and a level method, the two that add arithmetic, the description is fixed here.
 
@@ -1438,6 +1447,9 @@ A caller can also name the driver explicitly with `open_source_with`.
 **Containers and codecs.** A driver reads a container format. Compressed pixel blocks inside it are handed to a codec that BIL chooses separately. One JPEG 2000 codec therefore serves NITF, JP2, GeoTIFF and HEIF alike, and BIL does not depend on the JPEG 2000 support bundled inside GDAL.
 
 - **Codecs by what they decode.** A driver names the codec its blocks need by what is coded, in snake\_case, not by library. NITF's compression codes map as follows: `jpeg` (C3, M3), `jpeg2000` (C8, M8), `bilevel` (C1, M1), `vector_quantization` (C4, M4), `lossless_jpeg` (C5, M5), `downsampled_jpeg` (I1), and `nitf_` with the code, in lower case, for any other, such as `nitf_c7`.
+- **TIFF's compression codes** map likewise: `deflate` (8, 32946), `lzw` (5), `jpeg` (6, 7), `packbits` (32773), `jpeg2000` (34712), `lerc` (34887), `zstd` (50000), `webp` (50001), `fax` (2, 3, 4), and `tiff_` with the code in decimal for any other, such as `tiff_34676`. Uncompressed data needs no codec.
+- **A NITF JPEG 2000 Image is one codestream,** or one JP2 file, whose tiles the NITF blocks describe; a header that disagrees with the subheader is corrupt. A mask table placing more than one block, and a JP2 file with a palette, component mapping or channel definitions, are refused as unsupported until a real file shows how they are used.
+- **When no codec accepts an Image.** The Source still opens and the Image is listed. Every read of it fails: as corrupt where its coded data is damaged or disagrees with its container, and as unsupported where no codec in the build decodes it. Only damage to the structure that locates the Images fails the open (section 3.3).
 
 **Several libraries per format.** More than one driver or codec may cover a format. BIL chooses among them in a set order of preference, and the first that accepts the Source is used.
 
@@ -1469,7 +1481,7 @@ A caller can also name the driver explicitly with `open_source_with`.
 | JPEG 2000 codec | [OpenJPEG](https://github.com/uclouvain/openjpeg) | The fallback, and for now the codec for every file: the only open decoder that covers all of Part 1, with region and reduced-resolution decoding |
 | JPEG 2000 codec, on trial | [j2k-native](https://docs.rs/crate/j2k-native/latest) | The Rust path. Becomes the fallback, ahead of OpenJPEG, once it passes BIL's conformance and Codec agreement tests on NITF reference files. |
 | JPEG 2000 codec, preferred once proven | [emuella-j2k](https://github.com/emuella/emuella-j2k) | Written in Rust, so it joins the core directly. Preferred for the profiles it declares, once it passes the same tests. Not yet released. |
-| GeoTIFF | The Rust [`tiff`](https://github.com/image-rs/image-tiff) crate, with BIL's own reading of GeoTIFF keys | Tier 1's GeoTIFF reader, with no C library. GDAL is the reference it is tested against. |
+| GeoTIFF | The Rust [`tiff`](https://github.com/image-rs/image-tiff) crate for the directories, with BIL's own reading of chunks and GeoTIFF keys; Deflate through miniz\_oxide, LZW through weezl, PackBits BIL's own | Tier 1's GeoTIFF reader, with no C library. Samples are always as stored (section 4). A mode of the crate that returns stored samples is offered to its maintainers. GDAL is the reference it is tested against. |
 | General rasters | GDAL | Broad raster coverage beyond Tier 1. Its JPEG 2000 support is not used. |
 | NITF | A native Rust NITF reader | Tier 1's NITF container reader. Headers and extensions are read through the field definitions of section 14.1. NITRO, which is LGPL 3.0, and GDAL are the references it is tested against. |
 | SICD, SIDD | [SIX](https://github.com/ngageoint/six-library) | SICD, SIDD and CPHD metadata and pixels, in Tier 2. SIX is LGPL 3, so it is assessed under section 10.6 when Tier 2 starts. |
@@ -1495,6 +1507,8 @@ Every library in Appendix A is also part of the plugin design for now. Each will
 - **BIL does not generate bindings.** rusty\_ffmpeg provides them, and it is regenerated for each FFmpeg release.
 - **Its unsafe code is BIL's.** The layer is BIL's own Rust code that reads outside data, so the fuzz testing of section 10.3 covers it.
 - **FFmpeg 6 or later.** rusty\_ffmpeg covers FFmpeg 6 to 8. On a system whose package manager ships an older FFmpeg, the user installs a newer one through conda.
+
+**OpenJPEG: BIL's own bindings, and openjpeg-sys as a supplier.** jpeg2k, the wrapper, fails Capability: it reads the header and decodes in one call, so nothing can be checked between them, and it sends OpenJPEG's warnings to a logger. openjpeg-sys passes Capability and Performance but fails Packaging, since it always builds its own copy. BIL therefore declares OpenJPEG's interface itself, in `bil-sys`, and links the shared copy from conda or the system wherever one is found. Where none is found, as in a Windows build or a PyPI wheel, `bil-sys` builds a private copy through openjpeg-sys, used only to supply the library, with BIL's declarations kept. In the shared library BIL delivers, that copy is linked statically and its symbols are not exported (section 10.5). A Rust program that compiles the `bil` crate in holds the copy's symbols as its own, which is why the shared copy comes first. openjp2, a port of OpenJPEG to Rust, is assessed beside the other Rust JPEG 2000 codecs, by the same measures.
 
 **Illustrative shape** (not final)
 
@@ -1672,13 +1686,14 @@ Imagery files often arrive from outside, and BIL hands them to many C and C++ li
 | `max_decoded_bytes` | One compressed block that expands without bound |
 | `max_field_group_bytes` | A metadata group built to exhaust memory |
 | `max_scans` | A progressive image with thousands of scans, each a pass over the whole image |
+| `max_directories`, `max_subdirectories` | A chain of directories built to be walked without end. These two have defaults, since walking a directory costs little and real files hold few. |
 
 - **No limit is set by default for a trusted Source.** Very large images are BIL's purpose, so any fixed default would turn away real data.
 - **An untrusted Source gets limits.** Opening a Source as untrusted applies default limits: decoded bytes per block, pixels per Image, bytes per metadata group and 500 progressive scans, each scaled to the size of the file where that makes sense. The caller can raise them.
 - **One check is always made.** For uncompressed data, a header that claims more pixels than the file can hold is rejected.
 - **A library's working memory is capped too.** Where `max_decoded_bytes` is set, the memory a library uses beside its output for one block, such as a progressive JPEG's whole-image coefficients, is capped at twice that limit, where the library allows a cap.
 - **Where a library offers no cap,** and `max_decoded_bytes` is set, the driver refuses, before reading it, a block whose declared size over every component exceeds twice that limit, since a library's working memory can follow the size of the block it reads, as GDAL's does. The refusal is an error.
-- **A refusal is an error.** A read that a limit refuses fails with an error, as section 3.3 says.
+- **A refusal is an error.** A read that a limit refuses fails with an error, as section 3.3 says. It is reported as unsupported, not as corrupt, since the file may be sound. A library's own limits, such as the `tiff` crate's on the size of a tag's values, are set from `max_decoded_bytes` where they bound decoded data.
 - **What a codec would expand, the driver applies.** A codec that would add components after the header is checked, as a JPEG 2000 palette does, is told not to. The driver delivers the palette's indices, which `palette.lookup` turns into color, and applies the component mapping and channel definitions (`cmap` and `cdef`, which say, for one, which component is alpha) itself, or reports them where it does not.
 
 **Plugins from configured locations only.** BIL loads external, optional and scripted plugins only from locations named by the caller or by the installation's configuration.
@@ -1778,6 +1793,8 @@ Installing BIL is enough to read its formats. BIL does not duplicate libraries t
 | BIL installs no signal handlers and does not change the locale, the working directory or shared error handlers | Side effects on the rest of the process |
 | BIL does not let its libraries load plugins of their own from search paths | Stray plugins, and a way around section 10.3 |
 | BIL registers the drivers of a library it shares with the caller one at a time, only those it uses, and opens each Source with only the driver it chose allowed. It never registers all of a library's drivers at once where that would load plugins from search paths, as GDAL's `GDALAllRegister` does. For GDAL: one `GDALRegister_` call for each driver, and `GDALOpenEx` with a list of allowed drivers. | Plugins loaded through a shared library, and other packages' drivers probing BIL's Sources. Registering only adds, so another package that registers everything later still works. |
+
+**Where a library reads the environment anyway.** OpenJPEG reads `OPJ_NUM_THREADS` when a decoder is made, before any call can stop it, and where the variable is set it starts that many threads, which BIL's call then stops. BIL keeps OpenJPEG on the calling thread, spreads a read over threads by Windows or tiles on its `Pool` (section 12), and accepts this residue as the most OpenJPEG's interface allows. It does not change the process's environment, which would affect the caller's other code. If one large tile, read alone, proves too slow, this is revisited.
 
 **A coexistence test.** Each release is tested in one process alongside the common packages that carry the same libraries, reading through BIL and through each of them in turn.
 
@@ -2288,6 +2305,7 @@ Geocoding, normalization parameters and coordinates are built from metadata, and
 - **A name is a list of parts.** Each part is one level of the format's own structure: a group, a record or a field. Every call accepts the list, or its dotted form, in which the parts are joined by dots.
 - **Dots inside a part are escaped.** HDF5 paths and XML names may contain dots. In the dotted form such a dot is written `\.`, as in `hdf5.calibration.band\.1`.
 - **Repeats carry a number.** Where a native name occurs more than once, every instance carries its number, counted from 1, in square brackets: `nitf.RPC00B[2]`, `fits.HISTORY[3]`, `dicom.ReferencedImageSequence[1].ReferencedSOPInstanceUID`. Outside a counted run, a name that occurs once has no number.
+- **TIFF's fields.** An Image's tags are the group `tiff.ifd`, named as TIFF 6.0, the GeoTIFF standard and GDAL name them (`tiff.ifd.ImageWidth`, `tiff.ifd.GDAL_NODATA`); its GeoTIFF keys are the group `geotiff.keys`, named as GeoTIFF 1.0 names them (`geotiff.keys.GTModelTypeGeoKey`). A tag or key with no known name is named by its number in decimal (`tiff.ifd.65000`), so nothing in the file is hidden. Text is read from its own bytes, as Latin-1, every string of a tag kept. An unsigned 64-bit value above the largest signed one is delivered as a float, and its stored bytes keep it exactly. A tag that cannot be read leaves `tiff.ifd` `Partial`; a key directory that cannot be read fails `geotiff.keys` as corrupt, since its keys are found only through it.
 - **Runs carry their place.** A field in a counted run of a format's structure, such as one band's fields in a NITF image subheader, always carries its place in the run, even when the run has one entry, since the number says which band or segment it belongs to: `IREPBAND[1]`, `LISH[1]`. A field inside two runs carries one number for each, outermost first: `LUTD[2][1]` for the second band's first lookup table.
 - **Text is Unicode.** Text is decoded from the character set the format declares. The result of `read_field` still carries the stored bytes.
 - **A date and time states whether its zone is known.** With a known zone it is held in UTC, with the offset the file stated. Without one it is held as local time, marked as having no known zone, and is never silently taken as UTC.
@@ -2552,7 +2570,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and eighty-four have been decided. Each lists the current proposal.
+Two points are not yet settled, and ninety have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2581,6 +2599,12 @@ Two points are not yet settled, and eighty-four have been decided. Each lists th
 - [x] **Registering a shared library's drivers.** Decided: one at a time, only those BIL uses, each Source opened with only its chosen driver allowed; never all at once (section 10.5).
 - [x] **NITF pad pixels, identity fields and codec names.** Decided: a pixel is missing when every sample holds the pad value, anywhere in the Image; ONAME and OPHONE are `Identity`, NITF's titles and comments `Ordinary`; codecs are named by what they decode, with NITF's codes mapped (sections 4, 10 and 14.3).
 - [x] **What stops an open.** Decided: damage to the structure that locates the Images fails the open; damage within an extension area leaves its header's group `Partial` and the pixels readable (section 3.3).
+- [x] **OpenJPEG's source and threads.** Decided: BIL's own bindings link the shared copy wherever one is found, and a private copy through openjpeg-sys otherwise, its symbols not exported; OpenJPEG stays on the calling thread, and the residue of `OPJ_NUM_THREADS` is accepted (section 10, 10.5).
+- [x] **Compressed NITF Images.** Decided: integers aligned to the right, typed from NBPP, `significant_bits` from ABPP; a JPEG 2000 Image is one codestream; an Image no codec accepts is listed and its reads fail (sections 4 and 10).
+- [x] **TIFF's fields and no-data value.** Decided: groups `tiff.ifd` and `geotiff.keys`, unknown numbers in decimal, text as Latin-1; `GDAL_NODATA` by the every-sample rule, rounded to float16 and float32 (sections 4 and 14.1).
+- [x] **TIFF samples and overviews.** Decided: the `tiff` crate reads the directories, BIL the chunks, so samples are as stored and reads run in parallel; other widths widen; overviews and SubIFDs are stored levels of unknown alignment (sections 4, 5 and 10).
+- [x] **TIFF compression, limits and damage.** Decided: codec names for TIFF's codes; LZW and PackBits join Deflate in Tier 1; `max_directories` and `max_subdirectories`, and refusals by a limit reported as unsupported; damage to the IFD chain or chunk tables fails the open (sections 1, 3.3, 10 and 10.3).
+- [x] **One error type.** Decided: every driver reports through one error type, and an unrecognized file names the formats tried (section 3.3).
 - [ ] **Drivers for the added sensor cases.** The medical, security screening and sonar cases in section 8 name the data but not yet the libraries that read it.
 - [x] **Metadata model.** Decided, for now: metadata is held as named fields, with names taken from self-describing files or from specifications. Fields are extracted on demand and held to be read when needed (section 14).
 - [x] **Markings and identity.** Decided: markings are always written, to the companion file where the format cannot hold them. Identity fields are left empty by default. The caller can override both (section 11).

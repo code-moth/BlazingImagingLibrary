@@ -47,11 +47,89 @@ fn format_of(t: SampleType) -> u16 {
     match t {
         SampleType::I8 | SampleType::I16 | SampleType::I32 | SampleType::I64 => 2,
         SampleType::F16 | SampleType::F32 | SampleType::F64 => 3,
+        SampleType::ComplexI8 | SampleType::ComplexI16 => 5,
+        SampleType::ComplexF32 | SampleType::ComplexF64 => 6,
         _ => 1,
     }
 }
 
+/// The sample a reader delivers for `img`: as `sample`, or for a width of its own (M43) the
+/// stored bits, sign-extended where signed, and widened to the type's size.
+fn expected(img: &Img, r: u64, c: u64, b: u64) -> u64 {
+    let v = sample(img.t, r, c, b);
+    match img.bits {
+        Some(bits) => {
+            let v = v & ((1u64 << bits) - 1);
+            let size = img.t.size() * 8;
+            if format_of(img.t) == 2 && v >> (bits - 1) & 1 == 1 {
+                (v | !0u64 << bits) & if size == 64 { !0 } else { (1u64 << size) - 1 }
+            } else {
+                v
+            }
+        }
+        None => v,
+    }
+}
+
+/// PackBits (TIFF 6.0, section 9): runs of three or more as runs, the rest as literals.
+fn packbits(raw: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < raw.len() {
+        let mut run = 1;
+        while i + run < raw.len() && raw[i + run] == raw[i] && run < 128 {
+            run += 1;
+        }
+        if run >= 3 {
+            out.push((1 - run as i32) as u8);
+            out.push(raw[i]);
+            i += run;
+        } else {
+            let start = i;
+            while i < raw.len() && i - start < 128 {
+                if i + 2 < raw.len() && raw[i] == raw[i + 1] && raw[i] == raw[i + 2] {
+                    break;
+                }
+                i += 1;
+            }
+            out.push((i - start - 1) as u8);
+            out.extend_from_slice(&raw[start..i]);
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------- a writer for test files
+
+/// Samples of a width of their own: whole bytes in the file's order, or bits, most significant
+/// first, each row starting on a byte.
+#[derive(Default)]
+struct BitWriter {
+    bytes: Vec<u8>,
+    used: u32,
+}
+
+impl BitWriter {
+    fn put(&mut self, v: u64, bits: u32, big: bool) {
+        if bits.is_multiple_of(8) {
+            let le = &v.to_le_bytes()[..bits as usize / 8];
+            if big {
+                self.bytes.extend(le.iter().rev());
+            } else {
+                self.bytes.extend_from_slice(le);
+            }
+            return;
+        }
+        for k in (0..bits).rev() {
+            if self.used.is_multiple_of(8) {
+                self.bytes.push(0);
+            }
+            let bit = (v >> k & 1) as u8;
+            *self.bytes.last_mut().unwrap() |= bit << (7 - self.used % 8);
+            self.used += 1;
+        }
+    }
+}
 
 #[derive(Clone)]
 struct Img {
@@ -63,8 +141,10 @@ struct Img {
     tile: Option<(u64, u64)>,
     strip_rows: u64,
     planar: bool,
-    /// 1 none, 8 Deflate, or another code whose data is written raw.
+    /// 1 none, 8 Deflate, 5 LZW, 32773 PackBits, or another code whose data is written raw.
     compression: u16,
+    /// Stored bits of a sample, where not the type's own (M43).
+    bits: Option<u32>,
     predictor: u16,
     subfile: u32,
     /// Extra tags: code, TIFF type, count, values as little-endian bytes of that type.
@@ -84,6 +164,7 @@ impl Img {
             strip_rows: 3,
             planar: false,
             compression: 1,
+            bits: None,
             predictor: 1,
             subfile: 0,
             tags: Vec::new(),
@@ -114,6 +195,7 @@ impl Img {
                     let mut raw = Vec::new();
                     for r in 0..h {
                         let mut row: Vec<u64> = Vec::new();
+                        let mut packed = BitWriter::default();
                         for c in 0..cw {
                             for k in 0..per {
                                 let (rr, cc2, b) = (
@@ -121,14 +203,22 @@ impl Img {
                                     cc * cw + c,
                                     if self.planar { plane } else { k },
                                 );
-                                row.push(if rr < self.rows && cc2 < self.cols {
+                                let v = if rr < self.rows && cc2 < self.cols {
                                     sample(self.t, rr, cc2, b)
                                 } else {
                                     0
-                                });
+                                };
+                                match self.bits {
+                                    Some(bits) => packed.put(v, bits, big),
+                                    None => row.push(v),
+                                }
                             }
                         }
-                        raw.extend(self.predict(&row, per as usize, big));
+                        if self.bits.is_some() {
+                            raw.extend(packed.bytes);
+                        } else {
+                            raw.extend(self.predict(&row, per as usize, big));
+                        }
                     }
                     out.push(match self.compression {
                         8 => {
@@ -139,6 +229,10 @@ impl Img {
                             e.write_all(&raw).unwrap();
                             e.finish().unwrap()
                         }
+                        5 => weezl::encode::Encoder::with_tiff_size_switch(weezl::BitOrder::Msb, 8)
+                            .encode(&raw)
+                            .unwrap(),
+                        32773 => packbits(&raw),
                         _ => raw,
                     });
                 }
@@ -151,10 +245,14 @@ impl Img {
     /// One row's bytes in the file's order, after the predictor.
     fn predict(&self, row: &[u64], per: usize, big: bool) -> Vec<u8> {
         let size = self.t.size();
+        // Each number in the file's byte order: a complex sample's two parts apart.
+        let number = self.t.number_size();
         let bytes = |v: u64| -> Vec<u8> {
             let le = &v.to_le_bytes()[..size];
             if big {
-                le.iter().rev().copied().collect()
+                le.chunks(number)
+                    .flat_map(|n| n.iter().rev().copied())
+                    .collect()
             } else {
                 le.to_vec()
             }
@@ -265,7 +363,10 @@ fn write(images: &[Img], big: bool, bigtiff: bool) -> Vec<u8> {
                 258,
                 3,
                 img.bands,
-                short(&vec![img.t.size() as u16 * 8; img.bands as usize]),
+                short(&vec![
+                    img.bits.unwrap_or(img.t.size() as u32 * 8) as u16;
+                    img.bands as usize
+                ]),
             ),
             (259, 3, 1, short(&[img.compression])),
             (262, 3, 1, short(&[if img.bands == 3 { 2 } else { 1 }])),
@@ -382,7 +483,7 @@ fn check(source: &GeoTiffSource<Vec<u8>>, image: usize, img: &Img, w: Window) {
                 let at = r as usize * f.strides[0]
                     + c as usize * f.strides[1]
                     + b as usize * f.strides[2];
-                let want = sample(img.t, w.row_start + r, w.col_start + c, b).to_ne_bytes();
+                let want = expected(img, w.row_start + r, w.col_start + c, b).to_ne_bytes();
                 let want = if cfg!(target_endian = "little") {
                     &want[..size]
                 } else {
@@ -456,8 +557,9 @@ fn every_layout_reads_exactly() {
             (Some((8, 16)), false),
             (Some((16, 16)), true),
         ] {
+            let predictor = if format_of(t) == 3 { 3 } else { 2 };
             for (compression, predictor) in
-                [(1, 1), (8, 1), (8, if format_of(t) == 3 { 3 } else { 2 })]
+                [(1, 1), (8, 1), (8, predictor), (5, predictor), (32773, 1)]
             {
                 for (big, bigtiff) in [(false, false), (true, false), (false, true)] {
                     // 21 × 37: partial strips and tiles on the right and at the bottom; one to
@@ -482,7 +584,7 @@ fn every_layout_reads_exactly() {
             }
         }
     }
-    assert_eq!(cases, 11 * 4 * 3 * 3);
+    assert_eq!(cases, 11 * 4 * 5 * 3);
 }
 
 #[test]
@@ -698,12 +800,12 @@ fn tags_and_geotiff_keys_are_fields() {
 #[test]
 fn unsupported_compression_is_reported_not_decoded() {
     let mut img = Img::new(4, 4, 1, SampleType::U8);
-    img.compression = 5;
+    img.compression = 50000;
     let source = GeoTiffSource::open(write(&[img.clone()], false, false)).unwrap();
     let info = source.image_info(0).unwrap();
     assert_eq!(
         (info.codec.as_deref(), info.decodable),
-        (Some("lzw"), false)
+        (Some("zstd"), false)
     );
     assert!(matches!(
         source.read_fragment(0, whole(&img)),
@@ -853,42 +955,152 @@ fn chunks_never_written_are_missing() {
     assert_eq!(source.describe_storage(0).unwrap().blocks.len(), 2);
 }
 
-/// The `tiff` crate inverts WhiteIsZero samples as it decodes; BIL delivers them as stored
-/// (section 4), and refuses float ones, whose inversion cannot be undone exactly.
+/// Samples come back as stored whatever the photometric interpretation (section 4, M39):
+/// WhiteIsZero is not inverted, floats included.
 #[test]
 fn white_is_zero_samples_come_back_as_stored() {
-    for t in [SampleType::U8, SampleType::U16, SampleType::U32] {
+    for t in [
+        SampleType::U8,
+        SampleType::U16,
+        SampleType::U32,
+        SampleType::F32,
+    ] {
         let mut img = Img::new(5, 9, 1, t);
         img.tags.push((262, 3, 1, 0u16.to_le_bytes().to_vec()));
         let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
         check(&source, 0, &img, whole(&img));
     }
-    let mut img = Img::new(5, 9, 1, SampleType::F32);
-    img.tags.push((262, 3, 1, 0u16.to_le_bytes().to_vec()));
+}
+
+#[test]
+fn extra_samples_of_unspecified_meaning_are_kept() {
+    // RGB with a fourth sample marked unspecified: all four come back.
+    let mut img = Img::new(5, 9, 4, SampleType::U8);
+    img.tags.push((262, 3, 1, 2u16.to_le_bytes().to_vec()));
+    img.tags.push((338, 3, 1, 0u16.to_le_bytes().to_vec()));
     let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+    check(&source, 0, &img, whole(&img));
+}
+
+/// An interpretation the `tiff` crate does not know, or none, in the first IFD: listed and read,
+/// not refused at open (M39, M42). A predictor TIFF does not define: listed, its reads refused.
+#[test]
+fn the_first_ifd_is_listed_however_the_tiff_crate_judges_it() {
+    let mut cielab = Img::new(5, 9, 3, SampleType::U8);
+    cielab.tags.push((262, 3, 1, 8u16.to_le_bytes().to_vec()));
+    let mut unknown = Img::new(5, 9, 1, SampleType::U16);
+    unknown
+        .tags
+        .push((262, 3, 1, 999u16.to_le_bytes().to_vec()));
+    for img in [cielab, unknown] {
+        for (big, bigtiff) in [(false, false), (true, false), (true, true)] {
+            let source =
+                GeoTiffSource::open(write(std::slice::from_ref(&img), big, bigtiff)).unwrap();
+            check(&source, 0, &img, whole(&img));
+        }
+    }
+    let mut odd = Img::new(5, 9, 1, SampleType::U8);
+    odd.tags.push((317, 3, 1, 7u16.to_le_bytes().to_vec()));
+    let source = GeoTiffSource::open(write(std::slice::from_ref(&odd), false, false)).unwrap();
+    assert!(source.image_info(0).unwrap().unsupported.is_some());
+    assert!(matches!(
+        source.read_fragment(0, whole(&odd)),
+        Err(Error::Unsupported(_))
+    ));
+}
+
+/// Integers of widths with no type of their own widen, with `significant_bits` the stored
+/// width; complex samples map to the complex types (M43).
+#[test]
+fn other_widths_widen_and_complex_samples_map() {
+    let mut rng = Rng(5);
+    for (t, bits) in [
+        (SampleType::U8, 1),
+        (SampleType::U8, 4),
+        (SampleType::I8, 7),
+        (SampleType::U16, 12),
+        (SampleType::I16, 12),
+        (SampleType::U32, 24),
+        (SampleType::I32, 24),
+        (SampleType::U32, 31),
+        (SampleType::U64, 40),
+        (SampleType::I64, 63),
+    ] {
+        for planar in [false, true] {
+            for (compression, big) in [(1, false), (1, true), (8, true), (5, false)] {
+                let mut img = Img::new(13, 19, 2, t);
+                img.bits = Some(bits);
+                img.planar = planar;
+                img.compression = compression;
+                let source =
+                    GeoTiffSource::open(write(std::slice::from_ref(&img), big, false)).unwrap();
+                let pt = source.image_info(0).unwrap().pixel_type.unwrap();
+                assert_eq!((pt.sample_type, pt.significant_bits), (t, bits));
+                random_windows(&source, &img, &mut rng, 4);
+            }
+        }
+    }
+    for t in [
+        SampleType::ComplexI8,
+        SampleType::ComplexI16,
+        SampleType::ComplexF32,
+    ] {
+        for big in [false, true] {
+            let img = Img::new(7, 11, 2, t);
+            let source =
+                GeoTiffSource::open(write(std::slice::from_ref(&img), big, false)).unwrap();
+            check(&source, 0, &img, whole(&img));
+        }
+    }
+    // A 24-bit float has no type: listed, its reads refused.
+    let mut img = Img::new(4, 4, 1, SampleType::F32);
+    img.bits = Some(24);
+    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+    assert!(source.image_info(0).unwrap().pixel_type.is_none());
     assert!(matches!(
         source.read_fragment(0, whole(&img)),
         Err(Error::Unsupported(_))
     ));
 }
 
+/// Text is read from its own bytes, as Latin-1, every string kept (M36, M39).
 #[test]
-fn a_sample_the_tiff_crate_would_drop_is_refused_not_lost() {
-    // RGB with a fourth sample marked unspecified: the crate names three and would drop one.
-    let mut img = Img::new(5, 9, 4, SampleType::U8);
-    img.tags.push((262, 3, 1, 2u16.to_le_bytes().to_vec()));
-    img.tags.push((338, 3, 1, 0u16.to_le_bytes().to_vec()));
-    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
-    assert!(matches!(
-        source.read_fragment(0, whole(&img)),
-        Err(Error::Unsupported(_))
-    ));
-    // Marked as unassociated alpha, the crate names all four, and they read exactly.
-    let mut img = Img::new(5, 9, 4, SampleType::U8);
-    img.tags.push((262, 3, 1, 2u16.to_le_bytes().to_vec()));
-    img.tags.push((338, 3, 1, 2u16.to_le_bytes().to_vec()));
-    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
-    check(&source, 0, &img, whole(&img));
+fn text_is_latin1_and_every_string_is_kept() {
+    let mut img = Img::new(4, 4, 1, SampleType::U8);
+    img.tags.push((270, 2, 9, b"caf\xE9\0two\0".to_vec()));
+    img.tags.push((305, 2, 3, b"ab\0".to_vec()));
+    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), true, false)).unwrap();
+    let f = source
+        .read_field(Scope::Image(0), "tiff.ifd.ImageDescription")
+        .unwrap();
+    assert_eq!(
+        f.value(),
+        &Value::List(vec![Value::Text("café".into()), Value::Text("two".into())])
+    );
+    assert_eq!(f.stored, b"caf\xE9\0two\0");
+    let f = source
+        .read_field(Scope::Image(0), "tiff.ifd.Software")
+        .unwrap();
+    assert_eq!(f.value(), &Value::Text("ab".into()));
+}
+
+/// GDAL_NODATA rounds to float16 as to float32 (M37).
+#[test]
+fn nodata_rounds_to_float16() {
+    // 0.1 is not a float16; its nearest is 0x2E66. Write every sample as that.
+    let mut img = Img::new(2, 2, 1, SampleType::F16);
+    img.tags.push((42113, 2, 4, b"0.1\0".to_vec()));
+    let mut bytes = write(std::slice::from_ref(&img), false, false);
+    let source = GeoTiffSource::open(bytes.clone()).unwrap();
+    let blocks = source.describe_storage(0).unwrap().blocks;
+    for b in &blocks {
+        for k in (b.offset..b.offset + b.length).step_by(2) {
+            bytes[k as usize..k as usize + 2].copy_from_slice(&0x2E66u16.to_le_bytes());
+        }
+    }
+    let source = GeoTiffSource::open(bytes).unwrap();
+    let f = source.read_fragment(0, whole(&img)).unwrap();
+    assert_eq!(f.validity, Some(vec![false; 4]));
 }
 
 #[test]

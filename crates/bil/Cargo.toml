@@ -14,16 +14,18 @@ categories = ["science::geo", "multimedia::images"]
 # Each built-in driver is behind a build feature (specification, section 10).
 default = ["nitf", "geotiff"]
 nitf = []
-# Tier 1's GeoTIFF reader, through the `tiff` crate with Deflate, the compression Tier 1 reads
-# (specification, sections 1.4 and 10).
-geotiff = ["dep:tiff"]
+# Tier 1's GeoTIFF reader: the `tiff` crate reads the directories, and BIL the chunks, with
+# Deflate, LZW and PackBits, the compression Tier 1 reads (specification, sections 1.4 and 10).
+geotiff = ["dep:tiff", "dep:miniz_oxide", "dep:weezl"]
 # JPEG 2000 through the OpenJPEG the system or conda provides; off by default, since not every
 # system has it.
 openjpeg = ["dep:bil-sys", "bil-sys/openjpeg"]
 
 [dependencies]
 bil-sys = { path = "../bil-sys", version = "0.0.2", optional = true }
-tiff = { version = "0.11.3", default-features = false, features = ["deflate"], optional = true }
+tiff = { version = "0.11.3", default-features = false, optional = true }
+miniz_oxide = { version = "0.9.1", optional = true }
+weezl = { version = "0.2.1", optional = true }
 
 [dev-dependencies]
 # The GeoTIFF tests write Deflate chunks of their own.

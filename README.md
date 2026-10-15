@@ -13,7 +13,7 @@ BIL is written in Rust, with a C-callable interface over it delivered as one sha
 
 The two-page flyer is [`flyer.pdf`](flyer.pdf), with its source in [`flyer.html`](flyer.html).
 
-> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 73, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
+> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 74, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
 
 ## Why BIL is needed
 
@@ -89,7 +89,7 @@ The design covers every format below. They are built in tiers, each finished bef
 
 | Tier | Formats | With them |
 | --- | --- | --- |
-| Tier 1 | GeoTIFF, uncompressed or Deflate; NITF, uncompressed or JPEG 2000 | Fragments, Slices, Levels, stored levels, the Fragment cache; affine and RPC geocoding; metadata on demand; markings; TIFF and GeoTIFF writing; Rust, Python and C |
+| Tier 1 | GeoTIFF, uncompressed, Deflate, LZW or PackBits; NITF, uncompressed or JPEG 2000 | Fragments, Slices, Levels, stored levels, the Fragment cache; affine and RPC geocoding; metadata on demand; markings; TIFF and GeoTIFF writing; Rust, Python and C |
 | Tier 2 | ENVI; video with KLV metadata; SICD and SIDD | Readers for threads, scripted drivers in Python, and plugins in C, C++ or Rust |
 | Tier 3 | The rest: HDF5, NetCDF, raw camera files, wide area motion imagery, LIDAR and depth cameras, medical volumes and whole-slide pathology, security screening, ultrasound and sonar | Each assessed case by case |
 
@@ -121,7 +121,7 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 
 | Document | What it is |
 | --- | --- |
-| [Specification](docs/specification/specification.md), version 73 | The source of truth for the design |
+| [Specification](docs/specification/specification.md), version 74 | The source of truth for the design |
 | [User Manual](docs/manual/user-manual.md), version 10 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 10 | Calls for every use case, in Python, Rust and C |
 | [Implementability](docs/assessments/implementability.md), version 11 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |

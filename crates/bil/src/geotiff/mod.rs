@@ -10,15 +10,19 @@
 //! tags of an Image's IFD, and its GeoTIFF keys, are field groups, extracted when first asked
 //! for and held (section 14.3).
 //!
-//! Pixels are decoded by the `tiff` crate, chunk by chunk, strip or tile: uncompressed and
-//! Deflate, the compression Tier 1 reads, with their predictors. Other compression is reported,
-//! by codec name, and not decoded. GDAL's no-data tag, GDAL_NODATA, is a fill value: a pixel
-//! whose every sample holds it is missing (section 4).
+//! The `tiff` crate reads the directories and their values; BIL reads each chunk's stored
+//! bytes itself and decodes them (`chunks`): uncompressed, Deflate, LZW and PackBits, the
+//! compression Tier 1 reads, with their predictors, so samples are always as stored, whatever
+//! the photometric interpretation (M39, option (b)). Other compression is reported, by codec
+//! name, and not decoded. Text is read from its own bytes, as Latin-1. GDAL's no-data tag,
+//! GDAL_NODATA, is a fill value: a pixel whose every sample holds it is missing (section 4).
 //!
 //! Every offset and count is checked against the file before it is used, so a corrupt file is
-//! an error, never a crash, and no allocation exceeds what the Window asked for. The decoder
-//! keeps a place in the file, so it is held under a lock and reads of one Source take turns.
+//! an error, never a crash, and no allocation exceeds what the Window asked for. The crate's
+//! decoder keeps a place in the file, so it is held under a lock, but only to read fields:
+//! reads of pixels need nothing shared, and run in parallel (M44).
 
+mod chunks;
 mod names;
 
 use std::collections::{HashMap, HashSet};
@@ -31,6 +35,7 @@ use tiff::decoder::Decoder;
 use tiff::tags::Tag;
 use tiff::Directory;
 
+use self::chunks::{Coding, Samples};
 use crate::fields::{Field, FieldGroup, FieldName, Origin, Value};
 use crate::io::ReadAt;
 pub use crate::types::Scope;
@@ -99,19 +104,37 @@ fn from_tiff(e: tiff::TiffError) -> Error {
 // ------------------------------------------------------------------ reading through ReadAt
 
 /// A position in a `ReadAt`, for the `tiff` crate, which reads through `Read` and `Seek`.
+///
+/// The crate makes an image of the first IFD it is given, and refuses at that point what it
+/// cannot make one of, though BIL would list it (M39, M42). So it is given a header of its own,
+/// `header`, pointing at a placeholder IFD of one pixel, `extra`, served past the file's end,
+/// and BIL walks the file's own chain, asking the crate only to read directories.
 struct At<R: ReadAt> {
     source: Arc<R>,
     pos: u64,
+    /// The file's size; `extra` follows it.
     size: u64,
+    header: Vec<u8>,
+    extra: Vec<u8>,
 }
 
 impl<R: ReadAt> Read for At<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n = (self.size.saturating_sub(self.pos)).min(buf.len() as u64) as usize;
-        if n == 0 {
-            return Ok(0);
-        }
-        self.source.read_exact_at(&mut buf[..n], self.pos)?;
+        let (pos, header) = (self.pos, self.header.len() as u64);
+        let n = if pos < header {
+            let n = (header - pos).min(buf.len() as u64) as usize;
+            buf[..n].copy_from_slice(&self.header[pos as usize..][..n]);
+            n
+        } else if pos >= self.size {
+            let from = ((pos - self.size).min(self.extra.len() as u64)) as usize;
+            let n = (self.extra.len() - from).min(buf.len());
+            buf[..n].copy_from_slice(&self.extra[from..][..n]);
+            n
+        } else {
+            let n = (self.size - pos).min(buf.len() as u64) as usize;
+            self.source.read_exact_at(&mut buf[..n], pos)?;
+            n
+        };
         self.pos += n as u64;
         Ok(n)
     }
@@ -121,7 +144,7 @@ impl<R: ReadAt> Seek for At<R> {
     fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
         let pos = match to {
             SeekFrom::Start(p) => Some(p),
-            SeekFrom::End(d) => self.size.checked_add_signed(d),
+            SeekFrom::End(d) => (self.size + self.extra.len() as u64).checked_add_signed(d),
             SeekFrom::Current(d) => self.pos.checked_add_signed(d),
         };
         self.pos = pos.ok_or_else(|| {
@@ -151,15 +174,17 @@ pub struct ImageInfo {
     pub rows: u64,
     pub cols: u64,
     pub bands: u32,
-    /// `None` where the sample layout is valid TIFF that this reader does not read, such as
-    /// 1-bit or complex samples; `unsupported` says why.
+    /// `None` where the sample layout is valid TIFF that BIL's types do not hold, such as
+    /// 24-bit floats.
     pub pixel_type: Option<PixelType>,
+    /// Why reads of the Image fail, where they do though its compression is decoded: a sample
+    /// layout or predictor that cannot be read (M42).
     pub unsupported: Option<String>,
     /// The Compression tag's value.
     pub compression: u16,
     /// The codec its chunks need, by name, or `None` when they are not compressed.
     pub codec: Option<String>,
-    /// Whether this build decodes its chunks: uncompressed and Deflate.
+    /// Whether this build decodes its chunks: uncompressed, Deflate, LZW and PackBits.
     pub decodable: bool,
     /// Whether each band is stored apart (PlanarConfiguration 2).
     pub planar: bool,
@@ -180,9 +205,15 @@ struct Layout {
     rows: u64,
     cols: u64,
     samples: u32,
-    sample_type: std::result::Result<SampleType, String>,
-    bits: u32,
+    /// The type delivered, the stored bits of a sample and whether it is signed, or why there is
+    /// no type.
+    sample: std::result::Result<(SampleType, u32, bool), String>,
     compression: u16,
+    predictor: u16,
+    /// FillOrder 2.
+    reversed_bits: bool,
+    /// Why the coding cannot be read, where a tag says so: YCbCr subsampled outside JPEG.
+    coding_problem: Option<String>,
     planar: bool,
     tiled: bool,
     chunk: (u32, u32),
@@ -190,8 +221,6 @@ struct Layout {
     counts: Vec<u64>,
     nodata: Option<String>,
     subfile: u32,
-    /// PhotometricInterpretation, where stated.
-    photometric: Option<u16>,
     /// The SubIFDs tag's directories, where some of a file's overviews may lie.
     sub_ifds: Vec<u64>,
 }
@@ -216,18 +245,15 @@ impl Layout {
 
 struct Ifd {
     dir: Directory,
+    /// Where each text tag's bytes lie, and how many: read by BIL, as Latin-1.
+    text: HashMap<u16, (u64, u64)>,
     layout: std::result::Result<Layout, String>,
 }
 
 struct Image {
     info: ImageInfo,
     layout: Layout,
-}
-
-/// The `tiff` decoder, and the IFD it last loaded.
-struct DecoderState<R: ReadAt> {
-    decoder: Decoder<At<R>>,
-    current: Option<usize>,
+    samples: Option<Samples>,
 }
 
 /// An open TIFF Source.
@@ -237,7 +263,7 @@ pub struct GeoTiffSource<R: ReadAt> {
     big_endian: bool,
     ifds: Vec<Ifd>,
     images: Vec<Image>,
-    decoder: Mutex<DecoderState<R>>,
+    decoder: Mutex<Decoder<At<R>>>,
     held: Mutex<HashMap<(Scope, String), Arc<FieldGroup>>>,
 }
 
@@ -264,22 +290,148 @@ fn codec(compression: u16) -> Option<String> {
     )
 }
 
-/// The sample type for TIFF's SampleFormat and bits, or why there is none.
-fn sample_type(format: u16, bits: u32) -> std::result::Result<SampleType, String> {
-    Ok(match (format, bits) {
-        (1, 8) => SampleType::U8,
-        (1, 16) => SampleType::U16,
-        (1, 32) => SampleType::U32,
-        (1, 64) => SampleType::U64,
-        (2, 8) => SampleType::I8,
-        (2, 16) => SampleType::I16,
-        (2, 32) => SampleType::I32,
-        (2, 64) => SampleType::I64,
+/// The sample type for TIFF's SampleFormat and bits, with the stored width and whether it is
+/// signed, or why there is none. Integers of other widths widen to the smallest type that holds
+/// them (M43); SampleFormat 4, undefined, is read as unsigned, as GDAL reads it.
+fn sample_type(format: u16, bits: u32) -> std::result::Result<(SampleType, u32, bool), String> {
+    let t = match (format, bits) {
+        (1 | 4, 1..=8) => SampleType::U8,
+        (1 | 4, 9..=16) => SampleType::U16,
+        (1 | 4, 17..=32) => SampleType::U32,
+        (1 | 4, 33..=64) => SampleType::U64,
+        (2, 1..=8) => SampleType::I8,
+        (2, 9..=16) => SampleType::I16,
+        (2, 17..=32) => SampleType::I32,
+        (2, 33..=64) => SampleType::I64,
         (3, 16) => SampleType::F16,
         (3, 32) => SampleType::F32,
         (3, 64) => SampleType::F64,
+        (5, 16) => SampleType::ComplexI8,
+        (5, 32) => SampleType::ComplexI16,
+        (6, 64) => SampleType::ComplexF32,
+        (6, 128) => SampleType::ComplexF64,
         _ => return Err(format!("SampleFormat {format} with {bits} bits a sample")),
-    })
+    };
+    Ok((t, bits, matches!(format, 2 | 5)))
+}
+
+/// A placeholder IFD of one uncompressed pixel, in the file's byte order, for the `tiff` crate to
+/// make its first image of (see `At`).
+fn placeholder(big_endian: bool, bigtiff: bool) -> Vec<u8> {
+    // Tag, type (3 SHORT, 4 LONG) and value.
+    let entries: [(u16, u16, u32); 9] = [
+        (256, 3, 1),
+        (257, 3, 1),
+        (258, 3, 8),
+        (259, 3, 1),
+        (262, 3, 1),
+        (273, 4, 0),
+        (277, 3, 1),
+        (278, 4, 1),
+        (279, 4, 1),
+    ];
+    let mut out = Vec::new();
+    let put = |out: &mut Vec<u8>, le: &[u8]| {
+        if big_endian {
+            out.extend(le.iter().rev());
+        } else {
+            out.extend_from_slice(le);
+        }
+    };
+    if bigtiff {
+        put(&mut out, &(entries.len() as u64).to_le_bytes());
+    } else {
+        put(&mut out, &(entries.len() as u16).to_le_bytes());
+    }
+    for (tag, kind, v) in entries {
+        put(&mut out, &tag.to_le_bytes());
+        put(&mut out, &kind.to_le_bytes());
+        if bigtiff {
+            put(&mut out, &1u64.to_le_bytes());
+        } else {
+            put(&mut out, &1u32.to_le_bytes());
+        }
+        // A value is left-justified in its field.
+        let start = out.len();
+        if kind == 3 {
+            put(&mut out, &(v as u16).to_le_bytes());
+        } else {
+            put(&mut out, &v.to_le_bytes());
+        }
+        out.resize(start + if bigtiff { 8 } else { 4 }, 0);
+    }
+    out.extend(std::iter::repeat_n(0, if bigtiff { 8 } else { 4 }));
+    out
+}
+
+/// Where each text (ASCII) entry of the IFD at `pointer` keeps its bytes, and how many there are,
+/// read from the entries themselves, since the `tiff` crate reads text only as UTF-8. The crate
+/// has read this IFD, so its entries lie within the file.
+fn text_entries<R: ReadAt>(
+    reader: &R,
+    size: u64,
+    big_endian: bool,
+    bigtiff: bool,
+    pointer: u64,
+) -> io::Result<HashMap<u16, (u64, u64)>> {
+    let read = |at: u64, n: usize| -> io::Result<u64> {
+        let mut b = [0u8; 8];
+        reader.read_exact_at(&mut b[..n], at)?;
+        Ok(if big_endian {
+            b[..n].iter().fold(0, |v, &x| v << 8 | u64::from(x))
+        } else {
+            b[..n].iter().rev().fold(0, |v, &x| v << 8 | u64::from(x))
+        })
+    };
+    let (count_size, entry_size, field) = if bigtiff { (8, 20, 8) } else { (2, 12, 4) };
+    let count = read(pointer, count_size)?;
+    let mut text = HashMap::new();
+    for k in 0..count.min(size / entry_size) {
+        let at = pointer + count_size as u64 + k * entry_size;
+        if read(at + 2, 2)? != 2 {
+            continue;
+        }
+        let tag = read(at, 2)? as u16;
+        let n = read(at + 4, field)?;
+        let value_at = if n <= field as u64 {
+            at + entry_size - field as u64
+        } else {
+            read(at + entry_size - field as u64, field)?
+        };
+        if value_at.checked_add(n).is_some_and(|e| e <= size) {
+            text.insert(tag, (value_at, n));
+        }
+    }
+    Ok(text)
+}
+
+/// The stored bytes of a text tag, where the IFD has one.
+fn text_bytes<R: ReadAt>(
+    reader: &R,
+    text: &HashMap<u16, (u64, u64)>,
+    tag: u16,
+) -> io::Result<Option<Vec<u8>>> {
+    let Some(&(at, n)) = text.get(&tag) else {
+        return Ok(None);
+    };
+    let mut bytes = vec![0u8; n as usize];
+    reader.read_exact_at(&mut bytes, at)?;
+    Ok(Some(bytes))
+}
+
+/// Text from its stored bytes, as Latin-1: one string, or a list where the tag holds several,
+/// each ended by NUL.
+fn latin1(bytes: &[u8]) -> Value {
+    let bytes = bytes.strip_suffix(&[0]).unwrap_or(bytes);
+    let mut strings: Vec<Value> = bytes
+        .split(|&b| b == 0)
+        .map(|s| Value::Text(s.iter().map(|&b| char::from(b)).collect()))
+        .collect();
+    if strings.len() == 1 {
+        strings.pop().unwrap()
+    } else {
+        Value::List(strings)
+    }
 }
 
 impl<R: ReadAt> GeoTiffSource<R> {
@@ -293,27 +445,64 @@ impl<R: ReadAt> GeoTiffSource<R> {
             return Err(Error::NotTiff);
         }
         reader.read_exact_at(&mut magic, 0)?;
-        let big_endian = match &magic {
-            b"II*\0" | b"II+\0" => false,
-            b"MM\0*" | b"MM\0+" => true,
+        let (big_endian, bigtiff) = match &magic {
+            b"II*\0" => (false, false),
+            b"II+\0" => (false, true),
+            b"MM\0*" => (true, false),
+            b"MM\0+" => (true, true),
             _ => return Err(Error::NotTiff),
         };
+        // The header, with the first IFD's place, which the `tiff` crate is not given (`At`).
+        let mut header = vec![0u8; if bigtiff { 16 } else { 8 }];
+        if size < header.len() as u64 {
+            return Err(Error::NotTiff);
+        }
+        reader.read_exact_at(&mut header, 0)?;
+        let word = |b: &[u8]| -> u64 {
+            if big_endian {
+                b.iter().fold(0, |v, &x| v << 8 | u64::from(x))
+            } else {
+                b.iter().rev().fold(0, |v, &x| v << 8 | u64::from(x))
+            }
+        };
+        if bigtiff && (word(&header[4..6]) != 8 || word(&header[6..8]) != 0) {
+            return Err(Error::NotTiff);
+        }
+        let place = if bigtiff { 8..16 } else { 4..8 };
+        let first = word(&header[place.clone()]);
+        let at_extra = if big_endian {
+            size.to_be_bytes()
+        } else {
+            size.to_le_bytes()
+        };
+        if !bigtiff && size > u64::from(u32::MAX) {
+            return Err(Error::Unsupported(
+                "a classic TIFF file of more than 4 GiB".into(),
+            ));
+        }
+        if bigtiff {
+            header[place].copy_from_slice(&at_extra);
+        } else if big_endian {
+            header[place].copy_from_slice(&at_extra[4..]);
+        } else {
+            header[place].copy_from_slice(&at_extra[..4]);
+        }
         let at = At {
             source: reader.clone(),
             pos: 0,
             size,
+            header,
+            extra: placeholder(big_endian, bigtiff),
         };
         let mut decoder = Decoder::new(at).map_err(from_tiff)?;
-        let first = decoder
-            .ifd_pointer()
-            .ok_or_else(|| corrupt("no image file directory"))?;
-        // The chain, walked here so that an IFD after the first that the `tiff` crate cannot make
-        // an image of, such as a mask, is still listed; a chain that loops is corrupt. The crate
-        // makes an image of the first IFD as it starts, so whatever it refuses there, such as an
-        // unknown photometric interpretation or predictor, fails the open (M39, M42).
+        if first == 0 {
+            return Err(corrupt("no image file directory"));
+        }
+        // The chain, walked by BIL, so that every IFD is listed however the `tiff` crate would
+        // judge it as an image; a chain that loops is corrupt (M39, M42).
         let mut ifds = Vec::new();
         let mut seen = HashSet::new();
-        let mut next = Some(first);
+        let mut next = Some(tiff::tags::IfdPointer(first));
         while let Some(pointer) = next {
             if !seen.insert(pointer.0) {
                 return Err(corrupt("the chain of image file directories loops"));
@@ -331,8 +520,9 @@ impl<R: ReadAt> GeoTiffSource<R> {
             }
             let dir = decoder.read_directory(pointer).map_err(from_tiff)?;
             next = dir.next();
-            let layout = read_layout(&mut decoder, &dir, size);
-            ifds.push(Ifd { dir, layout });
+            let text = text_entries(&*reader, size, big_endian, bigtiff, pointer.0)?;
+            let layout = read_layout(&mut decoder, &dir, &text, &*reader, size);
+            ifds.push(Ifd { dir, text, layout });
         }
         let mut images: Vec<Image> = Vec::new();
         for (n, ifd) in ifds.iter().enumerate() {
@@ -363,17 +553,29 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     continue;
                 }
             }
-            let (pixel_type, unsupported) = match &layout.sample_type {
-                Ok(t) => (
-                    Some(PixelType {
+            let (pixel_type, samples, unsupported) = match &layout.sample {
+                Ok((t, bits, signed)) => {
+                    let samples = Samples {
                         sample_type: *t,
-                        component_count: layout.samples,
-                        significant_bits: layout.bits,
-                        bit_shift: 0,
-                    }),
-                    None,
-                ),
-                Err(why) => (None, Some(why.clone())),
+                        bits: *bits,
+                        signed: *signed,
+                        big_endian,
+                        predictor: layout.predictor,
+                        reversed_bits: layout.reversed_bits,
+                    };
+                    let problem = samples.check().err().or(layout.coding_problem.clone());
+                    (
+                        Some(PixelType {
+                            sample_type: *t,
+                            component_count: layout.samples,
+                            significant_bits: *bits,
+                            bit_shift: 0,
+                        }),
+                        Some(samples),
+                        problem,
+                    )
+                }
+                Err(why) => (None, None, Some(why.clone())),
             };
             let codec = codec(layout.compression);
             images.push(Image {
@@ -384,7 +586,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     pixel_type,
                     unsupported,
                     compression: layout.compression,
-                    decodable: matches!(codec.as_deref(), None | Some("deflate")),
+                    decodable: Coding::of(layout.compression).is_some(),
                     codec,
                     planar: layout.planar,
                     tiled: layout.tiled,
@@ -394,6 +596,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     ifd: n,
                 },
                 layout,
+                samples,
             });
         }
         if images.is_empty() {
@@ -414,7 +617,10 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 let Ok(dir) = decoder.read_directory(tiff::tags::IfdPointer(p)) else {
                     continue;
                 };
-                let Ok(layout) = read_layout(&mut decoder, &dir, size) else {
+                let Ok(text) = text_entries(&*reader, size, big_endian, bigtiff, p) else {
+                    continue;
+                };
+                let Ok(layout) = read_layout(&mut decoder, &dir, &text, &*reader, size) else {
                     continue;
                 };
                 if layout.subfile & 1 != 0 && layout.subfile & 4 == 0 {
@@ -445,10 +651,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
             big_endian,
             ifds,
             images,
-            decoder: Mutex::new(DecoderState {
-                decoder,
-                current: None,
-            }),
+            decoder: Mutex::new(decoder),
             held: Mutex::new(HashMap::new()),
         })
     }
@@ -502,14 +705,12 @@ impl<R: ReadAt> GeoTiffSource<R> {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The decoder. After a panic while it was locked its position is unknown, so it is sought
-    /// again before the next read.
-    fn decoder_state(&self) -> std::sync::MutexGuard<'_, DecoderState<R>> {
-        self.decoder.lock().unwrap_or_else(|poisoned| {
-            let mut state = poisoned.into_inner();
-            state.current = None;
-            state
-        })
+    /// The decoder, which reads fields. Each read seeks to its directory first, so a panic
+    /// while it was locked leaves nothing to undo.
+    fn decoder(&self) -> std::sync::MutexGuard<'_, Decoder<At<R>>> {
+        self.decoder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// A field group, extracted on first request and held until released.
@@ -550,8 +751,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
         };
         let ifd = &self.ifds[self.image(i)?.info.ifd];
         let name = FieldName::parse(group);
-        let mut state = self.decoder_state();
-        let decoder = &mut state.decoder;
+        let mut decoder = self.decoder();
+        let decoder = &mut *decoder;
         let mut problem = None;
         let mut fields = Vec::new();
         match group {
@@ -561,6 +762,22 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     let part = names::tag_name(code)
                         .map(str::to_string)
                         .unwrap_or_else(|| code.to_string());
+                    if let Some(&(at, n)) = ifd.text.get(&code) {
+                        // Text is read from its own bytes, every string kept (M36, M39).
+                        let mut bytes = vec![0u8; n as usize];
+                        match self.reader.read_exact_at(&mut bytes, at) {
+                            Ok(()) => fields.push(Field::with_value(
+                                name.child(part),
+                                bytes.clone(),
+                                latin1(&bytes),
+                                Origin::Specified,
+                            )),
+                            Err(e) => {
+                                problem.get_or_insert(format!("tag {code}: {e}"));
+                            }
+                        }
+                        continue;
+                    }
                     match decoder.read_directory_tags(&ifd.dir).find_tag(tag) {
                         Ok(Some(v)) => fields.push(Field::with_value(
                             name.child(part),
@@ -576,7 +793,10 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 }
             }
             "geotiff.keys" => {
-                let keys = read_keys(decoder, &ifd.dir, self.big_endian)
+                let ascii = text_bytes(&*self.reader, &ifd.text, 34737)
+                    .map_err(|e| corrupt(format!("GeoAsciiParamsTag: {e}")))?
+                    .unwrap_or_default();
+                let keys = read_keys(decoder, &ifd.dir, &ascii, self.big_endian)
                     .map_err(|m| corrupt(format!("GeoTIFF keys: {m}")))?;
                 // A key listed more than once carries its place among them (section 14.1).
                 let mut totals: HashMap<u16, usize> = HashMap::new();
@@ -663,33 +883,25 @@ impl<R: ReadAt> GeoTiffSource<R> {
     }
 
     /// The native pixels of a Window at full resolution, pixel-interleaved, in native byte
-    /// order, with pixels holding the no-data value in every sample marked missing.
+    /// order and as stored, with pixels holding the no-data value in every sample marked missing.
+    /// Reads chunks of its own, so reads of one Source run in parallel (M44).
     pub fn read_fragment(&self, image: usize, window: Window) -> Result<Fragment> {
         let img = self.image(image)?;
         let (info, l) = (&img.info, &img.layout);
-        let pixel_type = info
-            .pixel_type
-            .ok_or_else(|| Error::Unsupported(info.unsupported.clone().unwrap_or_default()))?;
-        // The `tiff` crate turns WhiteIsZero samples into BlackIsZero ones as it decodes: the
-        // complement for unsigned integers, which is undone below exactly, and 1 − v for floats,
-        // which cannot be undone exactly, so those are refused rather than altered (section 4).
-        let white_is_zero = l.photometric == Some(0);
-        if white_is_zero
-            && matches!(
-                pixel_type.sample_type,
-                SampleType::F16 | SampleType::F32 | SampleType::F64
-            )
-        {
-            return Err(Error::Unsupported(
-                "float samples under WhiteIsZero, which the tiff crate alters".into(),
-            ));
-        }
         if !info.decodable {
             return Err(Error::Unsupported(format!(
                 "image {image} is compressed with {}, which this build does not decode",
                 info.codec.as_deref().unwrap_or("?")
             )));
         }
+        if let Some(why) = &info.unsupported {
+            return Err(Error::Unsupported(why.clone()));
+        }
+        let (Some(pixel_type), Some(samples), Some(coding)) =
+            (info.pixel_type, img.samples, Coding::of(l.compression))
+        else {
+            return Err(Error::Unsupported(format!("image {image}")));
+        };
         let (rows, cols) = (u64::from(window.row_count), u64::from(window.col_count));
         if window
             .row_start
@@ -718,87 +930,86 @@ impl<R: ReadAt> GeoTiffSource<R> {
         let (across, down) = l.chunks();
         let row_end = window.row_start + rows;
         let col_end = window.col_start + cols;
-        let mut state = self.decoder_state();
-        if state.current != Some(info.ifd) {
-            // seek_to_image counts IFDs along the chain, as `open` did.
-            state.decoder.seek_to_image(info.ifd).map_err(from_tiff)?;
-            state.current = Some(info.ifd);
-        }
-        // The `tiff` crate returns only the samples its color type names: an extra sample it
-        // cannot name, such as a fourth after RGB marked unspecified, it drops. Refused rather
-        // than returned short (section 4).
-        let named = state.decoder.colortype().map_err(from_tiff)?.num_samples();
-        if !l.planar && u32::from(named) != info.bands {
-            return Err(Error::Unsupported(format!(
-                "{} samples a pixel, of which the tiff crate returns {named}",
-                info.bands
-            )));
-        }
-        let mut chunk_buf = Vec::new();
+        let in_chunk = if l.planar { 1 } else { bands };
+        let mut stored = Vec::new();
+        let mut decoded = Vec::new();
+        let mut native = Vec::new();
         // Pixels in chunks never written (section 4): 0 in the data, and marked.
         let mut unrecorded = vec![false; (rows * cols) as usize];
         for crow in window.row_start / ch..row_end.div_ceil(ch).min(down) {
+            // Strips end at the Image; tiles are padded to their size. Rows past the Window are
+            // not decoded.
+            let h = if l.tiled {
+                ch
+            } else {
+                ch.min(l.rows - crow * ch)
+            };
+            let needed_rows = h.min(row_end - crow * ch);
             for ccol in window.col_start / cw..col_end.div_ceil(cw).min(across) {
+                let r0 = (crow * ch).max(window.row_start);
+                let r1 = (crow * ch + h).min(row_end);
+                let c0 = (ccol * cw).max(window.col_start);
+                let c1 = (ccol * cw + cw).min(col_end);
                 for plane in 0..l.planes() {
-                    let index = u64::from(plane) * across * down + crow * across + ccol;
-                    let index = u32::try_from(index).map_err(|_| corrupt("too many chunks"))?;
                     // Within the Image's chunks, by the loops' bounds.
-                    let (w, h) = state.decoder.chunk_data_dimensions(index);
-                    if l.counts[index as usize] == 0 {
+                    let index = (u64::from(plane) * across * down + crow * across + ccol) as usize;
+                    let (offset, count) = (l.offsets[index], l.counts[index]);
+                    if count == 0 {
                         // A chunk of no bytes was never written, as in a sparse file: its pixels
                         // were never recorded.
-                        for r in (crow * ch).max(window.row_start)
-                            ..(crow * ch + u64::from(h)).min(row_end)
-                        {
-                            for c in (ccol * cw).max(window.col_start)
-                                ..(ccol * cw + u64::from(w)).min(col_end)
-                            {
-                                unrecorded[((r - window.row_start) * cols + c - window.col_start)
-                                    as usize] = true;
-                            }
+                        for r in r0..r1 {
+                            let at =
+                                ((r - window.row_start) * cols + c0 - window.col_start) as usize;
+                            unrecorded[at..at + (c1 - c0) as usize].fill(true);
                         }
                         continue;
                     }
-                    let in_chunk = if l.planar { 1 } else { bands };
-                    let row_bytes = w as usize * in_chunk * size;
-                    chunk_buf.resize(row_bytes * h as usize, 0);
-                    // The chunk's bytes are its own; a fill value read before is not kept.
-                    state
-                        .decoder
-                        .read_chunk_bytes(index, &mut chunk_buf)
-                        .map_err(from_tiff)?;
-                    if white_is_zero {
-                        // max − (max − v) = v, and max − v is the complement of v's bits.
-                        for b in chunk_buf.iter_mut() {
-                            *b = !*b;
-                        }
-                    }
-                    let r0 = (crow * ch).max(window.row_start);
-                    let r1 = ((crow * ch) + u64::from(h)).min(row_end);
-                    let c0 = (ccol * cw).max(window.col_start);
-                    let c1 = ((ccol * cw) + u64::from(w)).min(col_end);
+                    let values = cw * in_chunk as u64;
+                    let row_bytes = samples
+                        .row_bytes(values)
+                        .and_then(|b| usize::try_from(b).ok())
+                        .ok_or_else(|| Error::Unsupported("a chunk too large to hold".into()))?;
+                    let needed = row_bytes
+                        .checked_mul(needed_rows as usize)
+                        .filter(|&n| n <= isize::MAX as usize)
+                        .ok_or_else(|| Error::Unsupported("a chunk too large to hold".into()))?;
+                    // Offsets and counts were checked against the file at open.
+                    stored.resize(count as usize, 0);
+                    self.reader.read_exact_at(&mut stored, offset)?;
+                    decoded.resize(needed, 0);
+                    chunks::decompress(coding, &mut stored, samples.reversed_bits, &mut decoded)
+                        .map_err(|m| corrupt(format!("chunk {index}: {m}")))?;
+                    let native_row = cw as usize * in_chunk * size;
                     for r in r0..r1 {
-                        let src_row = (r - crow * ch) as usize * row_bytes;
+                        let k = (r - crow * ch) as usize;
+                        native.clear();
+                        chunks::row(
+                            &samples,
+                            &mut decoded[k * row_bytes..][..row_bytes],
+                            values as usize,
+                            in_chunk,
+                            &mut native,
+                        );
+                        debug_assert_eq!(native.len(), native_row);
                         let dst_row = (r - window.row_start) as usize * strides[0];
                         if l.planar {
                             for c in c0..c1 {
-                                let s = src_row + (c - ccol * cw) as usize * size;
+                                let s = (c - ccol * cw) as usize * size;
                                 let d = dst_row
                                     + (c - window.col_start) as usize * strides[1]
                                     + plane as usize * size;
-                                data[d..d + size].copy_from_slice(&chunk_buf[s..s + size]);
+                                data[d..d + size].copy_from_slice(&native[s..s + size]);
                             }
                         } else {
-                            let s = src_row + (c0 - ccol * cw) as usize * strides[1];
+                            let s = (c0 - ccol * cw) as usize * strides[1];
                             let d = dst_row + (c0 - window.col_start) as usize * strides[1];
                             let n = (c1 - c0) as usize * strides[1];
-                            data[d..d + n].copy_from_slice(&chunk_buf[s..s + n]);
+                            data[d..d + n].copy_from_slice(&native[s..s + n]);
                         }
                     }
                 }
             }
         }
-        drop(state);
         let fill = info
             .nodata
             .as_deref()
@@ -828,6 +1039,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
 fn read_layout<R: ReadAt>(
     decoder: &mut Decoder<At<R>>,
     dir: &Directory,
+    text: &HashMap<u16, (u64, u64)>,
+    reader: &R,
     size: u64,
 ) -> std::result::Result<Layout, String> {
     let mut t = decoder.read_directory_tags(dir);
@@ -839,6 +1052,8 @@ fn read_layout<R: ReadAt>(
     let rows = one(Tag::ImageLength)?.ok_or("no ImageLength")?;
     let samples = one(Tag::SamplesPerPixel)?.unwrap_or(1);
     let compression = one(Tag::Compression)?.unwrap_or(1);
+    let predictor = one(Tag::Predictor)?.unwrap_or(1);
+    let fill_order = one(Tag::FillOrder)?.unwrap_or(1);
     let planar = one(Tag::PlanarConfiguration)?.unwrap_or(1) == 2;
     let subfile = one(Tag::NewSubfileType)?.unwrap_or(0)
         | if one(Tag::SubfileType)? == Some(2) {
@@ -919,7 +1134,7 @@ fn read_layout<R: ReadAt>(
     let format0 = *formats.first().ok_or("SampleFormat with no values")?;
     let bits0 = u32::try_from(bits0).map_err(|_| format!("{bits0} bits a sample"))?;
     let format0 = u16::try_from(format0).map_err(|_| format!("SampleFormat {format0}"))?;
-    let sample_type = if bits.iter().any(|&b| b != u64::from(bits0))
+    let sample = if bits.iter().any(|&b| b != u64::from(bits0))
         || formats.iter().any(|&f| f != u64::from(format0))
     {
         Err("samples of different bits or formats in one pixel".to_string())
@@ -931,6 +1146,17 @@ fn read_layout<R: ReadAt>(
         .find_tag_unsigned::<u16>(Tag::PhotometricInterpretation)
         .ok()
         .flatten();
+    // YCbCr data outside JPEG is stored in units of subsampled pixels, 2 × 2 unless a tag says
+    // otherwise (TIFF 6.0, section 21); BIL does not regroup them.
+    let subsampling = t
+        .find_tag_unsigned_vec::<u16>(Tag::ChromaSubsampling)
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| vec![2, 2]);
+    let coding_problem = (photometric == Some(6)
+        && !matches!(compression, 6 | 7)
+        && subsampling.iter().any(|&f| f != 1))
+    .then(|| "YCbCr samples subsampled outside JPEG".to_string());
     let sub_ifds = match t.find_tag(Tag::SubIfd) {
         Ok(Some(v)) => {
             let one = |v: &TiffValue| match v {
@@ -945,17 +1171,22 @@ fn read_layout<R: ReadAt>(
         }
         _ => Vec::new(),
     };
-    let nodata = match t.find_tag(Tag::GdalNodata) {
-        Ok(Some(TiffValue::Ascii(s))) => Some(s.trim_end_matches('\0').trim().to_string()),
-        _ => None,
-    };
+    let nodata = text_bytes(reader, text, Tag::GdalNodata.to_u16())
+        .ok()
+        .flatten()
+        .and_then(|b| match latin1(&b) {
+            Value::Text(s) => Some(s.trim().to_string()),
+            _ => None,
+        });
     Ok(Layout {
         rows,
         cols,
         samples: samples as u32,
-        sample_type,
-        bits: bits0,
+        sample,
         compression: u16::try_from(compression).map_err(|_| "a Compression past 65,535")?,
+        predictor: u16::try_from(predictor).unwrap_or(u16::MAX),
+        reversed_bits: fill_order == 2,
+        coding_problem,
         planar,
         tiled,
         chunk: (chunk.0 as u32, chunk.1 as u32),
@@ -963,7 +1194,6 @@ fn read_layout<R: ReadAt>(
         counts,
         nodata,
         subfile: subfile as u32,
-        photometric,
         sub_ifds,
     })
 }
@@ -1026,6 +1256,23 @@ fn half_to_f32(h: u16) -> f32 {
     }
 }
 
+/// A value rounded to the nearest float16, ties to even, or `None` beyond float16's range.
+fn round_to_half(v: f64) -> Option<f64> {
+    if !v.is_finite() {
+        return Some(v);
+    }
+    let a = v.abs();
+    // Below 2^-14 the spacing is that of the subnormals, 2^-24.
+    let exponent = if a < 2f64.powi(-14) {
+        -14
+    } else {
+        ((a.to_bits() >> 52) & 0x7FF) as i32 - 1023
+    };
+    let quantum = 2f64.powi(exponent - 10);
+    let r = (a / quantum).round_ties_even() * quantum;
+    (r <= 65_504.0).then_some(r.copysign(v))
+}
+
 /// The no-data value for a sample type, where the text is one it can hold.
 fn fill(text: &str, t: SampleType) -> Option<Fill> {
     let float = matches!(t, SampleType::F16 | SampleType::F32 | SampleType::F64);
@@ -1034,11 +1281,12 @@ fn fill(text: &str, t: SampleType) -> Option<Fill> {
             return Some(Fill::NaN);
         }
         let v: f64 = text.parse().ok()?;
-        // Rounded to float32, as GDAL does; a value beyond float32's range marks nothing. A
-        // value float16 cannot hold exactly matches no sample (M37).
+        // Rounded to float32, as GDAL does, and to float16 likewise; a value beyond the type's
+        // range marks nothing (M37).
         return match t {
             SampleType::F32 if v.is_finite() && (v as f32).is_infinite() => None,
             SampleType::F32 => Some(Fill::Float(f64::from(v as f32))),
+            SampleType::F16 => round_to_half(v).map(Fill::Float),
             _ => Some(Fill::Float(v)),
         };
     }
@@ -1163,6 +1411,7 @@ fn stored_bytes(v: &TiffValue, big_endian: bool) -> Vec<u8> {
 fn read_keys<R: ReadAt>(
     decoder: &mut Decoder<At<R>>,
     dir: &Directory,
+    ascii: &[u8],
     big_endian: bool,
 ) -> std::result::Result<Vec<(u16, Value, Vec<u8>)>, String> {
     // Little-endian bytes, as the file stores them.
@@ -1186,14 +1435,6 @@ fn read_keys<R: ReadAt>(
     {
         Some(v) => v.into_f64_vec().map_err(|e| e.to_string())?,
         None => Vec::new(),
-    };
-    let ascii: String = match t
-        .find_tag(Tag::GeoAsciiParamsTag)
-        .map_err(|e| e.to_string())?
-    {
-        Some(TiffValue::Ascii(s)) => s,
-        Some(_) => return Err("GeoAsciiParamsTag is not text".into()),
-        None => String::new(),
     };
     if directory.len() < 4 {
         return Err("the key directory is shorter than its header".into());
@@ -1228,11 +1469,10 @@ fn read_keys<R: ReadAt>(
             }
             34737 => {
                 let s = ascii
-                    .as_bytes()
                     .get(at..at + n)
                     .ok_or_else(|| out_of("GeoAsciiParamsTag"))?;
-                // Each string ends with `|`, which is not part of it.
-                let text = String::from_utf8_lossy(s);
+                // Each string ends with `|`, which is not part of it; the text is Latin-1.
+                let text: String = s.iter().map(|&b| char::from(b)).collect();
                 (
                     Value::Text(text.trim_end_matches(['|', '\0']).to_string()),
                     s.to_vec(),
