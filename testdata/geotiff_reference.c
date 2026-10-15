@@ -67,6 +67,24 @@ static void image(GDALDatasetH ds, int i) {
         printf("image %d pixels %016" PRIx64 "\n", i, hash);
     else
         printf("image %d pixels error %s\n", i, CPLGetLastErrorMsg());
+    /* Each overview read whole, band after band, in its own size. */
+    for (int o = 0; b1 && o < GDALGetOverviewCount(b1); o++) {
+        GDALRasterBandH ov1 = GDALGetOverview(b1, o);
+        int ow = GDALGetRasterBandXSize(ov1), oh = GDALGetRasterBandYSize(ov1);
+        unsigned char *ob = size ? malloc((size_t)ow * oh * size) : NULL;
+        uint64_t oh_hash = 0xcbf29ce484222325ULL;
+        int ook = ob != NULL;
+        for (int b = 1; ook && b <= c; b++) {
+            GDALRasterBandH ov = GDALGetOverview(GDALGetRasterBand(ds, b), o);
+            ook = ov && GDALRasterIO(ov, GF_Read, 0, 0, ow, oh, ob, ow, oh, t, 0, 0) == CE_None;
+            if (ook) oh_hash = fnv(oh_hash, ob, (size_t)ow * oh * size);
+        }
+        free(ob);
+        if (ook)
+            printf("image %d overview %d pixels %016" PRIx64 "\n", i, o, oh_hash);
+        else
+            printf("image %d overview %d pixels error %s\n", i, o, CPLGetLastErrorMsg());
+    }
 }
 
 int main(int argc, char **argv) {

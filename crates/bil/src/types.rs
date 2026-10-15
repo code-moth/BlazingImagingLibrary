@@ -87,6 +87,72 @@ pub struct Window {
     pub col_count: u32,
 }
 
+/// Reduced-resolution data a file holds of an Image: one of its stored levels (section 5).
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoredLevel {
+    /// `stored1`, `stored2` and so on, from the finest.
+    pub name: String,
+    pub rows: u64,
+    pub cols: u64,
+    /// Full-resolution rows and columns for each of its own, down and across.
+    pub scale: (f64, f64),
+    /// Where its first pixel's center lies, in full-resolution rows and columns, counting each
+    /// pixel's center as a whole number (M47).
+    pub position: (f64, f64),
+    /// Whether its samples sit on the Level grid; `None` where the file does not say.
+    pub aligned: Option<bool>,
+}
+
+impl StoredLevel {
+    /// The stored pixels whose centers fall inside a full-resolution Window (section 5, "Read
+    /// directly"), as a Window in the stored level's own rows and columns (M46).
+    pub fn covered(&self, window: Window) -> Window {
+        let span = |start: u64, count: u32, scale: f64, position: f64, n: u64| -> (u64, u32) {
+            // Pixel i's center is position + i × scale; the Window holds centers from
+            // start − ½ up to, not including, start + count − ½.
+            let first = |edge: f64| {
+                ((edge - 0.5 - position) / scale)
+                    .ceil()
+                    .clamp(0.0, n as f64) as u64
+            };
+            let (a, b) = (first(start as f64), first(start as f64 + f64::from(count)));
+            (a, (b - a).min(u64::from(u32::MAX)) as u32)
+        };
+        let (row_start, row_count) = span(
+            window.row_start,
+            window.row_count,
+            self.scale.0,
+            self.position.0,
+            self.rows,
+        );
+        let (col_start, col_count) = span(
+            window.col_start,
+            window.col_count,
+            self.scale.1,
+            self.position.1,
+            self.cols,
+        );
+        Window {
+            row_start,
+            col_start,
+            row_count,
+            col_count,
+        }
+    }
+}
+
+/// The level a name gives: 0 for `level0`, full resolution, and n for `stored`n.
+pub fn stored_level_number(name: &str) -> Option<usize> {
+    if name == "level0" {
+        return Some(0);
+    }
+    let n = name.strip_prefix("stored")?;
+    if n.starts_with('0') || !n.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    n.parse().ok().filter(|&n| n > 0)
+}
+
 /// How components lie within a block (sections 4 and 10.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Interleave {

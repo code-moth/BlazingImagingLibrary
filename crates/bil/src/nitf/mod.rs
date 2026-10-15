@@ -28,7 +28,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::fields::{Field, FieldGroup, FieldName, Origin};
 use crate::io::ReadAt;
 use crate::types::{
-    Block, Fragment, Interleave, PixelType, SampleType, Status, Storage, StorageOrder, Window,
+    stored_level_number, Block, Fragment, Interleave, PixelType, SampleType, Status, Storage,
+    StorageOrder, Window,
 };
 use defs::{walk, WalkError, Walked};
 
@@ -102,7 +103,7 @@ pub struct Segment {
     pub data: (u64, u64),
 }
 
-pub use crate::types::Scope;
+pub use crate::types::{Scope, StoredLevel};
 
 /// What opening found about one image segment.
 #[derive(Clone, Debug, PartialEq)]
@@ -130,6 +131,9 @@ pub struct ImageInfo {
     pub stored_bits: u32,
     /// Where the image data lies: offset and length.
     pub data: (u64, u64),
+    /// A JPEG 2000 Image's resolution levels, `stored1` the finest, where the codec accepts it
+    /// and the codestream's grid starts at the Image's corner (section 5, M48).
+    pub stored_levels: Vec<StoredLevel>,
 }
 
 /// A header's bytes and the fields the walk found in them.
@@ -300,6 +304,9 @@ struct Codestream {
     start: u64,
     length: u64,
     jp2: bool,
+    /// Resolution levels below full resolution that every component holds, where the grid
+    /// starts at the Image's corner; 0 otherwise.
+    levels: u8,
 }
 
 /// Why a codec did not accept an Image when the Source was opened.
@@ -515,7 +522,8 @@ impl<R: ReadAt> NitfSource<R> {
                 &what,
             )?;
             sub.find_extensions(&["UDID", "IXSHD"], &["UDOFL", "IXSOFL"]);
-            let info = describe(&sub, seg.data).map_err(|e| match e {
+            #[allow(unused_mut)]
+            let mut info = describe(&sub, seg.data).map_err(|e| match e {
                 Error::Corrupt(m) => corrupt(format!("image {n}: {m}")),
                 other => other,
             })?;
@@ -525,7 +533,10 @@ impl<R: ReadAt> NitfSource<R> {
                 .then(|| accept_jpeg2000(&reader, &info, &mask))
                 .transpose()?;
             #[cfg(not(feature = "openjpeg"))]
-            let codestream = None;
+            let codestream: Option<std::result::Result<Codestream, Refusal>> = None;
+            if let Some(Ok(c)) = &codestream {
+                info.stored_levels = jpeg2000_levels(&info, c.levels);
+            }
             images.push(Image {
                 info,
                 header: sub,
@@ -843,6 +854,73 @@ impl<R: ReadAt> NitfSource<R> {
     /// The native pixels of a Window of an Image, uncompressed or decoded by a codec this build
     /// has, pixel-interleaved, in native byte order, with the pixels never recorded marked: those
     /// in blocks the mask table leaves out, and pad pixels.
+    /// The native pixels of a Window at a level: `level0`, full resolution, or a stored level
+    /// such as `stored2`, a JPEG 2000 Image's resolution level (section 5, "Read directly"). The
+    /// Window is in full-resolution rows and columns; a stored level gives the pixels whose
+    /// centers fall inside it, and the Fragment's own Window is in the stored level's rows and
+    /// columns (M46).
+    pub fn read_level_fragment(
+        &self,
+        image: usize,
+        level: &str,
+        window: Window,
+    ) -> Result<Fragment> {
+        let img = self.image(image)?;
+        let info = &img.info;
+        let n = stored_level_number(level)
+            .filter(|&n| n <= info.stored_levels.len())
+            .ok_or_else(|| Error::NotFound(format!("level {level} of image {image}")))?;
+        if n == 0 {
+            return self.read_fragment(image, window);
+        }
+        if window
+            .row_start
+            .checked_add(u64::from(window.row_count))
+            .is_none_or(|e| e > info.rows)
+            || window
+                .col_start
+                .checked_add(u64::from(window.col_count))
+                .is_none_or(|e| e > info.cols)
+        {
+            return Err(Error::NotFound(format!(
+                "a Window outside image {image}'s {} × {} pixels",
+                info.rows, info.cols
+            )));
+        }
+        // Levels are listed only for an Image the codec accepted.
+        let (Some(pixel_type), Some(Ok(codestream))) = (info.pixel_type, &img.codestream) else {
+            return Err(Error::NotFound(format!("level {level} of image {image}")));
+        };
+        let lw = info.stored_levels[n - 1].covered(window);
+        let (rows, cols) = (u64::from(lw.row_count), u64::from(lw.col_count));
+        let (bands, size) = (info.bands as usize, pixel_type.sample_type.size());
+        rows.checked_mul(cols)
+            .and_then(|p| p.checked_mul((bands * size) as u64))
+            .filter(|&b| b <= isize::MAX as u64)
+            .ok_or_else(|| Error::Unsupported("a Window too large to hold".into()))?;
+        let strides = [cols as usize * bands * size, bands * size, size];
+        let data = if rows == 0 || cols == 0 {
+            Vec::new()
+        } else {
+            let s = 1u64 << n;
+            let area = (
+                lw.col_start * s,
+                lw.row_start * s,
+                ((lw.col_start + cols) * s).min(info.cols),
+                ((lw.row_start + rows) * s).min(info.rows),
+            );
+            self.decode(image, info, pixel_type, *codestream, area, n as u32)?
+        };
+        Ok(finish(
+            lw,
+            pixel_type,
+            strides,
+            data,
+            None,
+            self.mask(image)?,
+        ))
+    }
+
     pub fn read_fragment(&self, image: usize, window: Window) -> Result<Fragment> {
         let img = self.image(image)?;
         let info = &img.info;
@@ -907,7 +985,13 @@ impl<R: ReadAt> NitfSource<R> {
             let data = if rows == 0 || cols == 0 {
                 Vec::new()
             } else {
-                self.decode(image, info, pixel_type, codestream, window)?
+                let area = (
+                    window.col_start,
+                    window.row_start,
+                    window.col_start + cols,
+                    window.row_start + rows,
+                );
+                self.decode(image, info, pixel_type, codestream, area, 0)?
             };
             return Ok(finish(
                 window,
@@ -986,18 +1070,13 @@ impl<R: ReadAt> NitfSource<R> {
         info: &ImageInfo,
         pixel_type: PixelType,
         codestream: Codestream,
-        window: Window,
+        area: (u64, u64, u64, u64),
+        reduce: u32,
     ) -> Result<Vec<u8>> {
         use crate::codec::jpeg2000::{self, Format, Request};
-        let area = (
-            window.col_start,
-            window.row_start,
-            window.col_start + u64::from(window.col_count),
-            window.row_start + u64::from(window.row_count),
-        );
         let request = Request {
             area: Some(area),
-            reduce: 0,
+            reduce,
         };
         let format = if codestream.jp2 {
             Format::Jp2
@@ -1016,8 +1095,9 @@ impl<R: ReadAt> NitfSource<R> {
         .map_err(|e| jpeg2000_error(image, e))?;
         let sample = pixel_type.sample_type;
         let (rows, cols, bands, size) = (
-            window.row_count as usize,
-            window.col_count as usize,
+            // The area at the level asked for, its edges rounded up as JPEG 2000 rounds them.
+            (area.3.div_ceil(1 << reduce) - area.1.div_ceil(1 << reduce)) as usize,
+            (area.2.div_ceil(1 << reduce) - area.0.div_ceil(1 << reduce)) as usize,
             info.bands as usize,
             sample.size(),
         );
@@ -1059,7 +1139,8 @@ impl<R: ReadAt> NitfSource<R> {
         _: &ImageInfo,
         _: PixelType,
         _: Codestream,
-        _: Window,
+        _: (u64, u64, u64, u64),
+        _: u32,
     ) -> Result<Vec<u8>> {
         unreachable!("no codec in this build accepts an Image")
     }
@@ -1186,11 +1267,43 @@ fn accept_jpeg2000<R: ReadAt>(
             header.jp2_boxes.join(", ")
         ))));
     }
+    // The resolution levels, from the codestream's own markers (M48). A grid that does not
+    // start at the Image's corner places reduced samples elsewhere, so none are listed then.
+    let within = if format == Format::Jp2 {
+        crate::codec::tiles::jp2_codestream(reader, start, end - start)
+    } else {
+        Ok((start, end - start))
+    };
+    let levels = match within.and_then(|(at, n)| crate::codec::tiles::read(reader, at, n)) {
+        Ok(t) if header.x0 == 0 && header.y0 == 0 => t.levels,
+        Ok(_) => 0,
+        Err(m) => return Ok(Err(Refusal::Corrupt(m))),
+    };
     Ok(Ok(Codestream {
         start,
         length: end - start,
         jp2: format == Format::Jp2,
+        levels,
     }))
+}
+
+/// A JPEG 2000 Image's resolution levels as stored levels: level k halves the Image k times,
+/// rounding up, and its sample i lies on full-resolution pixel i × 2^k (M48).
+#[cfg_attr(not(feature = "openjpeg"), allow(dead_code))]
+fn jpeg2000_levels(info: &ImageInfo, levels: u8) -> Vec<StoredLevel> {
+    (1..=u32::from(levels).min(32))
+        .map(|k| {
+            let s = 1u64 << k;
+            StoredLevel {
+                name: format!("stored{k}"),
+                rows: info.rows.div_ceil(s),
+                cols: info.cols.div_ceil(s),
+                scale: (s as f64, s as f64),
+                position: (0.0, 0.0),
+                aligned: None,
+            }
+        })
+        .collect()
 }
 
 /// A Fragment from its pixels, with pad pixels marked: those whose every sample holds the mask
@@ -1397,6 +1510,7 @@ fn describe(sub: &Header, data: (u64, u64)) -> Result<ImageInfo> {
         ),
         stored_bits: nbpp as u32,
         data,
+        stored_levels: Vec::new(),
     };
     // The one check always made (section 10.3): uncompressed data that claims more pixels than
     // the file holds is refused.

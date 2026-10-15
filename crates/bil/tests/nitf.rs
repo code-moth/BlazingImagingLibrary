@@ -1597,3 +1597,77 @@ fn jp2_with_cdef(jp2: &[u8]) -> Vec<u8> {
     out.extend(&jp2[at + len..]);
     out
 }
+
+/// A JPEG 2000 Image's resolution levels are its stored levels; a Window of one reads the same
+/// samples as the whole level does there (section 5; M46, M48).
+#[cfg(feature = "openjpeg")]
+#[test]
+fn jpeg2000_resolution_levels_are_stored_levels() {
+    for (name, block) in [
+        ("gray8.j2k", (16, 16)),
+        ("gray8.jp2", (16, 16)),
+        ("rgb8.j2k", (19, 23)),
+    ] {
+        let bands = if name.starts_with("rgb") { 3 } else { 1 };
+        let (rows, cols) = if bands == 3 { (19, 23) } else { (29, 37) };
+        let mut img = jpeg2000_image(name, rows, cols, bands, "INT", 8);
+        img.block = block;
+        let source = open_one(img);
+        let levels = &source.image_info(0).unwrap().stored_levels;
+        // make_fixtures.c writes three resolutions: two levels below full resolution.
+        let sizes: Vec<_> = levels
+            .iter()
+            .map(|l| (l.name.as_str(), l.rows, l.cols))
+            .collect();
+        assert_eq!(
+            sizes,
+            [
+                ("stored1", rows.div_ceil(2), cols.div_ceil(2)),
+                ("stored2", rows.div_ceil(4), cols.div_ceil(4))
+            ],
+            "{name}"
+        );
+        let all = Window {
+            row_start: 0,
+            col_start: 0,
+            row_count: rows as u32,
+            col_count: cols as u32,
+        };
+        for (k, level) in levels.iter().enumerate() {
+            let whole = source.read_level_fragment(0, &level.name, all).unwrap();
+            assert_eq!(
+                (whole.window.row_count, whole.window.col_count),
+                (level.rows as u32, level.cols as u32)
+            );
+            // Rows 5 to 16 and columns 3 to 14 hold the samples at multiples of 2^k there.
+            let w = Window {
+                row_start: 5,
+                col_start: 3,
+                row_count: 12,
+                col_count: 12,
+            };
+            let part = source.read_level_fragment(0, &level.name, w).unwrap();
+            let s = 1u64 << (k + 1);
+            assert_eq!(part.window.row_start, 5u64.div_ceil(s), "{name}");
+            assert_eq!(part.window.col_start, 3u64.div_ceil(s), "{name}");
+            assert_eq!(
+                u64::from(part.window.row_count),
+                17u64.div_ceil(s) - 5u64.div_ceil(s)
+            );
+            for r in 0..part.window.row_count as usize {
+                for c in 0..part.window.col_count as usize {
+                    let at = r * part.strides[0] + c * part.strides[1];
+                    let from = (part.window.row_start as usize + r) * whole.strides[0]
+                        + (part.window.col_start as usize + c) * whole.strides[1];
+                    assert_eq!(
+                        part.data[at..at + part.strides[1]],
+                        whole.data[from..from + whole.strides[1]],
+                        "{name} {} {r} {c}",
+                        level.name
+                    );
+                }
+            }
+        }
+        assert!(source.read_level_fragment(0, "stored3", all).is_err());
+    }
+}

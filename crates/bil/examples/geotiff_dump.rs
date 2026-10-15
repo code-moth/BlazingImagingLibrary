@@ -16,6 +16,43 @@ fn fnv(bytes: &[u8]) -> u64 {
     })
 }
 
+/// A Fragment's samples band after band, hashed as GDAL 3.8 reads them: float16 widened to
+/// float32, and signed integers of a width of their own unsigned, masked to that width.
+fn as_gdal_sees(f: &bil::types::Fragment, bands: usize) -> u64 {
+    use bil::types::SampleType as T;
+    let t = f.pixel_type.sample_type;
+    let size = t.size();
+    let bits = f.pixel_type.significant_bits as usize;
+    let signed_odd = matches!(t, T::I8 | T::I16 | T::I32 | T::I64) && bits < size * 8;
+    let (rows, cols) = (f.window.row_count as usize, f.window.col_count as usize);
+    let mut out = Vec::with_capacity(f.data.len() * 2);
+    for b in 0..bands {
+        for p in 0..rows * cols {
+            let at = p * f.strides[1] + b * size;
+            let s = &f.data[at..at + size];
+            if t == T::F16 {
+                out.extend(half_to_f32(u16::from_ne_bytes([s[0], s[1]])).to_ne_bytes());
+            } else if signed_odd {
+                let mut w = [0u8; 8];
+                if cfg!(target_endian = "big") {
+                    w[8 - size..].copy_from_slice(s);
+                } else {
+                    w[..size].copy_from_slice(s);
+                }
+                let v = (u64::from_ne_bytes(w) & ((1u64 << bits) - 1)).to_ne_bytes();
+                out.extend_from_slice(if cfg!(target_endian = "big") {
+                    &v[8 - size..]
+                } else {
+                    &v[..size]
+                });
+            } else {
+                out.extend_from_slice(s);
+            }
+        }
+    }
+    fnv(&out)
+}
+
 /// A half-precision float's value, exactly.
 fn half_to_f32(h: u16) -> f32 {
     let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
@@ -158,5 +195,29 @@ fn main() {
             }
         };
         println!("image {i} pixels {pixels}");
+        // Each stored level read whole, hashed as GDAL 3.8 sees its samples.
+        for (k, level) in info.stored_levels.iter().enumerate() {
+            let whole = Window {
+                row_start: 0,
+                col_start: 0,
+                row_count: info.rows as u32,
+                col_count: info.cols as u32,
+            };
+            let hash = if level
+                .rows
+                .saturating_mul(level.cols)
+                .saturating_mul(u64::from(info.bands) * 8)
+                > 1 << 28
+            {
+                "refused too large to read whole here".to_string()
+            } else {
+                match source.read_level_fragment(i, &level.name, whole) {
+                    Ok(f) => format!("{:016x}", as_gdal_sees(&f, info.bands as usize)),
+                    Err(e @ bil::geotiff::Error::Unsupported(_)) => format!("refused {e}"),
+                    Err(e) => format!("error {e}"),
+                }
+            };
+            println!("image {i} overview {k} pixels {hash}");
+        }
     }
 }

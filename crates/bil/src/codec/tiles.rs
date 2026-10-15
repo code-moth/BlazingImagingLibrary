@@ -54,6 +54,9 @@ pub struct Tiles {
     tiles: Vec<Parts>,
     /// Whether the codestream ends with EOC.
     ended: bool,
+    /// The fewest decomposition levels the main header's COD and COC markers state: the
+    /// reduced resolutions every component holds. A tile-part's own markers are not read.
+    pub levels: u8,
 }
 
 /// Reads `n` bytes at `at`, which must lie before `end`.
@@ -149,6 +152,10 @@ pub fn read(source: &dyn ReadAt, offset: u64, length: u64) -> Result<Tiles, Stri
             "SIZ states {count} tiles, more than a codestream can number"
         ));
     }
+    // Csiz, after the SIZ fields read above: a COC marker numbers components in one byte where
+    // there are fewer than 257, and in two otherwise.
+    let csiz = be16(&bytes(source, offset + 40, 2, end)?);
+    let mut levels: Option<u8> = None;
     // The other marker segments of the main header, to the first SOT.
     let mut at = (offset + 4)
         .checked_add(lsiz)
@@ -166,6 +173,20 @@ pub fn read(source: &dyn ReadAt, offset: u64, length: u64) -> Result<Tiles, Stri
             return Err(
                 "a marker segment of the main header is shorter than its length field".into(),
             );
+        }
+        // COD: Scod, then SGcod's four bytes, then the decomposition levels. COC: Ccoc, Scoc,
+        // then the levels.
+        let place = match m[1] {
+            0x52 => Some(7),
+            0x53 => Some(if csiz < 257 { 4 } else { 5 }),
+            _ => None,
+        };
+        if let Some(k) = place {
+            if len < k + 1 {
+                return Err(format!("a COD or COC marker of length {len}, too short"));
+            }
+            let d = bytes(source, at + 2 + k, 1, end)?[0];
+            levels = Some(levels.map_or(d, |l| l.min(d)));
         }
         at = at
             .checked_add(2 + len)
@@ -223,6 +244,7 @@ pub fn read(source: &dyn ReadAt, offset: u64, length: u64) -> Result<Tiles, Stri
         tiling,
         tiles,
         ended,
+        levels: levels.ok_or("the main header has no COD marker")?,
     })
 }
 

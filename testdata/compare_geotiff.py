@@ -102,6 +102,25 @@ def compare(bil_lines, gdal_lines):
                 bil.remove(line)
                 gdal.remove(same[0])
                 notes.append(f"image {i}: sample type not compared: GDAL reads {same[0].split()[-1]}")
+    # Stored levels, each read whole (M38): what BIL does not read is a known limit, and an
+    # overview neither reads is not compared.
+    for line in list(bil):
+        m = re.match(r"image (\d+) overview (\d+) pixels (refused|error) ?(.*)$", line)
+        if not m:
+            continue
+        i, k = m.group(1), m.group(2)
+        theirs = [g for g in gdal if g.startswith(f"image {i} overview {k} pixels ")]
+        if m.group(3) == "refused":
+            if category == "agree":
+                category = "limit"
+            notes.append(f"image {i}: overview {k} not compared: {m.group(4)}")
+        elif all(" pixels error" in g for g in theirs):
+            notes.append(f"image {i}: neither reads overview {k}")
+        else:
+            category = "stricter"
+            notes.append(f"image {i}: BIL refuses overview {k}, GDAL reads it: {m.group(4)}")
+        bil.remove(line)
+        gdal = [g for g in gdal if g not in theirs]
     # GDAL lists only the Images it can open; one it leaves out that BIL lists is lenience, not
     # a difference, as long as the Images both list agree.
     m = re.match(r"images (\d+)$", gdal[0]) if gdal else None
@@ -121,8 +140,8 @@ def compare(bil_lines, gdal_lines):
         m = re.match(r"image (\d+) photometric Some\((5|6|8|9|10)\)$", line)
         if m:
             i = m.group(1)
-            ours_i = [l for l in bil if re.match(rf"image {i} (size|pixels) ", l)]
-            theirs_i = [l for l in gdal if re.match(rf"image {i} (size|pixels) ", l)]
+            ours_i = [l for l in bil if re.match(rf"image {i} (size|pixels|overview \d+ pixels) ", l)]
+            theirs_i = [l for l in gdal if re.match(rf"image {i} (size|pixels|overview \d+ pixels) ", l)]
             if ours_i != theirs_i:
                 bil = [l for l in bil if l not in ours_i]
                 gdal = [l for l in gdal if l not in theirs_i]
@@ -141,6 +160,11 @@ def compare(bil_lines, gdal_lines):
             for l in bil
             if (m := re.match(r"image (\d+) pixels [0-9a-f]{16}$", l))
         ]
+        notes += [
+            f"image {m.group(1)}: overview {m.group(2)} agrees"
+            for l in bil
+            if (m := re.match(r"image (\d+) overview (\d+) pixels [0-9a-f]{16}$", l))
+        ]
     return category, problems, notes
 
 
@@ -150,7 +174,7 @@ def main():
     dump, reference, paths = sys.argv[1], sys.argv[2], sys.argv[3:]
     actions = "GITHUB_ACTIONS" in os.environ
     by = collections.defaultdict(list)
-    compared = 0
+    compared = overviews = 0
     details = []
     for path in paths:
         category, problems, notes = compare(run(dump, path), run(reference, path))
@@ -159,6 +183,7 @@ def main():
         if problems:
             details.append(f"{name}: " + "; ".join(problems + [n for n in notes if " layout " in n]))
         compared += sum(n.endswith("pixels agree") for n in notes)
+        overviews += sum(n.endswith(" agrees") and " overview " in n for n in notes)
         print(f"{name}: {category}")
         for p in problems:
             print(f"    {p}")
@@ -170,7 +195,7 @@ def main():
                 print(f"::warning::{name}: {n}"[:900])
     summary = (
         f"GeoTIFF reader against GDAL, {len(paths)} files: {len(by['agree'])} agree, "
-        f"{compared} Images pixel for pixel; {len(by['refused'])} both refuse; "
+        f"{compared} Images and {overviews} stored levels pixel for pixel; {len(by['refused'])} both refuse; "
         f"{len(by['limit'])} hold what BIL does not yet read; "
         f"{len(by['stricter'])} BIL refuses as corrupt where GDAL reads; "
         f"{len(by['lenient'])} GDAL refuses where BIL opens; "

@@ -466,7 +466,12 @@ fn whole(img: &Img) -> Window {
 }
 
 fn check(source: &GeoTiffSource<Vec<u8>>, image: usize, img: &Img, w: Window) {
-    let f = source.read_fragment(image, w).unwrap();
+    check_fragment(&source.read_fragment(image, w).unwrap(), img, w);
+}
+
+/// A Fragment against the samples of `img` in `w`, in `img`'s own rows and columns.
+fn check_fragment(f: &bil::types::Fragment, img: &Img, w: Window) {
+    assert_eq!(f.window, w);
     let size = img.t.size();
     for r in 0..u64::from(w.row_count) {
         for c in 0..u64::from(w.col_count) {
@@ -576,6 +581,72 @@ fn every_layout_reads_exactly() {
         }
     }
     assert_eq!(cases, 11 * 4 * 5 * 3);
+}
+
+/// A stored level is read as it stands: the pixels whose centers fall inside a full-resolution
+/// Window, an overview covering its Image's extent (section 5; M46, M47).
+#[test]
+fn stored_levels_read_the_pixels_whose_centers_fall_inside() {
+    let full = Img::new(40, 60, 2, SampleType::U16);
+    let mut o1 = Img::new(20, 30, 2, SampleType::U16);
+    o1.subfile = 1;
+    o1.tile = Some((16, 16));
+    let mut o2 = Img::new(10, 15, 2, SampleType::U16);
+    o2.subfile = 1;
+    o2.compression = 8;
+    let source =
+        GeoTiffSource::open(write(&[full.clone(), o1.clone(), o2.clone()], true, false)).unwrap();
+    let all = whole(&full);
+    let level0 = source.read_level_fragment(0, "level0", all).unwrap();
+    check_fragment(&level0, &full, all);
+    check_fragment(
+        &source.read_level_fragment(0, "stored1", all).unwrap(),
+        &o1,
+        whole(&o1),
+    );
+    check_fragment(
+        &source.read_level_fragment(0, "stored2", all).unwrap(),
+        &o2,
+        whole(&o2),
+    );
+    // Counting each full-resolution pixel's center as a whole number, stored1's pixel i has its
+    // center at 0.5 + 2i. Rows 3 to 10 span 2.5 to 10.5 and hold rows 1 to 4; columns 5 and 6
+    // span 4.5 to 6.5 and hold column 2 only, at 4.5.
+    let w = Window {
+        row_start: 3,
+        col_start: 5,
+        row_count: 8,
+        col_count: 2,
+    };
+    let f = source.read_level_fragment(0, "stored1", w).unwrap();
+    let want = Window {
+        row_start: 1,
+        col_start: 2,
+        row_count: 4,
+        col_count: 1,
+    };
+    check_fragment(&f, &o1, want);
+    // A Window holding no center gives no pixels.
+    let thin = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 1,
+        col_count: 60,
+    };
+    assert_eq!(
+        source
+            .read_level_fragment(0, "stored2", thin)
+            .unwrap()
+            .window
+            .row_count,
+        0
+    );
+    for bad in ["stored3", "stored0", "level1", "stored01"] {
+        assert!(matches!(
+            source.read_level_fragment(0, bad, all),
+            Err(Error::NotFound(_))
+        ));
+    }
 }
 
 #[test]

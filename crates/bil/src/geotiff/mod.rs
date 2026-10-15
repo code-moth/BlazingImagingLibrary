@@ -39,10 +39,11 @@ use tiff::Directory;
 use self::chunks::{Coding, Samples};
 use crate::fields::{Field, FieldGroup, FieldName, Origin, Value};
 use crate::io::ReadAt;
-pub use crate::types::Scope;
 use crate::types::{
-    Block, Fragment, Interleave, PixelType, SampleType, Status, Storage, StorageOrder, Window,
+    stored_level_number, Block, Fragment, Interleave, PixelType, SampleType, Status, Storage,
+    StorageOrder, Window,
 };
+pub use crate::types::{Scope, StoredLevel};
 
 /// What can go wrong reading a TIFF file.
 #[derive(Debug)]
@@ -160,18 +161,6 @@ impl<R: ReadAt> Seek for At<R> {
 
 // ------------------------------------------------------------------ what opening finds
 
-/// A reduced-resolution IFD of an Image: one of its stored levels (section 5).
-#[derive(Clone, Debug, PartialEq)]
-pub struct StoredLevel {
-    /// `stored1`, `stored2` and so on, from the finest.
-    pub name: String,
-    pub rows: u64,
-    pub cols: u64,
-    /// Full-resolution rows and columns for each of its own, down and across. TIFF overviews do
-    /// not say how they were made, so whether a stored level is aligned is not known.
-    pub scale: (f64, f64),
-}
-
 /// What opening found about one Image.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageInfo {
@@ -254,10 +243,55 @@ struct Ifd {
     layout: std::result::Result<Layout, String>,
 }
 
+/// One IFD as BIL reads its chunks: the Image's own, or a stored level's.
+struct Coded {
+    layout: Layout,
+    pixel_type: Option<PixelType>,
+    samples: Option<Samples>,
+    /// Why its chunks cannot be read, where they cannot.
+    unsupported: Option<String>,
+}
+
+impl Coded {
+    fn of(layout: Layout, big_endian: bool) -> Coded {
+        let (pixel_type, samples, unsupported) = match &layout.sample {
+            Ok((t, bits, signed)) => {
+                let samples = Samples {
+                    sample_type: *t,
+                    bits: *bits,
+                    signed: *signed,
+                    big_endian,
+                    predictor: layout.predictor,
+                    reversed_bits: layout.reversed_bits,
+                };
+                let problem = samples.check().err().or(layout.coding_problem.clone());
+                (
+                    Some(PixelType {
+                        sample_type: *t,
+                        component_count: layout.samples,
+                        significant_bits: *bits,
+                        bit_shift: 0,
+                    }),
+                    Some(samples),
+                    problem,
+                )
+            }
+            Err(why) => (None, None, Some(why.clone())),
+        };
+        Coded {
+            layout,
+            pixel_type,
+            samples,
+            unsupported,
+        }
+    }
+}
+
 struct Image {
     info: ImageInfo,
-    layout: Layout,
-    samples: Option<Samples>,
+    full: Coded,
+    /// In the order of `info.stored_levels`.
+    levels: Vec<Coded>,
 }
 
 /// An open TIFF Source.
@@ -565,39 +599,13 @@ impl<R: ReadAt> GeoTiffSource<R> {
                         image.info.rows as f64 / layout.rows as f64,
                         image.info.cols as f64 / layout.cols as f64,
                     );
-                    image.info.stored_levels.push(StoredLevel {
-                        name: String::new(),
-                        rows: layout.rows,
-                        cols: layout.cols,
-                        scale,
-                    });
+                    image.info.stored_levels.push(overview(&layout, scale));
+                    image.levels.push(Coded::of(layout, big_endian));
                     continue;
                 }
             }
-            let (pixel_type, samples, unsupported) = match &layout.sample {
-                Ok((t, bits, signed)) => {
-                    let samples = Samples {
-                        sample_type: *t,
-                        bits: *bits,
-                        signed: *signed,
-                        big_endian,
-                        predictor: layout.predictor,
-                        reversed_bits: layout.reversed_bits,
-                    };
-                    let problem = samples.check().err().or(layout.coding_problem.clone());
-                    (
-                        Some(PixelType {
-                            sample_type: *t,
-                            component_count: layout.samples,
-                            significant_bits: *bits,
-                            bit_shift: 0,
-                        }),
-                        Some(samples),
-                        problem,
-                    )
-                }
-                Err(why) => (None, None, Some(why.clone())),
-            };
+            let coded = Coded::of(layout.clone(), big_endian);
+            let (pixel_type, unsupported) = (coded.pixel_type, coded.unsupported.clone());
             let codec = codec(layout.compression);
             images.push(Image {
                 info: ImageInfo {
@@ -616,8 +624,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     stored_levels: Vec::new(),
                     ifd: n,
                 },
-                layout,
-                samples,
+                full: coded,
+                levels: Vec::new(),
             });
         }
         if images.is_empty() {
@@ -653,25 +661,26 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     continue;
                 };
                 if layout.subfile & 1 != 0 && layout.subfile & 4 == 0 {
-                    image.info.stored_levels.push(StoredLevel {
-                        name: String::new(),
-                        rows: layout.rows,
-                        cols: layout.cols,
-                        scale: (
-                            image.info.rows as f64 / layout.rows as f64,
-                            image.info.cols as f64 / layout.cols as f64,
-                        ),
-                    });
+                    let scale = (
+                        image.info.rows as f64 / layout.rows as f64,
+                        image.info.cols as f64 / layout.cols as f64,
+                    );
+                    image.info.stored_levels.push(overview(&layout, scale));
+                    image.levels.push(Coded::of(layout, big_endian));
                 }
             }
         }
         for image in &mut images {
-            image
-                .info
-                .stored_levels
-                .sort_by_key(|l| std::cmp::Reverse(u128::from(l.rows) * u128::from(l.cols)));
-            for (k, level) in image.info.stored_levels.iter_mut().enumerate() {
+            // Finest first, the level and its chunks together.
+            let mut both: Vec<(StoredLevel, Coded)> = std::mem::take(&mut image.info.stored_levels)
+                .into_iter()
+                .zip(std::mem::take(&mut image.levels))
+                .collect();
+            both.sort_by_key(|(l, _)| std::cmp::Reverse(u128::from(l.rows) * u128::from(l.cols)));
+            for (k, (mut level, coded)) in both.into_iter().enumerate() {
                 level.name = format!("stored{}", k + 1);
+                image.info.stored_levels.push(level);
+                image.levels.push(coded);
             }
         }
         Ok(GeoTiffSource {
@@ -875,7 +884,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
 
     /// How the Image's chunks lie in the file (section 4, `describe_storage`).
     pub fn describe_storage(&self, image: usize) -> Result<Storage> {
-        let l = &self.image(image)?.layout;
+        let l = &self.image(image)?.full.layout;
         let (across, _) = l.chunks();
         let per_plane = l.offsets.len() as u64 / u64::from(l.planes());
         let mut blocks: Vec<Block> = l
@@ -922,38 +931,66 @@ impl<R: ReadAt> GeoTiffSource<R> {
     /// Reads chunks of its own, so reads of one Source run in parallel (M44).
     pub fn read_fragment(&self, image: usize, window: Window) -> Result<Fragment> {
         let img = self.image(image)?;
-        let (info, l) = (&img.info, &img.layout);
-        if !info.decodable {
+        self.read_coded(image, &img.full, img.info.nodata.as_deref(), window)
+    }
+
+    /// The native pixels of a Window at a level: `level0`, full resolution, or a stored level
+    /// such as `stored2` (section 5, "Read directly"). The Window is in full-resolution rows and
+    /// columns; a stored level gives the pixels whose centers fall inside it, and the Fragment's
+    /// own Window is in the stored level's rows and columns (M46). A stored level without a
+    /// no-data value of its own takes its Image's.
+    pub fn read_level_fragment(
+        &self,
+        image: usize,
+        level: &str,
+        window: Window,
+    ) -> Result<Fragment> {
+        let img = self.image(image)?;
+        let n = stored_level_number(level)
+            .filter(|&n| n <= img.levels.len())
+            .ok_or_else(|| Error::NotFound(format!("level {level} of image {image}")))?;
+        if n == 0 {
+            return self.read_fragment(image, window);
+        }
+        check_window(image, img.info.rows, img.info.cols, window)?;
+        let coded = &img.levels[n - 1];
+        let nodata = coded
+            .layout
+            .nodata
+            .as_deref()
+            .or(img.info.nodata.as_deref());
+        self.read_coded(
+            image,
+            coded,
+            nodata,
+            img.info.stored_levels[n - 1].covered(window),
+        )
+    }
+
+    fn read_coded(
+        &self,
+        image: usize,
+        coded: &Coded,
+        nodata: Option<&str>,
+        window: Window,
+    ) -> Result<Fragment> {
+        let l = &coded.layout;
+        let Some(coding) = Coding::of(l.compression) else {
             return Err(Error::Unsupported(format!(
                 "image {image} is compressed with {}, which this build does not decode",
-                info.codec.as_deref().unwrap_or("?")
+                codec(l.compression).unwrap_or_default()
             )));
-        }
-        if let Some(why) = &info.unsupported {
+        };
+        if let Some(why) = &coded.unsupported {
             return Err(Error::Unsupported(why.clone()));
         }
-        let (Some(pixel_type), Some(samples), Some(coding)) =
-            (info.pixel_type, img.samples, Coding::of(l.compression))
-        else {
+        let (Some(pixel_type), Some(samples)) = (coded.pixel_type, coded.samples) else {
             return Err(Error::Unsupported(format!("image {image}")));
         };
         let (rows, cols) = (u64::from(window.row_count), u64::from(window.col_count));
-        if window
-            .row_start
-            .checked_add(rows)
-            .is_none_or(|e| e > info.rows)
-            || window
-                .col_start
-                .checked_add(cols)
-                .is_none_or(|e| e > info.cols)
-        {
-            return Err(Error::NotFound(format!(
-                "a Window outside image {image}'s {} × {} pixels",
-                info.rows, info.cols
-            )));
-        }
+        check_window(image, l.rows, l.cols, window)?;
         let size = pixel_type.sample_type.size();
-        let bands = info.bands as usize;
+        let bands = l.samples as usize;
         let total = rows
             .checked_mul(cols)
             .and_then(|p| p.checked_mul(bands as u64 * size as u64))
@@ -1059,10 +1096,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 }
             }
         }
-        let fill = info
-            .nodata
-            .as_deref()
-            .and_then(|text| fill(text, pixel_type.sample_type));
+        let fill = nodata.and_then(|text| fill(text, pixel_type.sample_type));
         let valid: Vec<bool> = data
             .chunks_exact(strides[1])
             .zip(&unrecorded)
@@ -1081,6 +1115,38 @@ impl<R: ReadAt> GeoTiffSource<R> {
             data,
             validity,
         })
+    }
+}
+
+/// A Window within an Image or level of `rows` × `cols` pixels, or an error.
+fn check_window(image: usize, rows: u64, cols: u64, window: Window) -> Result<()> {
+    if window
+        .row_start
+        .checked_add(u64::from(window.row_count))
+        .is_none_or(|e| e > rows)
+        || window
+            .col_start
+            .checked_add(u64::from(window.col_count))
+            .is_none_or(|e| e > cols)
+    {
+        return Err(Error::NotFound(format!(
+            "a Window outside image {image}'s {rows} × {cols} pixels"
+        )));
+    }
+    Ok(())
+}
+
+/// A TIFF overview as a stored level, its name given once the levels are sorted. TIFF does not
+/// say how an overview was made, so its alignment is unknown; it is taken to cover its Image's
+/// extent, as GDAL takes it, so its first pixel's center lies half a stored pixel in (M38, M47).
+fn overview(layout: &Layout, scale: (f64, f64)) -> StoredLevel {
+    StoredLevel {
+        name: String::new(),
+        rows: layout.rows,
+        cols: layout.cols,
+        scale,
+        position: (scale.0 / 2.0 - 0.5, scale.1 / 2.0 - 0.5),
+        aligned: None,
     }
 }
 
