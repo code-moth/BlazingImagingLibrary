@@ -101,35 +101,73 @@ pub struct StoredLevel {
     pub position: (f64, f64),
     /// Whether its samples sit on the Level grid; `None` where the file does not say.
     pub aligned: Option<bool>,
+    /// Pixel i's center down and across, exactly: (a + b·i) / d full-resolution pixels.
+    centers: [(i128, i128, i128); 2],
 }
 
 impl StoredLevel {
+    /// A level covering its Image's extent, as a TIFF overview does (M47): its pixel i spans
+    /// full-resolution pixels i·R/r to (i + 1)·R/r, for an Image of R and a level of r.
+    pub fn covering_extent(rows: u64, cols: u64, full_rows: u64, full_cols: u64) -> StoredLevel {
+        let axis = |r: u64, full: u64| {
+            let (r, full) = (i128::from(r.max(1)), i128::from(full));
+            // ((2i + 1)·R/r − 1) / 2 = (R − r + 2R·i) / 2r.
+            (full - r, 2 * full, 2 * r)
+        };
+        let (down, across) = (axis(rows, full_rows), axis(cols, full_cols));
+        let f = |(a, b, d): (i128, i128, i128)| (b as f64 / d as f64, a as f64 / d as f64);
+        StoredLevel {
+            name: String::new(),
+            rows,
+            cols,
+            scale: (f(down).0, f(across).0),
+            position: (f(down).1, f(across).1),
+            aligned: None,
+            centers: [down, across],
+        }
+    }
+
+    /// A level whose pixel i lies on full-resolution pixel i·2^k, as a JPEG 2000 resolution
+    /// level does (M48).
+    pub fn on_grid(name: String, rows: u64, cols: u64, k: u32) -> StoredLevel {
+        let s = 1i128 << k.min(62);
+        StoredLevel {
+            name,
+            rows,
+            cols,
+            scale: (s as f64, s as f64),
+            position: (0.0, 0.0),
+            aligned: None,
+            centers: [(0, s, 1); 2],
+        }
+    }
+
     /// The stored pixels whose centers fall inside a full-resolution Window (section 5, "Read
-    /// directly"), as a Window in the stored level's own rows and columns (M46).
+    /// directly"), as a Window in the stored level's own rows and columns (M46). Exact: a center
+    /// on the Window's first edge is inside it.
     pub fn covered(&self, window: Window) -> Window {
-        let span = |start: u64, count: u32, scale: f64, position: f64, n: u64| -> (u64, u32) {
-            // Pixel i's center is position + i × scale; the Window holds centers from
-            // start − ½ up to, not including, start + count − ½.
-            let first = |edge: f64| {
-                ((edge - 0.5 - position) / scale)
-                    .ceil()
-                    .clamp(0.0, n as f64) as u64
-            };
-            let (a, b) = (first(start as f64), first(start as f64 + f64::from(count)));
+        // The Window holds centers from start − ½ up to, not including, start + count − ½, so
+        // pixel i is inside where (2·start − 1)·d ≤ 2a + 2b·i < (2·end − 1)·d.
+        let first = |edge: u64, (a, b, d): (i128, i128, i128), n: u64| -> u64 {
+            let need = (2 * i128::from(edge) - 1) * d - 2 * a;
+            let i = need.div_euclid(2 * b) + i128::from(need.rem_euclid(2 * b) != 0);
+            i.clamp(0, i128::from(n)) as u64
+        };
+        let span = |start: u64, count: u32, centers, n| -> (u64, u32) {
+            let a = first(start, centers, n);
+            let b = first(start + u64::from(count), centers, n);
             (a, (b - a).min(u64::from(u32::MAX)) as u32)
         };
         let (row_start, row_count) = span(
             window.row_start,
             window.row_count,
-            self.scale.0,
-            self.position.0,
+            self.centers[0],
             self.rows,
         );
         let (col_start, col_count) = span(
             window.col_start,
             window.col_count,
-            self.scale.1,
-            self.position.1,
+            self.centers[1],
             self.cols,
         );
         Window {
@@ -138,6 +176,71 @@ impl StoredLevel {
             row_count,
             col_count,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn w(start: u64, count: u32) -> Window {
+        Window {
+            row_start: start,
+            col_start: start,
+            row_count: count,
+            col_count: count,
+        }
+    }
+
+    /// Against exact arithmetic, every size and Window: a center on the first edge is inside.
+    #[test]
+    fn covered_is_exact() {
+        for full in 2..120u64 {
+            for r in [full / 2, full / 3, full / 4, full / 7]
+                .into_iter()
+                .filter(|&r| r > 0)
+            {
+                let l = StoredLevel::covering_extent(r, r, full, full);
+                for start in 0..full {
+                    for count in 0..=(full - start) as u32 {
+                        let got = l.covered(w(start, count));
+                        // Pixel i's center, doubled and times r: (2i + 1)·full − r. Inside where
+                        // (2·start − 1)·r ≤ that < (2·end − 1)·r.
+                        let inside: Vec<u64> = (0..r)
+                            .filter(|&i| {
+                                let c = (2 * i as i64 + 1) * full as i64 - r as i64;
+                                let lo = (2 * start as i64 - 1) * r as i64;
+                                let hi = (2 * (start + u64::from(count)) as i64 - 1) * r as i64;
+                                lo <= c && c < hi
+                            })
+                            .collect();
+                        let want = (
+                            inside.first().copied().unwrap_or(got.row_start),
+                            inside.len() as u32,
+                        );
+                        assert_eq!(
+                            (got.row_start, got.row_count),
+                            want,
+                            "{full} {r} {start} {count}"
+                        );
+                    }
+                }
+            }
+        }
+        // The case the checking agent found: Image 396, level 50, Window from 99.
+        let l = StoredLevel::covering_extent(50, 50, 396, 396);
+        assert_eq!(l.covered(w(99, 10)).row_start, 12);
+        // On a grid of 4: samples at 0, 4, 8, ...; a Window from 4 to 8 holds 4 only.
+        let g = StoredLevel::on_grid("stored2".into(), 8, 8, 2);
+        assert_eq!(
+            g.covered(w(4, 4)),
+            Window {
+                row_start: 1,
+                col_start: 1,
+                row_count: 1,
+                col_count: 1
+            }
+        );
     }
 }
 

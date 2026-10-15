@@ -198,25 +198,32 @@ fn main() {
         // Each stored level read whole, hashed as GDAL 3.8 sees its samples, and named by its
         // size, since GDAL does not always list overviews finest first.
         for level in &info.stored_levels {
-            let whole = Window {
-                row_start: 0,
-                col_start: 0,
-                row_count: info.rows as u32,
-                col_count: info.cols as u32,
-            };
-            let hash = if level
-                .rows
-                .saturating_mul(level.cols)
-                .saturating_mul(u64::from(info.bands) * 8)
-                > 1 << 28
-            {
-                "refused too large to read whole here".to_string()
-            } else {
+            let whole = u32::try_from(info.rows)
+                .ok()
+                .zip(u32::try_from(info.cols).ok())
+                .map(|(row_count, col_count)| Window {
+                    row_start: 0,
+                    col_start: 0,
+                    row_count,
+                    col_count,
+                });
+            let hash = if let Some(whole) = whole.filter(|_| {
+                level
+                    .rows
+                    .saturating_mul(level.cols)
+                    .saturating_mul(u64::from(info.bands) * 8)
+                    <= 1 << 28
+            }) {
                 match source.read_level_fragment(i, &level.name, whole) {
-                    Ok(f) => format!("{:016x}", as_gdal_sees(&f, info.bands as usize)),
+                    Ok(f) => format!(
+                        "{:016x}",
+                        as_gdal_sees(&f, f.pixel_type.component_count as usize)
+                    ),
                     Err(e @ bil::geotiff::Error::Unsupported(_)) => format!("refused {e}"),
                     Err(e) => format!("error {e}"),
                 }
+            } else {
+                "refused too large to read whole here".to_string()
             };
             println!(
                 "image {i} overview {} x {} pixels {hash}",

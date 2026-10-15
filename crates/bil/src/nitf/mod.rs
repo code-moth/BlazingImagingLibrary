@@ -522,7 +522,7 @@ impl<R: ReadAt> NitfSource<R> {
                 &what,
             )?;
             sub.find_extensions(&["UDID", "IXSHD"], &["UDOFL", "IXSOFL"]);
-            #[allow(unused_mut)]
+            #[cfg_attr(not(feature = "openjpeg"), allow(unused_mut))]
             let mut info = describe(&sub, seg.data).map_err(|e| match e {
                 Error::Corrupt(m) => corrupt(format!("image {n}: {m}")),
                 other => other,
@@ -851,9 +851,6 @@ impl<R: ReadAt> NitfSource<R> {
         Ok(storage)
     }
 
-    /// The native pixels of a Window of an Image, uncompressed or decoded by a codec this build
-    /// has, pixel-interleaved, in native byte order, with the pixels never recorded marked: those
-    /// in blocks the mask table leaves out, and pad pixels.
     /// The native pixels of a Window at a level: `level0`, full resolution, or a stored level
     /// such as `stored2`, a JPEG 2000 Image's resolution level (section 5, "Read directly"). The
     /// Window is in full-resolution rows and columns; a stored level gives the pixels whose
@@ -911,16 +908,14 @@ impl<R: ReadAt> NitfSource<R> {
             );
             self.decode(image, info, pixel_type, *codestream, area, n as u32)?
         };
-        Ok(finish(
-            lw,
-            pixel_type,
-            strides,
-            data,
-            None,
-            self.mask(image)?,
-        ))
+        // Pad pixels are not marked at a reduced level: its samples are filtered, so one that
+        // equals the pad value says nothing of what was recorded (M48).
+        Ok(finish(lw, pixel_type, strides, data, None, None))
     }
 
+    /// The native pixels of a Window of an Image, uncompressed or decoded by a codec this build
+    /// has, pixel-interleaved, in native byte order, with the pixels never recorded marked: those
+    /// in blocks the mask table leaves out, and pad pixels.
     pub fn read_fragment(&self, image: usize, window: Window) -> Result<Fragment> {
         let img = self.image(image)?;
         let info = &img.info;
@@ -1294,14 +1289,12 @@ fn jpeg2000_levels(info: &ImageInfo, levels: u8) -> Vec<StoredLevel> {
     (1..=u32::from(levels).min(32))
         .map(|k| {
             let s = 1u64 << k;
-            StoredLevel {
-                name: format!("stored{k}"),
-                rows: info.rows.div_ceil(s),
-                cols: info.cols.div_ceil(s),
-                scale: (s as f64, s as f64),
-                position: (0.0, 0.0),
-                aligned: None,
-            }
+            StoredLevel::on_grid(
+                format!("stored{k}"),
+                info.rows.div_ceil(s),
+                info.cols.div_ceil(s),
+                k,
+            )
         })
         .collect()
 }

@@ -2220,7 +2220,7 @@ fragment.validity;                              // pixels holding the no-data va
 <tr>
 <td><code>read_fragment(i, window)</code>, <code>read_level_fragment(i, level, window)</code></td>
 <td><code>read_fragment(window, level)</code></td>
-<td>Uncompressed, Deflate, LZW and PackBits data, with or without a predictor, samples as stored. <code>level</code> is <code>level0</code> or a stored level, <code>stored1</code> onward; at a stored level the Fragment's Window is in the level's own pixels (M46). Reads of one Source run in parallel (M44)</td>
+<td>Uncompressed, Deflate, LZW and PackBits data, with or without a predictor, samples as stored. <code>level</code> is <code>level0</code> or a stored level, <code>stored1</code> onward; at a stored level the Fragment's Window is in the level's own pixels (M46), and an overview without no-data of its own takes its Image's (M49). Reads of one Source run in parallel (M44)</td>
 </tr>
 <tr>
 <td><code>bil::geotiff::Error</code></td>
@@ -2664,7 +2664,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> M46 to M48, from reading stored levels. The code does what each proposes, so that it can be tested; a ruling otherwise changes it.</p>
+<p><strong>Open, for the author.</strong> M46 to M49, from reading stored levels. The code does what each proposes, so that it can be tested; a ruling otherwise changes it.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -2687,7 +2687,12 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <tr>
 <td>M48</td>
 <td><strong>JPEG 2000 resolution levels as stored levels.</strong> Section 5 lists them as a source of stored levels; a NITF JPEG 2000 Image is one codestream (M34), whose decomposition levels give its reduced resolutions.</td>
-<td>List level k, for k from 1 to the fewest decomposition levels the main header's COD and COC markers state, as <code>stored</code>k, of ⌈rows/2^k⌉ × ⌈cols/2^k⌉, scale 2^k and position 0: the low-pass sample i lies on full-resolution pixel i × 2^k. Such levels are aligned; until ruled, they are reported as unknown, so none makes a Level. List none where the codestream's grid does not start at the Image's corner, which would move them. A tile-part's own COD or COC with fewer levels is not read, so a read of a level it lacks fails.</td>
+<td>List level k, for k from 1 to the fewest decomposition levels the main header's COD and COC markers state, as <code>stored</code>k, of ⌈rows/2^k⌉ × ⌈cols/2^k⌉, scale 2^k and position 0: the low-pass sample i lies on full-resolution pixel i × 2^k. Such levels are aligned; until ruled, they are reported as unknown, so none makes a Level. List none where the codestream's grid does not start at the Image's corner, which would move them. A tile-part's own COD or COC with fewer levels is not read, so a read of a level it lacks fails. Pad pixels are not marked at a reduced level: its samples are filtered, so one equal to the pad value says nothing of what was recorded.</td>
+</tr>
+<tr>
+<td>M49</td>
+<td><strong>What a TIFF overview shares with its Image.</strong> TIFF lets an overview's IFD state its own bands, sample type and tags, GDAL_NODATA among them. Section 5 does not say whether a stored level must match its Image, nor whose no-data value applies.</td>
+<td>An overview whose number of bands differs from its Image's is not listed as its stored level, as GDAL requires the same of overviews; its sample type may differ, and is reported by its Fragments. An overview with no GDAL_NODATA of its own takes its Image's, as GDAL applies the dataset's.</td>
 </tr>
 </tbody>
 </table></div>

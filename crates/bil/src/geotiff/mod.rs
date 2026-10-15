@@ -595,12 +595,14 @@ impl<R: ReadAt> GeoTiffSource<R> {
             }
             if reduced {
                 if let Some(image) = images.last_mut() {
-                    let scale = (
-                        image.info.rows as f64 / layout.rows as f64,
-                        image.info.cols as f64 / layout.cols as f64,
-                    );
-                    image.info.stored_levels.push(overview(&layout, scale));
-                    image.levels.push(Coded::of(layout, big_endian));
+                    // An overview with bands of its own is not a level of this Image (M49).
+                    if layout.samples == image.info.bands {
+                        image
+                            .info
+                            .stored_levels
+                            .push(overview(&layout, &image.info));
+                        image.levels.push(Coded::of(layout, big_endian));
+                    }
                     continue;
                 }
             }
@@ -631,8 +633,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
         if images.is_empty() {
             return Err(corrupt("no full-resolution image"));
         }
-        // Overviews in an Image's SubIFDs are stored levels too, as GDAL reads them. They are
-        // listed; reading them is still to come, with stored levels generally.
+        // Overviews in an Image's SubIFDs are stored levels too, as GDAL reads them.
         for image in &mut images {
             let pointers = ifds[image.info.ifd]
                 .layout
@@ -660,12 +661,14 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 let Ok(layout) = read_layout(&mut decoder, &dir, &text, &*reader, size) else {
                     continue;
                 };
-                if layout.subfile & 1 != 0 && layout.subfile & 4 == 0 {
-                    let scale = (
-                        image.info.rows as f64 / layout.rows as f64,
-                        image.info.cols as f64 / layout.cols as f64,
-                    );
-                    image.info.stored_levels.push(overview(&layout, scale));
+                if layout.subfile & 1 != 0
+                    && layout.subfile & 4 == 0
+                    && layout.samples == image.info.bands
+                {
+                    image
+                        .info
+                        .stored_levels
+                        .push(overview(&layout, &image.info));
                     image.levels.push(Coded::of(layout, big_endian));
                 }
             }
@@ -938,7 +941,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
     /// such as `stored2` (section 5, "Read directly"). The Window is in full-resolution rows and
     /// columns; a stored level gives the pixels whose centers fall inside it, and the Fragment's
     /// own Window is in the stored level's rows and columns (M46). A stored level without a
-    /// no-data value of its own takes its Image's.
+    /// no-data value of its own takes its Image's (M49).
     pub fn read_level_fragment(
         &self,
         image: usize,
@@ -1118,6 +1121,13 @@ impl<R: ReadAt> GeoTiffSource<R> {
     }
 }
 
+/// A TIFF overview as a stored level, its name given once the levels are sorted. TIFF does not
+/// say how an overview was made, so its alignment is unknown; it is taken to cover its Image's
+/// extent, as GDAL takes it (M38, M47).
+fn overview(layout: &Layout, image: &ImageInfo) -> StoredLevel {
+    StoredLevel::covering_extent(layout.rows, layout.cols, image.rows, image.cols)
+}
+
 /// A Window within an Image or level of `rows` × `cols` pixels, or an error.
 fn check_window(image: usize, rows: u64, cols: u64, window: Window) -> Result<()> {
     if window
@@ -1134,20 +1144,6 @@ fn check_window(image: usize, rows: u64, cols: u64, window: Window) -> Result<()
         )));
     }
     Ok(())
-}
-
-/// A TIFF overview as a stored level, its name given once the levels are sorted. TIFF does not
-/// say how an overview was made, so its alignment is unknown; it is taken to cover its Image's
-/// extent, as GDAL takes it, so its first pixel's center lies half a stored pixel in (M38, M47).
-fn overview(layout: &Layout, scale: (f64, f64)) -> StoredLevel {
-    StoredLevel {
-        name: String::new(),
-        rows: layout.rows,
-        cols: layout.cols,
-        scale,
-        position: (scale.0 / 2.0 - 0.5, scale.1 / 2.0 - 0.5),
-        aligned: None,
-    }
 }
 
 /// Reads one IFD's layout, checking every offset against the file.
