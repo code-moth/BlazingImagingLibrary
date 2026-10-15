@@ -105,7 +105,7 @@ def compare(bil_lines, gdal_lines):
     # Stored levels, each read whole (M38): what BIL does not read is a known limit, and an
     # overview neither reads is not compared.
     for line in list(bil):
-        m = re.match(r"image (\d+) overview (\d+) pixels (refused|error) ?(.*)$", line)
+        m = re.match(r"image (\d+) overview (\d+ x \d+) pixels (refused|error) ?(.*)$", line)
         if not m:
             continue
         i, k = m.group(1), m.group(2)
@@ -140,8 +140,8 @@ def compare(bil_lines, gdal_lines):
         m = re.match(r"image (\d+) photometric Some\((5|6|8|9|10)\)$", line)
         if m:
             i = m.group(1)
-            ours_i = [l for l in bil if re.match(rf"image {i} (size|pixels|overview \d+ pixels) ", l)]
-            theirs_i = [l for l in gdal if re.match(rf"image {i} (size|pixels|overview \d+ pixels) ", l)]
+            ours_i = [l for l in bil if re.match(rf"image {i} (size|pixels|overview \d+ x \d+ pixels) ", l)]
+            theirs_i = [l for l in gdal if re.match(rf"image {i} (size|pixels|overview \d+ x \d+ pixels) ", l)]
             if ours_i != theirs_i:
                 bil = [l for l in bil if l not in ours_i]
                 gdal = [l for l in gdal if l not in theirs_i]
@@ -163,7 +163,7 @@ def compare(bil_lines, gdal_lines):
         notes += [
             f"image {m.group(1)}: overview {m.group(2)} agrees"
             for l in bil
-            if (m := re.match(r"image (\d+) overview (\d+) pixels [0-9a-f]{16}$", l))
+            if (m := re.match(r"image (\d+) overview (\d+ x \d+) pixels [0-9a-f]{16}$", l))
         ]
     return category, problems, notes
 

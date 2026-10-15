@@ -195,8 +195,9 @@ fn main() {
             }
         };
         println!("image {i} pixels {pixels}");
-        // Each stored level read whole, hashed as GDAL 3.8 sees its samples.
-        for (k, level) in info.stored_levels.iter().enumerate() {
+        // Each stored level read whole, hashed as GDAL 3.8 sees its samples, and named by its
+        // size, since GDAL does not always list overviews finest first.
+        for level in &info.stored_levels {
             let whole = Window {
                 row_start: 0,
                 col_start: 0,
@@ -217,7 +218,10 @@ fn main() {
                     Err(e) => format!("error {e}"),
                 }
             };
-            println!("image {i} overview {k} pixels {hash}");
+            println!(
+                "image {i} overview {} x {} pixels {hash}",
+                level.rows, level.cols
+            );
         }
     }
 }
