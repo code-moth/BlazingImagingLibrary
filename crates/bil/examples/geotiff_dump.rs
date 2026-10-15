@@ -107,10 +107,10 @@ fn main() {
                     // GDAL 3.8 reads float16 as float32; the same values, widened, for comparison.
                     if f.pixel_type.sample_type == bil::types::SampleType::F16 {
                         let wide: Vec<u8> = planes
-                            .chunks_exact(2)
-                            .flat_map(|h| {
-                                half_to_f32(u16::from_ne_bytes([h[0], h[1]])).to_ne_bytes()
-                            })
+                            .as_chunks::<2>()
+                            .0
+                            .iter()
+                            .flat_map(|h| half_to_f32(u16::from_ne_bytes(*h)).to_ne_bytes())
                             .collect();
                         println!("image {i} widened F32 {:016x}", fnv(&wide));
                     }
