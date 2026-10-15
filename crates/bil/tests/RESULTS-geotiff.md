@@ -18,8 +18,9 @@ The reader (`bil::geotiff`) against its own tests and against GDAL 3.8.4, as of 
 
 | Category | Files | Meaning |
 | --- | --- | --- |
-| agree | 139 | Images, sizes, sample types, overviews and pixels agree; 129 Images pixel for pixel |
-| limit | 81 | BIL lists the file and refuses, with its reason, what it does not yet read |
+| agree | 124 | Images, sizes, sample types, overviews and pixels agree; 129 Images pixel for pixel |
+| refused | 13 | Both refuse the file as damaged, or BIL refuses it and GDAL cannot read its pixels |
+| limit | 83 | BIL lists the file and refuses, with its reason, what it does not yet read |
 | stricter | 4 | BIL refuses as corrupt a file GDAL reads (M42) |
 | lenient | 7 | GDAL refuses a file or Image BIL opens |
 | converts | 1 | CMYK, which GDAL converts to RGB and BIL returns as stored |
