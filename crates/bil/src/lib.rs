@@ -17,6 +17,8 @@
 
 pub mod codec;
 pub mod fields;
+#[cfg(feature = "geotiff")]
+pub mod geotiff;
 pub mod io;
 pub mod kernels;
 #[cfg(feature = "nitf")]

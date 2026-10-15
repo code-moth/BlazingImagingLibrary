@@ -102,12 +102,7 @@ pub struct Segment {
     pub data: (u64, u64),
 }
 
-/// What a field group is attached to (section 14.1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Scope {
-    Source,
-    Image(usize),
-}
+pub use crate::types::Scope;
 
 /// What opening found about one image segment.
 #[derive(Clone, Debug, PartialEq)]

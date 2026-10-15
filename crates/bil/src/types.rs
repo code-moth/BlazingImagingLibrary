@@ -4,6 +4,13 @@
 //! The types of specification section 4 that the readers fill: pixel types, Windows, the
 //! storage of an Image's blocks, and the native pixels of a Window.
 
+/// What a field group is attached to (section 14.1): the Source, or one of its Images.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Scope {
+    Source,
+    Image(usize),
+}
+
 /// How a request turned out (section 3.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {

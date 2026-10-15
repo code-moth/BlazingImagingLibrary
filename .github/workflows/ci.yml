@@ -248,7 +248,8 @@ jobs:
   test-data:
     # Downloads the real test files and checks them against testdata/manifest.toml.
     # Unpinned checksums, and the files each source offers, are reported as annotations.
-    # Then compares BIL's NITF reader with GDAL's on every NITF file fetched.
+    # Then compares BIL's NITF reader with GDAL's on every NITF file fetched, and both readers
+    # with GDAL's on GDAL's own test files.
     name: test data
     runs-on: ubuntu-24.04
     steps:
@@ -267,6 +268,7 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q libgdal-dev libopenjp2-7-dev
           cc -O2 -Wall -Wextra -Werror testdata/nitf_reference.c -o nitf_reference $(gdal-config --cflags) $(gdal-config --libs)
+          cc -O2 -Wall -Wextra -Werror testdata/geotiff_reference.c -o geotiff_reference $(gdal-config --cflags) $(gdal-config --libs)
       - name: The NITF reader against GDAL
         shell: bash
         run: |
@@ -281,4 +283,13 @@ jobs:
           git clone -q --depth 1 --branch v3.8.4 --filter=blob:none --sparse https://github.com/OSGeo/gdal gdal-tests
           git -C gdal-tests sparse-checkout set autotest/gdrivers/data/nitf
           find gdal-tests/autotest/gdrivers/data/nitf -iname '*.ntf' -o -iname '*.nsf' | sort | tr '\n' '\0' | xargs -0 python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_reference
-
+      - name: The GeoTIFF reader against GDAL, on GDAL's own TIFF test files
+        if: success() || failure()
+        # Every TIFF file of GDAL 3.8.4's core and GeoTIFF driver tests. Images whose
+        # compression or samples BIL does not yet read are noted, not compared.
+        shell: bash
+        run: |
+          cargo build --release --example geotiff_dump
+          [ -d gdal-tests ] || git clone -q --depth 1 --branch v3.8.4 --filter=blob:none --sparse https://github.com/OSGeo/gdal gdal-tests
+          git -C gdal-tests sparse-checkout add autotest/gcore/data autotest/gdrivers/data/gtiff
+          find gdal-tests/autotest/gcore/data gdal-tests/autotest/gdrivers/data/gtiff -maxdepth 1 -type f \( -iname '*.tif' -o -iname '*.tiff' \) | sort | tr '\n' '\0' | xargs -0 python3 -I testdata/compare_geotiff.py target/release/examples/geotiff_dump ./geotiff_reference

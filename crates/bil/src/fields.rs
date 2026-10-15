@@ -216,6 +216,14 @@ impl Field {
         }
     }
 
+    /// A field whose value the file types itself, as a TIFF tag's entry does: the value is held
+    /// from the start, beside the stored bytes it came from.
+    pub fn with_value(name: FieldName, stored: Vec<u8>, value: Value, origin: Origin) -> Field {
+        let field = Field::new(name, stored, None, origin);
+        let _ = field.value.set(value);
+        field
+    }
+
     /// A defined field with no value here: its value is `Missing` (section 3.3).
     pub fn missing(name: FieldName, definition: Option<FieldDef>, origin: Origin) -> Field {
         let field = Field::new(name, Vec::new(), definition, origin);
