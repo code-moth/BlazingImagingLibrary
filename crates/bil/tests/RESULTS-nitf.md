@@ -59,3 +59,14 @@ python3 -I testdata/compare_nitf.py target/release/examples/nitf_dump ./nitf_ref
 | The manifest's 22 | 22 agree |
 
 Two of the manifest's files hold blocks never recorded, which BIL marks missing: `v_3301c.ntf`, 329,543 pixels, and `v_3301f.ntf`, 202,608. In `v_3301f.ntf` 12 of its 16 blocks are left out, and there GDAL writes the file's pad value where BIL leaves 0. A pixel never recorded holds no value, so the comparison counts differences only at recorded pixels, where the two agree. The first runs, before the comparison made that distinction, reported `v_3301f.ntf` as differing in 589,824 bytes: exactly those 12 blocks of 128 × 128 pixels in 3 bands.
+
+**JPEG 2000, in CI.** With BIL's `openjpeg` feature and Ubuntu 24.04's OpenJPEG 2.5.0, against GDAL's JP2OpenJPEG driver, on 15 October 2026 (commit 2e4ed5d), every JPEG 2000 Image in both sets agrees sample for sample:
+
+| File | Image | Compression |
+| --- | --- | --- |
+| `jpeg2000/p0_01a.ntf`, of the manifest | 0 | C8 |
+| `test_jp2_ecw33.ntf`, of GDAL's suite | 0 | C8 |
+| `two_images_jp2.ntf`, of GDAL's suite | 1 | C8 |
+
+The comparison names each JPEG 2000 Image whose pixels it compared, as a notice, so a run shows the codec was compared rather than skipped. The two Images that differed in this workspace, where the GDAL built here has no JPEG 2000 driver, are two of these.
+
