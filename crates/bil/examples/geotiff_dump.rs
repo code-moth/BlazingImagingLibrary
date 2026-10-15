@@ -29,10 +29,13 @@ fn main() {
     println!("images {}", source.image_count());
     for i in 0..source.image_count() {
         let info = source.image_info(i).unwrap();
-        let kind = info
-            .pixel_type
-            .map_or("unsupported".to_string(), |p| format!("{:?}", p.sample_type));
-        println!("image {i} size {} x {} x {} {kind}", info.rows, info.cols, info.bands);
+        let kind = info.pixel_type.map_or("unsupported".to_string(), |p| {
+            format!("{:?}", p.sample_type)
+        });
+        println!(
+            "image {i} size {} x {} x {} {kind}",
+            info.rows, info.cols, info.bands
+        );
         for level in &info.stored_levels {
             println!("image {i} overview {} x {}", level.rows, level.cols);
         }
@@ -50,9 +53,18 @@ fn main() {
         let pixels = if info.pixel_type.is_none() {
             format!("refused {}", info.unsupported.clone().unwrap_or_default())
         } else if !info.decodable {
-            format!("refused {} is not decoded", info.codec.as_deref().unwrap_or("?"))
-        } else if info.rows > u64::from(u32::MAX) || info.cols > u64::from(u32::MAX) {
-            "refused too large to read whole".to_string()
+            format!(
+                "refused {} is not decoded",
+                info.codec.as_deref().unwrap_or("?")
+            )
+        } else if info
+            .rows
+            .saturating_mul(info.cols)
+            .saturating_mul(u64::from(info.bands) * 8)
+            > 1 << 28
+        {
+            // Read whole, as GDAL's program does, only where that fits easily in memory.
+            "refused too large to read whole here".to_string()
         } else {
             let window = Window {
                 row_start: 0,
@@ -75,6 +87,9 @@ fn main() {
                     }
                     format!("{:016x}", fnv(&planes))
                 }
+                // What this reader does not read is a refusal with its reason; anything else is
+                // an error.
+                Err(e @ bil::geotiff::Error::Unsupported(_)) => format!("refused {e}"),
                 Err(e) => format!("error {e}"),
             }
         };

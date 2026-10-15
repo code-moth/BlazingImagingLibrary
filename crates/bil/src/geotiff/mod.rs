@@ -642,6 +642,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
             state.current = Some(info.ifd);
         }
         let mut chunk_buf = Vec::new();
+        // Pixels in chunks never written (section 4): 0 in the data, and marked.
+        let mut unrecorded = vec![false; (rows * cols) as usize];
         for crow in window.row_start / ch..row_end.div_ceil(ch).min(down) {
             for ccol in window.col_start / cw..col_end.div_ceil(cw).min(across) {
                 for plane in 0..l.planes() {
@@ -649,6 +651,21 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     let index = u32::try_from(index).map_err(|_| corrupt("too many chunks"))?;
                     // Within the Image's chunks, by the loops' bounds.
                     let (w, h) = state.decoder.chunk_data_dimensions(index);
+                    if l.counts[index as usize] == 0 {
+                        // A chunk of no bytes was never written, as in a sparse file: its pixels
+                        // were never recorded.
+                        for r in (crow * ch).max(window.row_start)
+                            ..(crow * ch + u64::from(h)).min(row_end)
+                        {
+                            for c in (ccol * cw).max(window.col_start)
+                                ..(ccol * cw + u64::from(w)).min(col_end)
+                            {
+                                unrecorded[((r - window.row_start) * cols + c - window.col_start)
+                                    as usize] = true;
+                            }
+                        }
+                        continue;
+                    }
                     let in_chunk = if l.planar { 1 } else { bands };
                     let row_bytes = w as usize * in_chunk * size;
                     chunk_buf.resize(row_bytes * h as usize, 0);
@@ -683,17 +700,21 @@ impl<R: ReadAt> GeoTiffSource<R> {
             }
         }
         drop(state);
-        let validity = info
+        let fill = info
             .nodata
             .as_deref()
-            .and_then(|text| fill(text, pixel_type.sample_type))
-            .and_then(|fill| {
-                let valid: Vec<bool> = data
-                    .chunks_exact(strides[1])
-                    .map(|pixel| !pixel.chunks_exact(size).all(|s| fill.matches(s)))
-                    .collect();
-                valid.contains(&false).then_some(valid)
-            });
+            .and_then(|text| fill(text, pixel_type.sample_type));
+        let valid: Vec<bool> = data
+            .chunks_exact(strides[1])
+            .zip(&unrecorded)
+            .map(|(pixel, &never)| {
+                !never
+                    && !fill
+                        .as_ref()
+                        .is_some_and(|f| pixel.chunks_exact(size).all(|s| f.matches(s)))
+            })
+            .collect();
+        let validity = valid.contains(&false).then_some(valid);
         Ok(Fragment {
             window,
             pixel_type,

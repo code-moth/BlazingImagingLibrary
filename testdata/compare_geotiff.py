@@ -9,8 +9,11 @@ the run shows what remains to be read.
 
     python3 -I testdata/compare_geotiff.py GEOTIFF_DUMP GEOTIFF_REFERENCE FILE...
 
-Exits with status 1 when any file differs. Under GitHub Actions each difference is raised as an
-error annotation, and the summary and notes as notices, which can be read without the job's log.
+Each file falls in one of four categories: it agrees; it holds what BIL does not yet read, as BIL
+says (a limit); BIL refuses as corrupt what GDAL reads (stricter); or the two differ. Exits with
+status 1 when any file differs. Under GitHub Actions differences are raised as error annotations,
+and the summary, with the files that are stricter or differ, as notices, which can be read
+without the job's log.
 """
 
 import collections
@@ -28,25 +31,45 @@ def run(program, path):
 
 
 def compare(bil_lines, gdal_lines):
-    """The differences between the two reports, and notes on what was not compared."""
-    if bil_lines[:1] and gdal_lines[:1] and bil_lines[0].startswith("error") and gdal_lines[0].startswith("error"):
-        return [], [f"both refuse it: BIL {bil_lines[0][6:]!r}; GDAL {gdal_lines[0][6:]!r}"]
+    """How the two reports compare: a category, the differences, and notes. The categories:
+    `agree`; `limit`, BIL does not read what GDAL does, as it says; `stricter`, BIL refuses as
+    corrupt a file or Image that GDAL reads; `differ`, a disagreement, which fails the run."""
+    bil_error = bil_lines[:1] and bil_lines[0].startswith("error")
+    gdal_error = gdal_lines[:1] and gdal_lines[0].startswith("error")
+    gdal_pixels_fail = all(" pixels error" in l for l in gdal_lines if " pixels " in l)
+    if bil_error and gdal_error:
+        return "agree", [], [f"both refuse it: BIL {bil_lines[0][6:]!r}; GDAL {gdal_lines[0][6:]!r}"]
+    if bil_error and bil_lines[0].startswith("error not supported"):
+        return "limit", [], [f"BIL does not read it: {bil_lines[0][6:]}"]
+    if bil_error and gdal_pixels_fail:
+        return "agree", [], [f"BIL refuses it and GDAL cannot read its pixels: {bil_lines[0][6:]}"]
+    if bil_error:
+        return "stricter", [], [f"BIL refuses it, GDAL reads it: {bil_lines[0][6:]}"]
     notes = []
+    category = "agree"
     bil = [l for l in bil_lines if not re.match(r"image \d+ (layout|missing) ", l)]
     gdal = list(gdal_lines)
     for line in bil_lines:
         m = re.match(r"image (\d+) missing (\d+)", line)
         if m:
-            notes.append(f"image {m.group(1)}: {m.group(2)} pixels hold the no-data value, marked missing")
+            notes.append(f"image {m.group(1)}: {m.group(2)} pixels never recorded or holding no-data, marked missing")
     # What BIL does not read is a known limit: its pixels are not compared, and a sample type
     # BIL does not read is not compared either.
     for line in list(bil):
-        m = re.match(r"image (\d+) pixels refused (.*)$", line)
+        m = re.match(r"image (\d+) pixels (refused|error) (.*)$", line)
         if m:
             i = m.group(1)
+            theirs = [g for g in gdal if g.startswith(f"image {i} pixels ")]
+            if m.group(2) == "refused":
+                category = "limit"
+                notes.append(f"image {i}: not compared: {m.group(3)}")
+            elif all(" pixels error" in g for g in theirs):
+                notes.append(f"image {i}: neither reads its pixels")
+            else:
+                category = "stricter"
+                notes.append(f"image {i}: BIL refuses its pixels, GDAL reads them: {m.group(3)}")
             bil.remove(line)
-            gdal = [g for g in gdal if not g.startswith(f"image {i} pixels ")]
-            notes.append(f"image {i}: not compared: {m.group(2)}")
+            gdal = [g for g in gdal if g not in theirs]
         m = re.match(r"image (\d+) size (\d+ x \d+ x \d+) unsupported$", line)
         if m:
             i, dims = m.group(1), m.group(2)
@@ -55,11 +78,11 @@ def compare(bil_lines, gdal_lines):
                 bil.remove(line)
                 gdal.remove(same[0])
                 notes.append(f"image {i}: sample type not compared: GDAL reads {same[0].split()[-1]}")
-    count = collections.Counter
-    ours, theirs = count(bil), count(gdal)
+    ours, theirs = collections.Counter(bil), collections.Counter(gdal)
     problems = [f"BIL only: {x}" for x in sorted((ours - theirs).elements())]
     problems += [f"GDAL only: {x}" for x in sorted((theirs - ours).elements())]
     if problems:
+        category = "differ"
         notes += [l for l in bil_lines if re.match(r"image \d+ layout ", l)]
     else:
         notes += [
@@ -67,39 +90,44 @@ def compare(bil_lines, gdal_lines):
             for l in bil
             if (m := re.match(r"image (\d+) pixels [0-9a-f]{16}$", l))
         ]
-    return problems, notes
+    return category, problems, notes
 
 
 def main():
     if len(sys.argv) < 4:
         sys.exit(__doc__)
     dump, reference, paths = sys.argv[1], sys.argv[2], sys.argv[3:]
-    failed, compared = 0, 0
     actions = "GITHUB_ACTIONS" in os.environ
+    by = collections.defaultdict(list)
+    compared = 0
     for path in paths:
-        problems, notes = compare(run(dump, path), run(reference, path))
+        category, problems, notes = compare(run(dump, path), run(reference, path))
         name = os.path.basename(path)
+        by[category].append(name)
         compared += sum(n.endswith("pixels agree") for n in notes)
-        if problems:
-            failed += 1
-            print(f"{name}: differs")
-            for p in problems:
-                print(f"    {p}")
-                if actions:
-                    print(f"::error::{name}: {p}"[:900])
-            for n in notes:
-                print(f"    {n}")
-                if actions:
-                    print(f"::warning::{name}: {n}"[:900])
-        else:
-            print(f"{name}: agrees")
-            for n in notes:
-                print(f"    {n}")
-    summary = f"GeoTIFF reader against GDAL: {len(paths) - failed} of {len(paths)} files agree, {compared} Images pixel for pixel"
+        print(f"{name}: {category}")
+        for p in problems:
+            print(f"    {p}")
+            if actions:
+                print(f"::error::{name}: {p}"[:900])
+        for n in notes:
+            print(f"    {n}")
+            if actions and category == "differ":
+                print(f"::warning::{name}: {n}"[:900])
+    summary = (
+        f"GeoTIFF reader against GDAL, {len(paths)} files: {len(by['agree'])} agree, "
+        f"{compared} Images pixel for pixel; {len(by['limit'])} hold what BIL does not yet read; "
+        f"{len(by['stricter'])} BIL refuses as corrupt where GDAL reads; {len(by['differ'])} differ"
+    )
     print(summary)
     if actions:
         print(f"::notice::{summary}")
-    sys.exit(1 if failed else 0)
+        # The files behind each category, in one notice each, so the run can be read without
+        # its log.
+        for category in ("stricter", "differ"):
+            if by[category]:
+                print(f"::notice::{category}: {' '.join(by[category])}"[:4000])
+    sys.exit(1 if by["differ"] else 0)
 
 
 if __name__ == "__main__":

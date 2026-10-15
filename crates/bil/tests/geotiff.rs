@@ -67,6 +67,8 @@ struct Img {
     subfile: u32,
     /// Extra tags: code, TIFF type, count, values as little-endian bytes of that type.
     tags: Vec<(u16, u16, u64, Vec<u8>)>,
+    /// Chunks never written, as in a sparse file: offset and byte count 0.
+    sparse: Vec<usize>,
 }
 
 impl Img {
@@ -83,6 +85,7 @@ impl Img {
             predictor: 1,
             subfile: 0,
             tags: Vec::new(),
+            sparse: Vec::new(),
         }
     }
 
@@ -229,11 +232,17 @@ fn write(images: &[Img], big: bool, bigtiff: bool) -> Vec<u8> {
     for img in images {
         let chunks = img.chunks(big);
         let mut offsets = Vec::new();
-        for c in &chunks {
-            offsets.push(f.len() as u64);
-            f.extend(c);
+        let mut counts = Vec::new();
+        for (k, c) in chunks.iter().enumerate() {
+            if img.sparse.contains(&k) {
+                offsets.push(0);
+                counts.push(0);
+            } else {
+                offsets.push(f.len() as u64);
+                counts.push(c.len() as u64);
+                f.extend(c);
+            }
         }
-        let counts: Vec<u64> = chunks.iter().map(|c| c.len() as u64).collect();
         // Entries: (code, type, count, little-endian value bytes).
         let short = |v: &[u16]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
         let long = |v: &[u64]| -> (u16, Vec<u8>) {
@@ -573,7 +582,9 @@ fn nodata_in_one_sample_only_is_not_missing() {
     let f = source.read_fragment(0, whole(&img)).unwrap();
     let both = f
         .data
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .filter(|p| p[0] == 0 && p[1] == 0)
         .count();
     let missing = f
@@ -789,4 +800,31 @@ fn corrupt_files_are_errors_never_panics() {
         opened > 500 && refused > 500,
         "{opened} opened, {refused} refused"
     );
+}
+
+/// A chunk of no bytes was never written, as in a sparse file: its pixels are 0 and marked
+/// missing, and the others read as written (section 4).
+#[test]
+fn chunks_never_written_are_missing() {
+    let mut img = Img::new(20, 30, 1, SampleType::U16);
+    img.tile = Some((16, 16));
+    img.sparse = vec![1, 2];
+    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+    let f = source.read_fragment(0, whole(&img)).unwrap();
+    let valid = f.validity.clone().unwrap();
+    for r in 0..20u64 {
+        for c in 0..30u64 {
+            let chunk = (r / 16) * 2 + c / 16;
+            let p = (r * 30 + c) as usize;
+            let v = u16::from_ne_bytes([f.data[2 * p], f.data[2 * p + 1]]);
+            if chunk == 1 || chunk == 2 {
+                assert!(!valid[p] && v == 0, "row {r} col {c}");
+            } else {
+                assert!(valid[p], "row {r} col {c}");
+                assert_eq!(u64::from(v), sample(SampleType::U16, r, c, 0));
+            }
+        }
+    }
+    // Storage lists only the chunks that were written.
+    assert_eq!(source.describe_storage(0).unwrap().blocks.len(), 2);
 }
