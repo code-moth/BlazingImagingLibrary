@@ -100,6 +100,12 @@ def compare(bil_lines, gdal_lines, path):
         if ours != theirs:
             problems.append(f"image {i} extensions: BIL {ours}, GDAL {theirs}")
     notes += [f"image {i}: {n} pixels never recorded, marked missing" for i, n in sorted(missing.items())]
+    # JPEG 2000 Images both decoded and whose pixels agree, named so that a run shows the codec
+    # was compared, not skipped.
+    for line in bil_lines:
+        m = re.match(r"image (\d+) layout IC (C8|M8) ", line)
+        if m and any(re.match(rf"image {m.group(1)} pixels [0-9a-f]{{16}}$", l) and l in gdal_lines for l in bil_lines):
+            notes.append(f"image {m.group(1)}: JPEG 2000 ({m.group(2)}), pixels agree with GDAL's JP2OpenJPEG")
     return problems, notes
 
 
