@@ -186,6 +186,10 @@ struct Layout {
     counts: Vec<u64>,
     nodata: Option<String>,
     subfile: u32,
+    /// PhotometricInterpretation, where stated.
+    photometric: Option<u16>,
+    /// The SubIFDs tag's directories, where some of a file's overviews may lie.
+    sub_ifds: Vec<u64>,
 }
 
 impl Layout {
@@ -382,6 +386,37 @@ impl<R: ReadAt> GeoTiffSource<R> {
         }
         if images.is_empty() {
             return Err(corrupt("no full-resolution image"));
+        }
+        // Overviews in an Image's SubIFDs are stored levels too, as GDAL reads them. They are
+        // listed; reading them is still to come, with stored levels generally.
+        for image in &mut images {
+            let pointers = ifds[image.info.ifd]
+                .layout
+                .as_ref()
+                .map(|l| l.sub_ifds.clone())
+                .unwrap_or_default();
+            for p in pointers.into_iter().take(1_000) {
+                if p == 0 || p >= size || !seen.insert(p) {
+                    continue;
+                }
+                let Ok(dir) = decoder.read_directory(tiff::tags::IfdPointer(p)) else {
+                    continue;
+                };
+                let Ok(layout) = read_layout(&mut decoder, &dir, size) else {
+                    continue;
+                };
+                if layout.subfile & 1 != 0 && layout.subfile & 4 == 0 {
+                    image.info.stored_levels.push(StoredLevel {
+                        name: String::new(),
+                        rows: layout.rows,
+                        cols: layout.cols,
+                        scale: (
+                            image.info.rows as f64 / layout.rows as f64,
+                            image.info.cols as f64 / layout.cols as f64,
+                        ),
+                    });
+                }
+            }
         }
         for image in &mut images {
             image
@@ -601,6 +636,20 @@ impl<R: ReadAt> GeoTiffSource<R> {
         let pixel_type = info
             .pixel_type
             .ok_or_else(|| Error::Unsupported(info.unsupported.clone().unwrap_or_default()))?;
+        // The `tiff` crate turns WhiteIsZero samples into BlackIsZero ones as it decodes: the
+        // complement for unsigned integers, which is undone below exactly, and 1 − v for floats,
+        // which cannot be undone exactly, so those are refused rather than altered (section 4).
+        let white_is_zero = l.photometric == Some(0);
+        if white_is_zero
+            && matches!(
+                pixel_type.sample_type,
+                SampleType::F16 | SampleType::F32 | SampleType::F64
+            )
+        {
+            return Err(Error::Unsupported(
+                "float samples under WhiteIsZero, which the tiff crate alters".into(),
+            ));
+        }
         if !info.decodable {
             return Err(Error::Unsupported(format!(
                 "image {image} is compressed with {}, which this build does not decode",
@@ -674,6 +723,12 @@ impl<R: ReadAt> GeoTiffSource<R> {
                         .decoder
                         .read_chunk_bytes(index, &mut chunk_buf)
                         .map_err(from_tiff)?;
+                    if white_is_zero {
+                        // max − (max − v) = v, and max − v is the complement of v's bits.
+                        for b in chunk_buf.iter_mut() {
+                            *b = !*b;
+                        }
+                    }
                     let r0 = (crow * ch).max(window.row_start);
                     let r1 = ((crow * ch) + u64::from(h)).min(row_end);
                     let c0 = (ccol * cw).max(window.col_start);
@@ -820,6 +875,24 @@ fn read_layout<R: ReadAt>(
         sample_type(format0 as u16, bits0 as u32)
     };
     let mut t = decoder.read_directory_tags(dir);
+    let photometric = t
+        .find_tag_unsigned::<u16>(Tag::PhotometricInterpretation)
+        .ok()
+        .flatten();
+    let sub_ifds = match t.find_tag(Tag::SubIfd) {
+        Ok(Some(v)) => {
+            let one = |v: &TiffValue| match v {
+                TiffValue::Ifd(x) | TiffValue::Unsigned(x) => Some(u64::from(*x)),
+                TiffValue::IfdBig(x) | TiffValue::UnsignedBig(x) => Some(*x),
+                _ => None,
+            };
+            match &v {
+                TiffValue::List(items) => items.iter().filter_map(one).collect(),
+                single => one(single).into_iter().collect(),
+            }
+        }
+        _ => Vec::new(),
+    };
     let nodata = match t.find_tag(Tag::GdalNodata) {
         Ok(Some(TiffValue::Ascii(s))) => Some(s.trim_end_matches('\0').trim().to_string()),
         _ => None,
@@ -838,6 +911,8 @@ fn read_layout<R: ReadAt>(
         counts,
         nodata,
         subfile: subfile as u32,
+        photometric,
+        sub_ifds,
     })
 }
 

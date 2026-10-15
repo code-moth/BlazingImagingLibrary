@@ -33,7 +33,8 @@ def run(program, path):
 def compare(bil_lines, gdal_lines):
     """How the two reports compare: a category, the differences, and notes. The categories:
     `agree`; `limit`, BIL does not read what GDAL does, as it says; `stricter`, BIL refuses as
-    corrupt a file or Image that GDAL reads; `differ`, a disagreement, which fails the run."""
+    corrupt a file or Image that GDAL reads; `lenient`, GDAL refuses a file BIL opens;
+    `differ`, a disagreement, which fails the run."""
     bil_error = bil_lines[:1] and bil_lines[0].startswith("error")
     gdal_error = gdal_lines[:1] and gdal_lines[0].startswith("error")
     gdal_pixels_fail = all(" pixels error" in l for l in gdal_lines if " pixels " in l)
@@ -45,10 +46,21 @@ def compare(bil_lines, gdal_lines):
         return "agree", [], [f"BIL refuses it and GDAL cannot read its pixels: {bil_lines[0][6:]}"]
     if bil_error:
         return "stricter", [], [f"BIL refuses it, GDAL reads it: {bil_lines[0][6:]}"]
-    notes = []
+    if gdal_error:
+        return "lenient", [], [f"GDAL refuses it, BIL opens it: GDAL {gdal_lines[0][6:]!r}"]
     category = "agree"
-    bil = [l for l in bil_lines if not re.match(r"image \d+ (layout|missing) ", l)]
+    notes = []
+    bil = [l for l in bil_lines if not re.match(r"image \d+ (layout|missing|widened) ", l)]
     gdal = list(gdal_lines)
+    # GDAL 3.8 reads float16 as float32: compare BIL's values widened the same way.
+    for line in list(bil):
+        m = re.match(r"image (\d+) size (\d+ x \d+ x \d+) F16$", line)
+        wide = [l for l in bil_lines if m and l.startswith(f"image {m.group(1)} widened F32 ")]
+        if m and wide and f"image {m.group(1)} size {m.group(2)} F32" in gdal:
+            i = m.group(1)
+            bil[bil.index(line)] = f"image {i} size {m.group(2)} F32"
+            bil = [l if not l.startswith(f"image {i} pixels ") else f"image {i} pixels {wide[0].split()[-1]}" for l in bil]
+            notes.append(f"image {i}: float16, compared widened to float32 as GDAL reads it")
     for line in bil_lines:
         m = re.match(r"image (\d+) missing (\d+)", line)
         if m:
@@ -100,10 +112,13 @@ def main():
     actions = "GITHUB_ACTIONS" in os.environ
     by = collections.defaultdict(list)
     compared = 0
+    details = []
     for path in paths:
         category, problems, notes = compare(run(dump, path), run(reference, path))
         name = os.path.basename(path)
         by[category].append(name)
+        if problems:
+            details.append(f"{name}: " + "; ".join(problems + [n for n in notes if " layout " in n]))
         compared += sum(n.endswith("pixels agree") for n in notes)
         print(f"{name}: {category}")
         for p in problems:
@@ -117,16 +132,21 @@ def main():
     summary = (
         f"GeoTIFF reader against GDAL, {len(paths)} files: {len(by['agree'])} agree, "
         f"{compared} Images pixel for pixel; {len(by['limit'])} hold what BIL does not yet read; "
-        f"{len(by['stricter'])} BIL refuses as corrupt where GDAL reads; {len(by['differ'])} differ"
+        f"{len(by['stricter'])} BIL refuses as corrupt where GDAL reads; "
+        f"{len(by['lenient'])} GDAL refuses where BIL opens; {len(by['differ'])} differ"
     )
     print(summary)
     if actions:
         print(f"::notice::{summary}")
         # The files behind each category, in one notice each, so the run can be read without
         # its log.
-        for category in ("stricter", "differ"):
+        for category in ("stricter", "lenient", "differ"):
             if by[category]:
                 print(f"::notice::{category}: {' '.join(by[category])}"[:4000])
+        # Each difference in one line, all in one notice, since GitHub shows only the first ten
+        # error annotations of a step.
+        if details:
+            print("::notice::differences: " + " || ".join(details)[:30000])
     sys.exit(1 if by["differ"] else 0)
 
 

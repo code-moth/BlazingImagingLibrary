@@ -16,6 +16,19 @@ fn fnv(bytes: &[u8]) -> u64 {
     })
 }
 
+/// A half-precision float's value, exactly.
+fn half_to_f32(h: u16) -> f32 {
+    let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exponent = i32::from((h >> 10) & 0x1F);
+    let fraction = f32::from(h & 0x3FF);
+    match exponent {
+        0 => sign * fraction * 2f32.powi(-24),
+        31 if fraction == 0.0 => sign * f32::INFINITY,
+        31 => f32::NAN,
+        e => sign * (1.0 + fraction / 1024.0) * 2f32.powi(e - 15),
+    }
+}
+
 fn main() {
     let path = std::env::args().nth(1).expect("usage: geotiff_dump FILE");
     let file = std::fs::File::open(&path).expect("cannot open the file");
@@ -81,6 +94,16 @@ fn main() {
                             let at = p * f.strides[1] + b * size;
                             planes.extend_from_slice(&f.data[at..at + size]);
                         }
+                    }
+                    // GDAL 3.8 reads float16 as float32; the same values, widened, for comparison.
+                    if f.pixel_type.sample_type == bil::types::SampleType::F16 {
+                        let wide: Vec<u8> = planes
+                            .chunks_exact(2)
+                            .flat_map(|h| {
+                                half_to_f32(u16::from_ne_bytes([h[0], h[1]])).to_ne_bytes()
+                            })
+                            .collect();
+                        println!("image {i} widened F32 {:016x}", fnv(&wide));
                     }
                     if let Some(v) = &f.validity {
                         println!("image {i} missing {}", v.iter().filter(|&&x| !x).count());

@@ -294,6 +294,8 @@ fn write(images: &[Img], big: bool, bigtiff: bool) -> Vec<u8> {
                 e.push((279, ctype, counts.len() as u64, cbytes));
             }
         }
+        // A test's own tag replaces the default of the same code.
+        e.retain(|x| !img.tags.iter().any(|t| t.0 == x.0));
         e.extend(img.tags.iter().cloned());
         e.sort_by_key(|x| x.0);
         // The IFD, with values too long for an entry placed after it.
@@ -827,4 +829,23 @@ fn chunks_never_written_are_missing() {
     }
     // Storage lists only the chunks that were written.
     assert_eq!(source.describe_storage(0).unwrap().blocks.len(), 2);
+}
+
+/// The `tiff` crate inverts WhiteIsZero samples as it decodes; BIL delivers them as stored
+/// (section 4), and refuses float ones, whose inversion cannot be undone exactly.
+#[test]
+fn white_is_zero_samples_come_back_as_stored() {
+    for t in [SampleType::U8, SampleType::U16, SampleType::U32] {
+        let mut img = Img::new(5, 9, 1, t);
+        img.tags.push((262, 3, 1, 0u16.to_le_bytes().to_vec()));
+        let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+        check(&source, 0, &img, whole(&img));
+    }
+    let mut img = Img::new(5, 9, 1, SampleType::F32);
+    img.tags.push((262, 3, 1, 0u16.to_le_bytes().to_vec()));
+    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+    assert!(matches!(
+        source.read_fragment(0, whole(&img)),
+        Err(Error::Unsupported(_))
+    ));
 }
