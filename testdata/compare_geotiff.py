@@ -52,7 +52,7 @@ def compare(bil_lines, gdal_lines):
         return "lenient", [], [f"GDAL refuses it, BIL opens it: GDAL {gdal_lines[0][6:]!r}"]
     category = "agree"
     notes = []
-    bil = [l for l in bil_lines if not re.match(r"image \d+ (layout|missing|widened|photometric) ", l)]
+    bil = [l for l in bil_lines if not re.match(r"image \d+ (layout|missing|widened|unsigned|photometric) ", l)]
     gdal = list(gdal_lines)
     # GDAL 3.8 reads float16 as float32: compare BIL's values widened the same way.
     for line in list(bil):
@@ -63,6 +63,16 @@ def compare(bil_lines, gdal_lines):
             bil[bil.index(line)] = f"image {i} size {m.group(2)} F32"
             bil = [l if not l.startswith(f"image {i} pixels ") else f"image {i} pixels {wide[0].split()[-1]}" for l in bil]
             notes.append(f"image {i}: float16, compared widened to float32 as GDAL reads it")
+    # GDAL 3.8 reads signed integers of a width of their own as unsigned, their sign not extended;
+    # BIL extends it (M43). Compare BIL's values masked to the stored width.
+    for line in list(bil):
+        m = re.match(r"image (\d+) size (\d+ x \d+ x \d+) I(8|16|32|64)$", line)
+        masked = [l for l in bil_lines if m and l.startswith(f"image {m.group(1)} unsigned U{m.group(3)} ")]
+        if m and masked and f"image {m.group(1)} size {m.group(2)} U{m.group(3)}" in gdal:
+            i = m.group(1)
+            bil[bil.index(line)] = f"image {i} size {m.group(2)} U{m.group(3)}"
+            bil = [l if not l.startswith(f"image {i} pixels ") else f"image {i} pixels {masked[0].split()[-1]}" for l in bil]
+            notes.append(f"image {i}: signed samples of their own width, compared unsigned as GDAL reads them")
     for line in bil_lines:
         m = re.match(r"image (\d+) missing (\d+)", line)
         if m:

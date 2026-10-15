@@ -114,6 +114,38 @@ fn main() {
                             .collect();
                         println!("image {i} widened F32 {:016x}", fnv(&wide));
                     }
+                    // GDAL 3.8 reads signed integers of a width of their own (M43) as unsigned,
+                    // not extending their sign; the same values, masked, for comparison.
+                    let pt = f.pixel_type;
+                    let bits = pt.significant_bits as usize;
+                    let unsigned = match pt.sample_type {
+                        bil::types::SampleType::I8 => Some("U8"),
+                        bil::types::SampleType::I16 => Some("U16"),
+                        bil::types::SampleType::I32 => Some("U32"),
+                        bil::types::SampleType::I64 => Some("U64"),
+                        _ => None,
+                    };
+                    if let Some(name) = unsigned.filter(|_| bits < size * 8) {
+                        let mut masked = planes.clone();
+                        for s in masked.chunks_exact_mut(size) {
+                            let mut w = [0u8; 8];
+                            w[..size].copy_from_slice(s);
+                            let v = u64::from_ne_bytes(if cfg!(target_endian = "big") {
+                                let mut b = [0u8; 8];
+                                b[8 - size..].copy_from_slice(s);
+                                b
+                            } else {
+                                w
+                            }) & ((1u64 << bits) - 1);
+                            let b = v.to_ne_bytes();
+                            s.copy_from_slice(if cfg!(target_endian = "big") {
+                                &b[8 - size..]
+                            } else {
+                                &b[..size]
+                            });
+                        }
+                        println!("image {i} unsigned {name} {:016x}", fnv(&masked));
+                    }
                     if let Some(v) = &f.validity {
                         println!("image {i} missing {}", v.iter().filter(|&&x| !x).count());
                     }
