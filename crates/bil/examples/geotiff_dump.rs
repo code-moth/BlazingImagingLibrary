@@ -52,6 +52,15 @@ fn main() {
         for level in &info.stored_levels {
             println!("image {i} overview {} x {}", level.rows, level.cols);
         }
+        // How the samples are to be seen, which GDAL converts for some interpretations.
+        let photometric = source
+            .read_field(Scope::Image(i), "tiff.ifd.PhotometricInterpretation")
+            .ok()
+            .and_then(|f| match f.value() {
+                bil::fields::Value::Integer(v) => Some(*v),
+                _ => None,
+            });
+        println!("image {i} photometric {photometric:?}");
         // Shown only where files differ.
         println!(
             "image {i} layout compression {} planar {} tiled {} block {} x {} nodata {:?} groups {:?}",

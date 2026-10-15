@@ -849,3 +849,22 @@ fn white_is_zero_samples_come_back_as_stored() {
         Err(Error::Unsupported(_))
     ));
 }
+
+#[test]
+fn a_sample_the_tiff_crate_would_drop_is_refused_not_lost() {
+    // RGB with a fourth sample marked unspecified: the crate names three and would drop one.
+    let mut img = Img::new(5, 9, 4, SampleType::U8);
+    img.tags.push((262, 3, 1, 2u16.to_le_bytes().to_vec()));
+    img.tags.push((338, 3, 1, 0u16.to_le_bytes().to_vec()));
+    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+    assert!(matches!(
+        source.read_fragment(0, whole(&img)),
+        Err(Error::Unsupported(_))
+    ));
+    // Marked as unassociated alpha, the crate names all four, and they read exactly.
+    let mut img = Img::new(5, 9, 4, SampleType::U8);
+    img.tags.push((262, 3, 1, 2u16.to_le_bytes().to_vec()));
+    img.tags.push((338, 3, 1, 2u16.to_le_bytes().to_vec()));
+    let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+    check(&source, 0, &img, whole(&img));
+}

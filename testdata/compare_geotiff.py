@@ -33,8 +33,9 @@ def run(program, path):
 def compare(bil_lines, gdal_lines):
     """How the two reports compare: a category, the differences, and notes. The categories:
     `agree`; `limit`, BIL does not read what GDAL does, as it says; `stricter`, BIL refuses as
-    corrupt a file or Image that GDAL reads; `lenient`, GDAL refuses a file BIL opens;
-    `differ`, a disagreement, which fails the run."""
+    corrupt a file or Image that GDAL reads; `lenient`, GDAL refuses a file or
+    Image BIL opens; `converts`, GDAL converts the color of CMYK, YCbCr or CIELab samples that
+    BIL returns as stored; `differ`, a disagreement, which fails the run."""
     bil_error = bil_lines[:1] and bil_lines[0].startswith("error")
     gdal_error = gdal_lines[:1] and gdal_lines[0].startswith("error")
     gdal_pixels_fail = all(" pixels error" in l for l in gdal_lines if " pixels " in l)
@@ -50,7 +51,7 @@ def compare(bil_lines, gdal_lines):
         return "lenient", [], [f"GDAL refuses it, BIL opens it: GDAL {gdal_lines[0][6:]!r}"]
     category = "agree"
     notes = []
-    bil = [l for l in bil_lines if not re.match(r"image \d+ (layout|missing|widened) ", l)]
+    bil = [l for l in bil_lines if not re.match(r"image \d+ (layout|missing|widened|photometric) ", l)]
     gdal = list(gdal_lines)
     # GDAL 3.8 reads float16 as float32: compare BIL's values widened the same way.
     for line in list(bil):
@@ -90,6 +91,33 @@ def compare(bil_lines, gdal_lines):
                 bil.remove(line)
                 gdal.remove(same[0])
                 notes.append(f"image {i}: sample type not compared: GDAL reads {same[0].split()[-1]}")
+    # GDAL lists only the Images it can open; one it leaves out that BIL lists is lenience, not
+    # a difference, as long as the Images both list agree.
+    m = re.match(r"images (\d+)$", gdal[0]) if gdal else None
+    if m and f"images {m.group(1)}" not in bil:
+        listed = int(m.group(1))
+        numbers = {int(x.group(1)) for l in bil if (x := re.match(r"image (\d+) ", l))}
+        extra = sorted(n for n in numbers if n >= listed)
+        if extra:
+            bil = [l for l in bil if not l.startswith("images ")]
+            bil = [l for l in bil if int(re.match(r"image (\d+) ", l).group(1)) < listed]
+            gdal = gdal[1:]
+            category = "lenient"
+            notes.append(f"GDAL does not list image(s) {extra}, which BIL opens")
+    # GDAL converts CMYK (5), YCbCr (6) and CIELab (8, 9, 10) to RGB or RGBA; BIL returns the stored
+    # samples (section 4). Those Images' sizes and pixels are not compared.
+    for line in bil_lines:
+        m = re.match(r"image (\d+) photometric Some\((5|6|8|9|10)\)$", line)
+        if m:
+            i = m.group(1)
+            ours_i = [l for l in bil if re.match(rf"image {i} (size|pixels) ", l)]
+            theirs_i = [l for l in gdal if re.match(rf"image {i} (size|pixels) ", l)]
+            if ours_i != theirs_i:
+                bil = [l for l in bil if l not in ours_i]
+                gdal = [l for l in gdal if l not in theirs_i]
+                if category == "agree":
+                    category = "converts"
+                notes.append(f"image {i}: photometric {m.group(2)}, which GDAL converts to RGB or RGBA; not compared")
     ours, theirs = collections.Counter(bil), collections.Counter(gdal)
     problems = [f"BIL only: {x}" for x in sorted((ours - theirs).elements())]
     problems += [f"GDAL only: {x}" for x in sorted((theirs - ours).elements())]
@@ -133,14 +161,15 @@ def main():
         f"GeoTIFF reader against GDAL, {len(paths)} files: {len(by['agree'])} agree, "
         f"{compared} Images pixel for pixel; {len(by['limit'])} hold what BIL does not yet read; "
         f"{len(by['stricter'])} BIL refuses as corrupt where GDAL reads; "
-        f"{len(by['lenient'])} GDAL refuses where BIL opens; {len(by['differ'])} differ"
+        f"{len(by['lenient'])} GDAL refuses where BIL opens; "
+        f"{len(by['converts'])} GDAL converts color BIL returns as stored; {len(by['differ'])} differ"
     )
     print(summary)
     if actions:
         print(f"::notice::{summary}")
         # The files behind each category, in one notice each, so the run can be read without
         # its log.
-        for category in ("stricter", "lenient", "differ"):
+        for category in ("stricter", "lenient", "converts", "differ"):
             if by[category]:
                 print(f"::notice::{category}: {' '.join(by[category])}"[:4000])
         # Each difference in one line, all in one notice, since GitHub shows only the first ten

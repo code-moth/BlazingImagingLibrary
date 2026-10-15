@@ -690,6 +690,16 @@ impl<R: ReadAt> GeoTiffSource<R> {
             state.decoder.seek_to_image(info.ifd).map_err(from_tiff)?;
             state.current = Some(info.ifd);
         }
+        // The `tiff` crate returns only the samples its color type names: an extra sample it
+        // cannot name, such as a fourth after RGB marked unspecified, it drops. Refused rather
+        // than returned short (section 4).
+        let named = state.decoder.colortype().map_err(from_tiff)?.num_samples();
+        if !l.planar && u32::from(named) != info.bands {
+            return Err(Error::Unsupported(format!(
+                "{} samples a pixel, of which the tiff crate returns {named}",
+                info.bands
+            )));
+        }
         let mut chunk_buf = Vec::new();
         // Pixels in chunks never written (section 4): 0 in the data, and marked.
         let mut unrecorded = vec![false; (rows * cols) as usize];
