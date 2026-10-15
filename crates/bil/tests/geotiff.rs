@@ -37,6 +37,8 @@ fn sample(t: SampleType, r: u64, c: u64, b: u64) -> u64 {
             u64::from(((r as f32) * 1.5 - (c as f32) * 0.25 + b as f32 * 100.0).to_bits())
         }
         SampleType::F64 => ((r as f64) * 1.5 - (c as f64) * 0.25 + b as f64 * 100.0).to_bits(),
+        // Any half whose exponent's top bit is clear: finite, of either sign, subnormals too.
+        SampleType::F16 => bits_at(r, c, b, 16) & 0xBFFF,
         t => bits_at(r, c, b, t.size() as u32 * 8),
     }
 }
@@ -44,7 +46,7 @@ fn sample(t: SampleType, r: u64, c: u64, b: u64) -> u64 {
 fn format_of(t: SampleType) -> u16 {
     match t {
         SampleType::I8 | SampleType::I16 | SampleType::I32 | SampleType::I64 => 2,
-        SampleType::F32 | SampleType::F64 => 3,
+        SampleType::F16 | SampleType::F32 | SampleType::F64 => 3,
         _ => 1,
     }
 }
@@ -441,6 +443,7 @@ fn every_layout_reads_exactly() {
         SampleType::I32,
         SampleType::U64,
         SampleType::I64,
+        SampleType::F16,
         SampleType::F32,
         SampleType::F64,
     ];
@@ -457,8 +460,10 @@ fn every_layout_reads_exactly() {
                 [(1, 1), (8, 1), (8, if format_of(t) == 3 { 3 } else { 2 })]
             {
                 for (big, bigtiff) in [(false, false), (true, false), (false, true)] {
-                    // 21 × 37: partial strips and tiles on the right and at the bottom.
-                    let mut img = Img::new(21, 37, 3, t);
+                    // 21 × 37: partial strips and tiles on the right and at the bottom; one to
+                    // four bands in turn.
+                    let bands = 1 + cases % 4;
+                    let mut img = Img::new(21, 37, bands, t);
                     img.tile = tile;
                     img.planar = planar;
                     img.compression = compression;
@@ -466,7 +471,10 @@ fn every_layout_reads_exactly() {
                     let source = GeoTiffSource::open(write(&[img.clone()], big, bigtiff))
                         .unwrap_or_else(|e| panic!("{t:?} {tile:?} {planar} {compression} {predictor} {big} {bigtiff}: {e}"));
                     let info = source.image_info(0).unwrap();
-                    assert_eq!((info.rows, info.cols, info.bands), (21, 37, 3));
+                    assert_eq!(
+                        (info.rows, info.cols, u64::from(info.bands)),
+                        (21, 37, bands)
+                    );
                     assert_eq!(info.pixel_type.unwrap().sample_type, t);
                     random_windows(&source, &img, &mut rng, 6);
                     cases += 1;
@@ -474,7 +482,7 @@ fn every_layout_reads_exactly() {
             }
         }
     }
-    assert_eq!(cases, 10 * 4 * 3 * 3);
+    assert_eq!(cases, 11 * 4 * 3 * 3);
 }
 
 #[test]
@@ -665,6 +673,20 @@ fn tags_and_geotiff_keys_are_fields() {
         assert_eq!(
             f("geotiff.keys.GeogSemiMajorAxisGeoKey").value(),
             &Value::Float(6_378_137.0)
+        );
+        // Stored bytes in the file's byte order, as tags' are.
+        let axis = 6_378_137.0f64;
+        assert_eq!(
+            f("geotiff.keys.GeogSemiMajorAxisGeoKey").stored,
+            if big {
+                axis.to_be_bytes()
+            } else {
+                axis.to_le_bytes()
+            }
+        );
+        assert_eq!(
+            f("geotiff.keys.GTModelTypeGeoKey").stored,
+            if big { vec![0, 2] } else { vec![2, 0] }
         );
         assert!(matches!(
             source.read_field(Scope::Image(0), "tiff.ifd.Nothing"),
@@ -867,4 +889,50 @@ fn a_sample_the_tiff_crate_would_drop_is_refused_not_lost() {
     img.tags.push((338, 3, 1, 2u16.to_le_bytes().to_vec()));
     let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
     check(&source, 0, &img, whole(&img));
+}
+
+#[test]
+fn layouts_that_cannot_be_counted_are_corrupt_not_panics() {
+    // Behind a valid first Image, so the second IFD's layout is BIL's own to check.
+    let first = Img::new(2, 2, 1, SampleType::U8);
+    let open_with = |tags: Vec<(u16, u16, u64, Vec<u8>)>, tile: Option<(u64, u64)>, bands| {
+        let mut second = Img::new(2, 2, bands, SampleType::U8);
+        second.tile = tile;
+        second.planar = bands > 1;
+        second.tags = tags;
+        GeoTiffSource::open(write(&[first.clone(), second], false, false))
+    };
+    let huge = u32::MAX.to_le_bytes().to_vec();
+    // Chunks of 1 × 1 over 2³² − 1 square pixels in two planes: more than a u64 counts.
+    let r = open_with(
+        vec![(256, 4, 1, huge.clone()), (257, 4, 1, huge)],
+        Some((1, 1)),
+        2,
+    );
+    assert!(matches!(r, Err(Error::Corrupt(_))), "{:?}", r.err());
+    // A SampleFormat beyond 16 bits is not truncated into a valid one.
+    let r = open_with(vec![(339, 4, 1, 65_537u32.to_le_bytes().to_vec())], None, 1);
+    assert!(matches!(r, Err(Error::Corrupt(_))), "{:?}", r.err());
+    // BitsPerSample with no values.
+    let r = open_with(vec![(258, 3, 0, Vec::new())], None, 1);
+    assert!(r.is_err());
+}
+
+#[test]
+fn a_key_listed_twice_carries_its_place() {
+    let mut img = Img::new(2, 2, 1, SampleType::U8);
+    let dir = [1u16, 1, 0, 2, 1024, 0, 1, 1, 1024, 0, 1, 2];
+    let le: Vec<u8> = dir.iter().flat_map(|x| x.to_le_bytes()).collect();
+    img.tags.push((34735, 3, dir.len() as u64, le));
+    let source = GeoTiffSource::open(write(&[img], false, false)).unwrap();
+    let f = |n: &str| source.read_field(Scope::Image(0), n);
+    assert_eq!(
+        f("geotiff.keys.GTModelTypeGeoKey[1]").unwrap().value(),
+        &Value::Integer(1)
+    );
+    assert_eq!(
+        f("geotiff.keys.GTModelTypeGeoKey[2]").unwrap().value(),
+        &Value::Integer(2)
+    );
+    assert!(f("geotiff.keys.GTModelTypeGeoKey").is_err());
 }

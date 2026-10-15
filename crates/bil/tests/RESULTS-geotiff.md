@@ -5,10 +5,11 @@ The reader (`bil::geotiff`) against its own tests and against GDAL 3.8.4, as of 
 
 ## Its own tests
 
-`crates/bil/tests/geotiff.rs`, 13 tests, in every CI run on all four systems, unoptimized so that an integer overflow fails:
+`crates/bil/tests/geotiff.rs`, 15 tests, in every CI run on all four systems, unoptimized so that an integer overflow fails:
 
-- 360 layouts read whole and through random Windows, sample for sample: every sample type the reader reads, one to several bands, strips and tiles, chunky and planar, uncompressed and Deflate, with and without predictors, little-endian, big-endian and BigTIFF.
+- 396 layouts read whole and through random Windows, sample for sample: every sample type the reader reads, F16 among them, one to four bands in turn, strips and tiles, chunky and planar, uncompressed and Deflate, with and without predictors, little-endian, big-endian and BigTIFF.
 - Overviews and masks; storage in file order; no-data in every sample and in one; tags and GeoTIFF keys as fields; unsupported compression; claims past the file; a looping IFD chain; chunks never written; WhiteIsZero; an extra sample the `tiff` crate would drop.
+- Layouts whose chunks cannot be counted, out-of-range sample formats, a bit count with no values: each is corrupt, not a panic. The checking agent found these three panics, which the seeded corruptions had missed.
 - 20,000 seeded corruptions: each opens or is refused, and each read delivers or fails, with no panic.
 
 ## Against GDAL
@@ -24,7 +25,7 @@ The reader (`bil::geotiff`) against its own tests and against GDAL 3.8.4, as of 
 | converts | 1 | CMYK, which GDAL converts to RGB and BIL returns as stored |
 | differ | 0 | |
 
-Float16 is compared widened to float32, as GDAL 3.8 reads it. Images too large to read whole on a CI runner are listed and not hashed.
+Float16 is compared widened to float32, as GDAL 3.8 reads it. Images too large to read whole on a CI runner are listed and not hashed. The comparison runs a release build, where an overflow would wrap rather than fail; the tests above run unoptimized to catch that. A failure of BIL's program counts as a difference.
 
 **Stricter:** `byte_bigtiff_invalid_slong8_for_stripoffsets`, `one_strip_nobytecount`, `size_of_stripbytecount_at_1_and_lower_than_stripcount`, `size_of_stripbytecount_lower_than_stripcount`: a table of the wrong type, missing, or shorter than its count. GDAL infers what is missing.
 

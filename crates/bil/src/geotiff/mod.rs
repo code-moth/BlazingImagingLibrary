@@ -307,14 +307,21 @@ impl<R: ReadAt> GeoTiffSource<R> {
         let first = decoder
             .ifd_pointer()
             .ok_or_else(|| corrupt("no image file directory"))?;
-        // The chain, walked here so that an IFD the `tiff` crate cannot make an image of, such
-        // as a mask, is still listed; a chain that loops is corrupt.
+        // The chain, walked here so that an IFD after the first that the `tiff` crate cannot make
+        // an image of, such as a mask, is still listed; a chain that loops is corrupt. The crate
+        // makes an image of the first IFD as it starts, so whatever it refuses there, such as an
+        // unknown photometric interpretation or predictor, fails the open (M39, M42).
         let mut ifds = Vec::new();
         let mut seen = HashSet::new();
         let mut next = Some(first);
         while let Some(pointer) = next {
-            if !seen.insert(pointer.0) || ifds.len() >= MAX_IFDS {
+            if !seen.insert(pointer.0) {
                 return Err(corrupt("the chain of image file directories loops"));
+            }
+            if ifds.len() >= MAX_IFDS {
+                return Err(Error::Unsupported(format!(
+                    "more than {MAX_IFDS} image file directories (M41)"
+                )));
             }
             if pointer.0 >= size {
                 return Err(corrupt(format!(
@@ -331,7 +338,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
         for (n, ifd) in ifds.iter().enumerate() {
             let layout = match &ifd.layout {
                 Ok(l) => l.clone(),
-                // An IFD whose layout cannot be read is corrupt where it would be an Image.
+                // An IFD whose layout cannot be read fails the open, whatever it holds: whether it
+                // is a mask or an overview is known only from the layout (M42).
                 Err(m) => return Err(corrupt(format!("IFD {n}: {m}"))),
             };
             let reduced = layout.subfile & 1 != 0;
@@ -426,7 +434,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
             image
                 .info
                 .stored_levels
-                .sort_by_key(|l| std::cmp::Reverse(l.rows * l.cols));
+                .sort_by_key(|l| std::cmp::Reverse(u128::from(l.rows) * u128::from(l.cols)));
             for (k, level) in image.info.stored_levels.iter_mut().enumerate() {
                 level.name = format!("stored{}", k + 1);
             }
@@ -486,18 +494,32 @@ impl<R: ReadAt> GeoTiffSource<R> {
         Ok(groups)
     }
 
+    /// The held groups. A panic while they were locked leaves them whole, since each is
+    /// inserted or removed in one step, so a poisoned lock is taken as it is.
+    fn held(&self) -> std::sync::MutexGuard<'_, HashMap<(Scope, String), Arc<FieldGroup>>> {
+        self.held
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The decoder. After a panic while it was locked its position is unknown, so it is sought
+    /// again before the next read.
+    fn decoder_state(&self) -> std::sync::MutexGuard<'_, DecoderState<R>> {
+        self.decoder.lock().unwrap_or_else(|poisoned| {
+            let mut state = poisoned.into_inner();
+            state.current = None;
+            state
+        })
+    }
+
     /// A field group, extracted on first request and held until released.
     pub fn read_field_group(&self, scope: Scope, group: &str) -> Result<Arc<FieldGroup>> {
         let key = (scope, group.to_string());
-        if let Some(g) = self.held.lock().unwrap().get(&key) {
+        if let Some(g) = self.held().get(&key) {
             return Ok(g.clone());
         }
         let g = Arc::new(self.extract(scope, group)?);
-        self.held
-            .lock()
-            .unwrap()
-            .entry(key)
-            .or_insert_with(|| g.clone());
+        self.held().entry(key).or_insert_with(|| g.clone());
         Ok(g)
     }
 
@@ -518,10 +540,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
 
     /// Frees a held group; it is extracted again if asked for.
     pub fn release_metadata(&self, scope: Scope, group: &str) {
-        self.held
-            .lock()
-            .unwrap()
-            .remove(&(scope, group.to_string()));
+        self.held().remove(&(scope, group.to_string()));
     }
 
     fn extract(&self, scope: Scope, group: &str) -> Result<FieldGroup> {
@@ -531,7 +550,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
         };
         let ifd = &self.ifds[self.image(i)?.info.ifd];
         let name = FieldName::parse(group);
-        let mut state = self.decoder.lock().unwrap();
+        let mut state = self.decoder_state();
         let decoder = &mut state.decoder;
         let mut problem = None;
         let mut fields = Vec::new();
@@ -557,12 +576,23 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 }
             }
             "geotiff.keys" => {
-                let keys = read_keys(decoder, &ifd.dir)
+                let keys = read_keys(decoder, &ifd.dir, self.big_endian)
                     .map_err(|m| corrupt(format!("GeoTIFF keys: {m}")))?;
+                // A key listed more than once carries its place among them (section 14.1).
+                let mut totals: HashMap<u16, usize> = HashMap::new();
+                for (code, _, _) in &keys {
+                    *totals.entry(*code).or_insert(0) += 1;
+                }
+                let mut seen: HashMap<u16, usize> = HashMap::new();
                 for (code, v, stored) in keys {
-                    let part = names::key_name(code)
+                    let mut part = names::key_name(code)
                         .map(str::to_string)
                         .unwrap_or_else(|| code.to_string());
+                    let n = seen.entry(code).or_insert(0);
+                    *n += 1;
+                    if totals[&code] > 1 {
+                        part = format!("{part}[{n}]");
+                    }
                     fields.push(Field::with_value(
                         name.child(part),
                         stored,
@@ -688,7 +718,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
         let (across, down) = l.chunks();
         let row_end = window.row_start + rows;
         let col_end = window.col_start + cols;
-        let mut state = self.decoder.lock().unwrap();
+        let mut state = self.decoder_state();
         if state.current != Some(info.ifd) {
             // seek_to_image counts IFDs along the chain, as `open` did.
             state.decoder.seek_to_image(info.ifd).map_err(from_tiff)?;
@@ -866,7 +896,11 @@ fn read_layout<R: ReadAt>(
         .map_err(|e| e.to_string())?
         .ok_or("no chunk byte counts")?;
     let planes = if planar { samples } else { 1 };
-    let expected = rows.div_ceil(chunk.0) * cols.div_ceil(chunk.1) * planes;
+    let expected = rows
+        .div_ceil(chunk.0)
+        .checked_mul(cols.div_ceil(chunk.1))
+        .and_then(|n| n.checked_mul(planes))
+        .ok_or("more chunks than can be counted")?;
     if offsets.len() as u64 != expected || counts.len() as u64 != expected {
         return Err(format!(
             "{} chunk offsets and {} byte counts, for {expected} chunks",
@@ -881,12 +915,16 @@ fn read_layout<R: ReadAt>(
             ));
         }
     }
-    let bits0 = bits[0];
-    let format0 = formats[0];
-    let sample_type = if bits.iter().any(|&b| b != bits0) || formats.iter().any(|&f| f != format0) {
+    let bits0 = *bits.first().ok_or("BitsPerSample with no values")?;
+    let format0 = *formats.first().ok_or("SampleFormat with no values")?;
+    let bits0 = u32::try_from(bits0).map_err(|_| format!("{bits0} bits a sample"))?;
+    let format0 = u16::try_from(format0).map_err(|_| format!("SampleFormat {format0}"))?;
+    let sample_type = if bits.iter().any(|&b| b != u64::from(bits0))
+        || formats.iter().any(|&f| f != u64::from(format0))
+    {
         Err("samples of different bits or formats in one pixel".to_string())
     } else {
-        sample_type(format0 as u16, bits0 as u32)
+        sample_type(format0, bits0)
     };
     let mut t = decoder.read_directory_tags(dir);
     let photometric = t
@@ -916,7 +954,7 @@ fn read_layout<R: ReadAt>(
         cols,
         samples: samples as u32,
         sample_type,
-        bits: bits0 as u32,
+        bits: bits0,
         compression: u16::try_from(compression).map_err(|_| "a Compression past 65,535")?,
         planar,
         tiled,
@@ -996,11 +1034,13 @@ fn fill(text: &str, t: SampleType) -> Option<Fill> {
             return Some(Fill::NaN);
         }
         let v: f64 = text.parse().ok()?;
-        // As float32 holds it; a value float16 cannot hold exactly matches no sample.
-        return Some(Fill::Float(match t {
-            SampleType::F32 => f64::from(v as f32),
-            _ => v,
-        }));
+        // Rounded to float32, as GDAL does; a value beyond float32's range marks nothing. A
+        // value float16 cannot hold exactly matches no sample (M37).
+        return match t {
+            SampleType::F32 if v.is_finite() && (v as f32).is_infinite() => None,
+            SampleType::F32 => Some(Fill::Float(f64::from(v as f32))),
+            _ => Some(Fill::Float(v)),
+        };
     }
     let v: i128 = match text.parse::<i128>() {
         Ok(v) => v,
@@ -1123,7 +1163,18 @@ fn stored_bytes(v: &TiffValue, big_endian: bool) -> Vec<u8> {
 fn read_keys<R: ReadAt>(
     decoder: &mut Decoder<At<R>>,
     dir: &Directory,
+    big_endian: bool,
 ) -> std::result::Result<Vec<(u16, Value, Vec<u8>)>, String> {
+    // Little-endian bytes, as the file stores them.
+    let order = |le: Vec<u8>, width: usize| -> Vec<u8> {
+        if big_endian {
+            le.chunks(width)
+                .flat_map(|c| c.iter().rev().copied())
+                .collect()
+        } else {
+            le
+        }
+    };
     let mut t = decoder.read_directory_tags(dir);
     let directory: Vec<u16> = t
         .find_tag_unsigned_vec::<u16>(Tag::GeoKeyDirectoryTag)
@@ -1159,12 +1210,15 @@ fn read_keys<R: ReadAt>(
         let (code, location, n, at) = (e[0], e[1], usize::from(e[2]), usize::from(e[3]));
         let out_of = |what: &str| format!("key {code} points past the end of {what}");
         let (v, stored) = match location {
-            0 => (Value::Integer(at as i64), e[3].to_le_bytes().to_vec()),
+            0 => (
+                Value::Integer(at as i64),
+                order(e[3].to_le_bytes().to_vec(), 2),
+            ),
             34736 => {
                 let d = doubles
                     .get(at..at + n)
                     .ok_or_else(|| out_of("GeoDoubleParamsTag"))?;
-                let stored = d.iter().flat_map(|x| x.to_le_bytes()).collect();
+                let stored = order(d.iter().flat_map(|x| x.to_le_bytes()).collect(), 8);
                 let v = if n == 1 {
                     Value::Float(d[0])
                 } else {
@@ -1189,7 +1243,10 @@ fn read_keys<R: ReadAt>(
                     .get(at..at + n)
                     .ok_or_else(|| out_of("the key directory"))?;
                 let v = Value::List(s.iter().map(|&x| Value::Integer(x.into())).collect());
-                (v, s.iter().flat_map(|x| x.to_le_bytes()).collect())
+                (
+                    v,
+                    order(s.iter().flat_map(|x| x.to_le_bytes()).collect(), 2),
+                )
             }
             other => {
                 return Err(format!(

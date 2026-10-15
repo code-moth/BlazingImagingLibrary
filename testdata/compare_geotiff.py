@@ -9,9 +9,8 @@ the run shows what remains to be read.
 
     python3 -I testdata/compare_geotiff.py GEOTIFF_DUMP GEOTIFF_REFERENCE FILE...
 
-Each file falls in one of four categories: it agrees; it holds what BIL does not yet read, as BIL
-says (a limit); BIL refuses as corrupt what GDAL reads (stricter); or the two differ. Exits with
-status 1 when any file differs. Under GitHub Actions differences are raised as error annotations,
+Each file falls in one of seven categories, which `compare` lists. Exits with status 1 when any
+file differs, which includes BIL's program failing. Under GitHub Actions differences are raised as error annotations,
 and the summary, with the files that are stricter or differ, as notices, which can be read
 without the job's log.
 """
@@ -32,19 +31,21 @@ def run(program, path):
 
 def compare(bil_lines, gdal_lines):
     """How the two reports compare: a category, the differences, and notes. The categories:
-    `agree`; `limit`, BIL does not read what GDAL does, as it says; `stricter`, BIL refuses as
+    `agree`; `refused`, both refuse the file; `limit`, BIL does not read what GDAL does, as it says; `stricter`, BIL refuses as
     corrupt a file or Image that GDAL reads; `lenient`, GDAL refuses a file or
     Image BIL opens; `converts`, GDAL converts the color of CMYK, YCbCr or CIELab samples that
     BIL returns as stored; `differ`, a disagreement, which fails the run."""
+    if bil_lines[:1] and bil_lines[0].startswith("program failed"):
+        return "differ", [f"BIL's {bil_lines[0]}"], []
     bil_error = bil_lines[:1] and bil_lines[0].startswith("error")
     gdal_error = gdal_lines[:1] and gdal_lines[0].startswith("error")
     gdal_pixels_fail = all(" pixels error" in l for l in gdal_lines if " pixels " in l)
     if bil_error and gdal_error:
-        return "agree", [], [f"both refuse it: BIL {bil_lines[0][6:]!r}; GDAL {gdal_lines[0][6:]!r}"]
+        return "refused", [], [f"both refuse it: BIL {bil_lines[0][6:]!r}; GDAL {gdal_lines[0][6:]!r}"]
     if bil_error and bil_lines[0].startswith("error not supported"):
         return "limit", [], [f"BIL does not read it: {bil_lines[0][6:]}"]
     if bil_error and gdal_pixels_fail:
-        return "agree", [], [f"BIL refuses it and GDAL cannot read its pixels: {bil_lines[0][6:]}"]
+        return "refused", [], [f"BIL refuses it and GDAL cannot read its pixels: {bil_lines[0][6:]}"]
     if bil_error:
         return "stricter", [], [f"BIL refuses it, GDAL reads it: {bil_lines[0][6:]}"]
     if gdal_error:
@@ -159,7 +160,8 @@ def main():
                 print(f"::warning::{name}: {n}"[:900])
     summary = (
         f"GeoTIFF reader against GDAL, {len(paths)} files: {len(by['agree'])} agree, "
-        f"{compared} Images pixel for pixel; {len(by['limit'])} hold what BIL does not yet read; "
+        f"{compared} Images pixel for pixel; {len(by['refused'])} both refuse; "
+        f"{len(by['limit'])} hold what BIL does not yet read; "
         f"{len(by['stricter'])} BIL refuses as corrupt where GDAL reads; "
         f"{len(by['lenient'])} GDAL refuses where BIL opens; "
         f"{len(by['converts'])} GDAL converts color BIL returns as stored; {len(by['differ'])} differ"
