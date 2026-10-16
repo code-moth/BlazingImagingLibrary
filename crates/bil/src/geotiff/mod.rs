@@ -1377,8 +1377,7 @@ fn representation(l: &Layout) -> (Representation, Vec<String>) {
         (Representation::Complex, vec![Some("complex"); base])
     } else {
         match l.photometric {
-            // More than one sample: spectral by section 3's table, and with ExtraSamples beside them
-            // by M58, as proposed.
+            // More than one sample beside any extra ones: spectral (section 3's table).
             Some(0) | Some(1) | None if base > 1 => (Representation::Spectral, vec![None; base]),
             p @ (Some(0) | Some(1) | None) => (
                 Representation::Intensity {

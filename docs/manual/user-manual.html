@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 16</p>
+      <p class="eyebrow">Manual · Version 17</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>16</dd></div><div><dt>As of</dt><dd>16 October 2026</dd></div><div><dt>Specification</dt><dd>Version 78</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>17</dd></div><div><dt>As of</dt><dd>16 October 2026</dd></div><div><dt>Specification</dt><dd>Version 79</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 78, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 79, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -2469,9 +2469,9 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
 <p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
 <p><strong>What comes next</strong> in code: M31's private copy, which waits for packaging; the Fragment cache, Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 to 78 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What specification versions 68 to 79 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>, and version 79's (M58) describes what it already did. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 to 78, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 79, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2792,9 +2792,14 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td><strong>The shape of a relation.</strong> Section 3 gives a relation as an Image's index, the relation, and for a scaled grid "the reduction and the position of its samples", without saying whether the reduction is one number or one for each axis, or how the position is stated.</td>
 <td>Accepted as proposed, by the author's ruling (version 78): section 3, <code>ImageInfo</code></td>
 </tr>
+<tr>
+<td>M58</td>
+<td><strong>Two cases section 3's table leaves out.</strong> TIFF Photometric 0 or 1 with more than one sample beside its ExtraSamples, such as two gray samples and an alpha; and NITF <code>MONO</code> with more than one band.</td>
+<td>Accepted as proposed, by the author's ruling (version 79): section 3, "Representations"</td>
+</tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> M58, from coding M55's table. It is coded as proposed, so that it can be tested; a ruling otherwise changes it.</p>
+<p><strong>Open, for the author.</strong> M59 to M65, from planning the Fragment cache (section 4). None is coded yet: M62 changes how the NITF reader decodes JPEG 2000 and what its Storage lists, so these come first.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -2805,9 +2810,39 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </thead>
 <tbody>
 <tr>
-<td>M58</td>
-<td><strong>Two cases section 3's table leaves out.</strong> TIFF Photometric 0 or 1 with more than one sample beside its ExtraSamples, such as two gray samples and an alpha; and NITF <code>MONO</code> with more than one band.</td>
-<td>The TIFF case is <code>spectral</code>, as it is without ExtraSamples, the extra samples named as the table says (<code>alpha</code> for ExtraSamples 1 and 2). NITF <code>MONO</code> stays <code>intensity</code> whatever its bands, each named <code>intensity</code> and so, after the first, by its place: <code>intensity2</code> onward.</td>
+<td>M59</td>
+<td><strong>What one cache entry is, and its key.</strong> Section 4 keeps "decoded blocks, each as a Fragment", sized by count, but does not say what identifies a block across Readers and levels.</td>
+<td>One entry is one block as <code>describe_storage</code> lists it: its Image, level, frame, block row and column, and the components it holds, which together are its key. The entry holds the block whole, every component and every pixel, decoded, so any Window touching it is cut from it. <code>set_cache_size</code> counts these entries.</td>
+</tr>
+<tr>
+<td>M60</td>
+<td><strong>Uncompressed blocks.</strong> "Borrowed data is never cached" covers data that meets the zero-copy rule. Until mapping is built, the readers copy uncompressed data, and section 4 does not say whether those copies are cached.</td>
+<td>Every block is cached, uncompressed ones included, until mapping makes an uncompressed block borrowable; from then on a borrowed block is not cached, as section 4 says. One rule for every block, which also keeps margins and terrain tiles in the cache, as sections 4, 3.4 and 13.6 expect, and serves remote Sources, which have no page cache, and copies that unpack or regroup samples.</td>
+</tr>
+<tr>
+<td>M61</td>
+<td><strong>A block larger than <code>set_cache_bytes</code>.</strong> Whichever limit is reached first applies, but a single block above the byte ceiling would empty the cache and still not fit.</td>
+<td>Such a block is decoded for the read and not cached; the cache is left as it was, and <code>describe_cache</code> counts it as a miss. This is an exception to section 4's "a frame is never decoded twice for one Source", which would read: never decoded twice while it fits within <code>set_cache_bytes</code>.</td>
+</tr>
+<tr>
+<td>M62</td>
+<td><strong>JPEG 2000's blocks.</strong> OpenJPEG decodes a region across tiles in one call. Caching by block needs each tile decoded on its own, at the level asked.</td>
+<td><code>describe_storage</code> lists a JPEG 2000 Image's blocks as its codestream tiles, each with the byte range of its tile-parts, which BIL's own walk of them (<code>codec/tiles.rs</code>) already finds; a resolution level lists the same tiles under its level (M53). A cache entry is then one such block, as M59 says, so the cache, <code>Storage</code> and read-ahead share one unit. Each tile is decoded alone through OpenJPEG's tile decoding, one call for each tile a read touches that is not cached. The extra calls are to be measured on the five test codestreams and <code>p0_01a.ntf</code> before the choice is final.</td>
+</tr>
+<tr>
+<td>M63</td>
+<td><strong>A quarter of physical memory.</strong> The default byte ceiling needs the machine's memory, which the standard library does not give, and BIL adds no crate for it.</td>
+<td>Proposed: BIL adds no crate for it, and finds it as experiment 5 declared Python's interface, by hand: <code>sysconf(_SC_PHYS_PAGES)</code> × <code>_SC_PAGESIZE</code> on Linux, <code>sysctlbyname("hw.memsize")</code> on macOS, <code>GlobalMemoryStatusEx</code> on Windows. Where it cannot be found, a ceiling of 1 GiB, a new default this proposes. It is read once, when the first Source opens.</td>
+</tr>
+<tr>
+<td>M64</td>
+<td><strong>Two Readers missing the same block at once.</strong> Section 4 has a block "several reads share" decoded once. With Readers on several threads, two can ask for one block before either has decoded it.</td>
+<td>The first to ask decodes it; the others wait for that decode and share its result, without holding the cache's lock while it runs. A decode that fails is not cached, and each waiter then decodes the block itself, so every error arrives with a read of its own, whether the failed decode was another read's or read-ahead's (section 4, "Errors arrive with the read that needs them").</td>
+</tr>
+<tr>
+<td>M65</td>
+<td><strong>What <code>describe_cache</code> counts.</strong> "How many reads the cache has served" leaves open whether a read counts once or once for each block it found.</td>
+<td>Counts are in blocks, not reads, changing section 4's <code>describe_cache</code> row and "Reported": <code>hits</code>, the blocks reads found in the cache, and <code>misses</code>, those they decoded or copied, every block counted alike (M60), beside <code>fragment_count</code> and <code>bytes</code>. <code>served_from_read_ahead</code> waits for read-ahead. A read touching four cached blocks adds four hits.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2912,7 +2947,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 16, written beside the code against version 78 of the Blazing Imaging Library (BIL) specification, as of 16 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 17, written beside the code against version 79 of the Blazing Imaging Library (BIL) specification, as of 16 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

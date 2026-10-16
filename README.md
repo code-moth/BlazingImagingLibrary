@@ -13,7 +13,7 @@ BIL is written in Rust, with a C-callable interface over it delivered as one sha
 
 The two-page flyer is [`flyer.pdf`](flyer.pdf), with its source in [`flyer.html`](flyer.html).
 
-> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 78, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
+> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 79, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
 
 ## Why BIL is needed
 
@@ -121,8 +121,8 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 
 | Document | What it is |
 | --- | --- |
-| [Specification](docs/specification/specification.md), version 78 | The source of truth for the design |
-| [User Manual](docs/manual/user-manual.md), version 16 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
+| [Specification](docs/specification/specification.md), version 79 | The source of truth for the design |
+| [User Manual](docs/manual/user-manual.md), version 17 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 10 | Calls for every use case, in Python, Rust and C |
 | [Implementability](docs/assessments/implementability.md), version 11 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |
