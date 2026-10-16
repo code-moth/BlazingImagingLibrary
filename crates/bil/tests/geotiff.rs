@@ -884,7 +884,7 @@ fn claims_beyond_the_file_are_refused() {
     assert!(GeoTiffSource::open(f).is_err());
     assert!(matches!(
         GeoTiffSource::open(b"GIF89a....".to_vec()),
-        Err(Error::NotTiff)
+        Err(Error::Unrecognized(_))
     ));
     let source = GeoTiffSource::open(write(&[img], false, false)).unwrap();
     let w = Window {
@@ -1257,4 +1257,51 @@ fn a_cut_ifd_is_corrupt_or_refused_never_filled_in() {
             let _ = source.read_field_group(Scope::Image(0), "tiff.ifd");
         }
     }
+}
+
+#[test]
+fn the_source_interface_opens_tiff_and_reads_its_levels() {
+    let full = Img::new(40, 60, 2, SampleType::U16);
+    let mut o1 = Img::new(20, 30, 2, SampleType::U16);
+    o1.subfile = 1;
+    o1.tile = Some((16, 16));
+    let file = write(&[full.clone(), o1], false, false);
+    let source = bil::OpenOptions::default().open_from(file.clone()).unwrap();
+    assert_eq!((source.driver(), source.image_count()), ("geotiff", 1));
+    let image = source.image(0).unwrap();
+    assert_eq!(image.size().unwrap(), (40, 60));
+    assert_eq!(image.component_count().unwrap(), 2);
+    let levels = image.list_stored_levels().unwrap();
+    assert_eq!((levels.len(), levels[0].name.as_str()), (1, "stored1"));
+    // A stored level's Storage is its own: its chunk size, and its blocks marked with it.
+    let s = image.describe_storage("stored1").unwrap();
+    assert_eq!((s.block_size, s.blocks.len()), ((16, 16), 4));
+    assert!(s.blocks.iter().all(|b| b.level == 1));
+    assert!(image
+        .describe_storage("level0")
+        .unwrap()
+        .blocks
+        .iter()
+        .all(|b| b.level == 0));
+    assert!(matches!(
+        image.describe_storage("stored2"),
+        Err(Error::NotFound(_))
+    ));
+    let f = image.read_fragment(whole(&full), "level0").unwrap();
+    check_fragment(&f, &full, whole(&full));
+    assert!(matches!(source.image(1), Err(Error::NotFound(_))));
+    // M41's limits come from OpenOptions: a chain of two IFDs is refused at one.
+    let one = bil::OpenOptions {
+        max_directories: 1,
+        ..Default::default()
+    };
+    assert!(matches!(
+        one.open_from(file.clone()),
+        Err(Error::Unsupported(_))
+    ));
+    let two = bil::OpenOptions {
+        max_directories: 2,
+        ..Default::default()
+    };
+    assert!(two.open_from(file).is_ok());
 }

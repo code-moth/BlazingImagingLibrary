@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 13</p>
+      <p class="eyebrow">Manual · Version 14</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>13</dd></div><div><dt>As of</dt><dd>15 October 2026</dd></div><div><dt>Specification</dt><dd>Version 75</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>14</dd></div><div><dt>As of</dt><dd>16 October 2026</dd></div><div><dt>Specification</dt><dd>Version 76</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 75, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 76, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -424,7 +424,7 @@ cargo run --release --bin exp1b              # with the speed tables
 <p><strong>Everything beyond 2D is selected, never ranged.</strong> Rows and columns are read as a range, through a Window. A frame and a component are chosen one at a time. A read across frames is therefore outside BIL: a caller reads frame by frame.</p>
 <h2 id="5-opening-a-source">5. Opening a Source</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. Opening a NITF file, which reads its file header and image subheaders and nothing more, is built in the NITF reader, without <code>OpenOptions</code> (chapter 23).</p>
+<p><strong>Status:</strong> Specified. Opening a NITF or TIFF file is built, in Rust, through <code>bil::open_source</code> and <code>OpenOptions</code>, which holds only <code>max_directories</code> and <code>max_subdirectories</code> so far (chapter 23).</p>
 </blockquote>
 <pre><code class="language-python">import bil
 
@@ -2072,15 +2072,85 @@ bil_close_source(source);
 <p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
 <h2 id="23-what-runs-today">23. What runs today</h2>
 <blockquote>
-<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer, kernels, NITF container reader, GeoTIFF reader and JPEG 2000 codec, and <code>bil-sys</code>'s OpenJPEG bindings) and Prototyped (experiments 1, 1b, 3 and 5).</p>
+<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer, kernels, Source interface, NITF container reader, GeoTIFF reader and JPEG 2000 codec, and <code>bil-sys</code>'s OpenJPEG bindings) and Prototyped (experiments 1, 1b, 3 and 5).</p>
 </blockquote>
 <p>Seven pieces of code exist. The <code>bil</code> crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. The crate also holds Tier 1's two readers, NITF and GeoTIFF, and its first codec, JPEG 2000 through OpenJPEG, over BIL's own bindings in <code>bil-sys</code>. Experiment 5 maps files and hands their bytes to NumPy without a copy. Experiment 3 puts three C libraries behind a C layer and feeds them corrupt files.</p>
-<p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer, the kernels, the NITF and GeoTIFF readers and the JPEG 2000 codec.</p>
+<p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer, the kernels, the Source interface, the NITF and GeoTIFF readers and the JPEG 2000 codec.</p>
 <ul>
 <li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code>, <code>Avx512</code> and <code>Neon</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. NEON is tested only in CI, on Linux and macOS on ARM, where it agrees bitwise with scalar code; its speed has not yet been measured.</li>
 <li><strong><code>kernels</code>:</strong> the arithmetic of the pass. <code>halve</code> and <code>halve_row</code> make each <code>bilinear</code> halving, and <code>blur5</code> and <code>blur5_row</code> each <code>binomial5</code> halving; <code>halve_weighted</code>, <code>halve_row_weighted</code>, <code>halve_over</code> and their <code>blur5</code> counterparts the halvings with missing data; <code>min3_present</code> and <code>min3_row</code> the range reduction; <code>polar0</code>, <code>phase_from</code>, <code>hsv0</code> and <code>hue_from</code> the slice functions; and <code>atan2</code> and <code>cos_sin_turns</code> the transcendental functions, BIL's own, built only from correctly rounded operations.</li>
 </ul>
 <p>The kernels are <code>unsafe</code> and work on raw rows. They are BIL's internals, not its interface, and callers will never use them directly.</p>
+<p><strong>The Source interface</strong> (<code>bil::source</code>, its types also at the crate's top) opens a file through whichever reader recognizes it, and gives the calls both readers share. It is a preview of sections 3 and 10: the drivers are the two compiled in, chosen by the bytes they recognize, and reached through one <code>Source</code> rather than section 10's <code>Driver</code> trait, which comes with plugins.</p>
+<pre><code class="language-rust">use bil::{open_source, OpenOptions};
+use bil::types::Window;
+
+let source = open_source(&quot;scene.tif&quot;)?;               // or OpenOptions { max_directories: 10, ..Default::default() }.open(path)
+source.driver();                                      // &quot;geotiff&quot; or &quot;nitf&quot;
+let image = source.image(0)?;
+image.size()?;                                        // (rows, cols) at full resolution
+image.list_stored_levels()?;                          // stored1 onward, each with size, scale, position, alignment
+let storage = image.describe_storage(&quot;stored1&quot;)?;     // that level's blocks, in file order
+let fragment = image.read_fragment(window, &quot;level0&quot;)?;
+source.as_geotiff();                                  // the reader itself, for what only TIFF has
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Type or call</th>
+<th>Specification counterpart</th>
+<th>Difference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>open_source(path)</code>, <code>OpenOptions::open(path)</code>, <code>OpenOptions::open_from(reader)</code></td>
+<td><code>open_source</code> with <code>OpenOptions</code></td>
+<td><code>OpenOptions</code> holds <code>max_directories</code> (100,000) and <code>max_subdirectories</code> (1,000), M41's limits; the other options join as their code is written (M50). <code>open_from</code> takes any <code>ReadAt</code>: a file or bytes in memory. Each driver checks its container's leading bytes, <code>nitf</code> then <code>geotiff</code>; one that recognizes them and then fails gives its error (M54)</td>
+</tr>
+<tr>
+<td><code>Source::driver</code>, <code>image_count</code>, <code>image(i)</code></td>
+<td>Section 3's calls on a Source</td>
+<td><code>driver</code> names the driver that opened it</td>
+</tr>
+<tr>
+<td><code>Source::as_nitf</code>, <code>as_geotiff</code></td>
+<td>None</td>
+<td>Each reader's own <code>ImageInfo</code>, segments and other calls, until section 3's <code>ImageInfo</code> is built (M52)</td>
+</tr>
+<tr>
+<td><code>list_field_groups</code>, <code>read_field_group</code>, <code>read_field</code>, <code>release_metadata</code></td>
+<td>Section 14.4</td>
+<td>As the readers': each takes a <code>Scope</code></td>
+</tr>
+<tr>
+<td><code>Image::size</code>, <code>component_count</code>, <code>pixel_type</code></td>
+<td><code>ImageInfo</code></td>
+<td>Only these parts of it so far (M52)</td>
+</tr>
+<tr>
+<td><code>Image::list_stored_levels</code></td>
+<td><code>list_stored_levels</code></td>
+<td>Name, size, scale, position and alignment; no method yet, since neither format states one</td>
+</tr>
+<tr>
+<td><code>Image::describe_storage(level)</code></td>
+<td><code>describe_storage</code></td>
+<td>One <code>Storage</code> for each level, <code>level0</code> or a stored level, its blocks marked with it (M53)</td>
+</tr>
+<tr>
+<td><code>Image::read_fragment(window, level)</code></td>
+<td><code>read_fragment(window, level)</code></td>
+<td><code>level</code> is always given, since Rust has no default arguments</td>
+</tr>
+<tr>
+<td><code>bil::Error</code>, <code>bil::Result</code></td>
+<td>Section 3.3</td>
+<td>One error type for every reader (M45): <code>Unrecognized</code> with the drivers tried (M51), <code>Corrupt</code>, <code>Unsupported</code> (a limit's refusal among them), <code>NotFound</code> and <code>Io</code>. <code>bil::nitf::Error</code> and <code>bil::geotiff::Error</code> are the same type</td>
+</tr>
+</tbody>
+</table></div>
+<p>Sources are <code>Send</code> and <code>Sync</code>. Each reader still has its own <code>open</code> and <code>open_with(reader, options)</code>, <code>list_stored_levels(i)</code> and <code>describe_level_storage(i, level)</code> beside <code>describe_storage(i)</code>.</p>
 <p><strong>The NITF container reader</strong> (<code>bil::nitf</code>, behind the crate's <code>nitf</code> build feature, on by default) reads NITF 2.0, NITF 2.1 and NSIF 1.0 with no dependency. Opening reads the file header and the image subheaders, and nothing else. Each image segment is an Image. Headers and extensions are read through field definitions (section 14.1), and an extension is extracted as a group when first asked for, then held. Uncompressed pixels are read here. Compressed blocks are a codec's: JPEG 2000 is decoded where the crate is built with its <code>openjpeg</code> feature, and for every other codec the reader says where the blocks lie and which codec they need.</p>
 <pre><code class="language-rust">use bil::nitf::{NitfSource, Scope};
 use bil::types::Window;
@@ -2106,9 +2176,9 @@ fragment.validity;                                    // pixels in blocks never 
 </thead>
 <tbody>
 <tr>
-<td><code>NitfSource::open(reader)</code></td>
+<td><code>NitfSource::open(reader)</code>, <code>open_with(reader, options)</code></td>
 <td><code>open_source</code></td>
-<td>Reads from any <code>ReadAt</code>: a file or bytes in memory. No <code>OpenOptions</code>: no limits beyond the check always made, no mapping, so every Fragment is owned.</td>
+<td>Reads from any <code>ReadAt</code>: a file or bytes in memory. None of the options built so far applies to NITF, which has no chain of directories; no mapping, so every Fragment is owned.</td>
 </tr>
 <tr>
 <td><code>image_count</code>, <code>image_info(i)</code></td>
@@ -2148,7 +2218,7 @@ fragment.validity;                                    // pixels in blocks never 
 </tbody>
 </table></div>
 <p><strong>What it reads.</strong> Every IMODE (B, P, R and S); unsigned and signed integers of 8, 16, 32 and 64 bits, 12-bit and 1-bit packed samples, float32, float64 and complex float32; more than nine bands; block mask tables, with blocks stored in any order, blocks never recorded, and pad pixels (section 4), all marked in the validity mask; significant bits and justification as <code>significant_bits</code> and <code>bit_shift</code>; several Images in one file; and extensions in the header's own data and, read when first asked for, in TRE_OVERFLOW segments. RPC00A and RPC00B are read field by field, with units; other extensions are listed with their data as bytes, as <code>CEDATA</code>, the standard's name for it. Fields in runs carry their place in the run (section 14.1), ONAME and OPHONE are <code>Identity</code> (section 14.3), and compressed blocks name their codec by what they decode (section 10). A field the definitions name that a file leaves out, such as IGEOLO where ICORDS is blank, is delivered as <code>Missing</code>.</p>
-<p><strong>JPEG 2000 Images</strong> (IC <code>C8</code> and <code>M8</code>). With the <code>openjpeg</code> feature, <code>read_fragment</code> decodes them. An Image's data is one codestream, or a JP2 file, told apart by its first bytes; its NITF blocks describe the codestream's own tiles, and OpenJPEG decodes only the tiles the Window touches (M34). The codec accepts each Image when the Source is opened (section 10, "Chosen once"): it reads the codestream's header and checks it against the subheader, the same columns, rows and bands, no subsampling, and samples of no more than NBPP bits, signed where PVTYPE is <code>SI</code>. A codestream that disagrees or is damaged does not stop the open; every read of that Image is then an error (M35). An accepted Image's resolution levels are its stored levels, from the fewest decomposition levels its main header states, and are read by OpenJPEG at reduced resolution (M48). A read checks the header again before any pixel memory is taken, and a codestream that is damaged or makes OpenJPEG warn is an error (section 3.3). A JP2 file holding a palette, component mapping or channel definitions is refused as unsupported, since they are neither applied nor reported yet (M34). Compressed integers of other widths than 8, 16 and 32 bits take the smallest type that holds them, and are delivered aligned to the right, whatever PJUST says (M33). Behind a mask table, pad pixels are marked as for uncompressed data, and an Image whose only block was never recorded is delivered with every pixel missing.</p>
+<p><strong>JPEG 2000 Images</strong> (IC <code>C8</code> and <code>M8</code>). With the <code>openjpeg</code> feature, <code>read_fragment</code> decodes them. An Image's data is one codestream, or a JP2 file, told apart by its first bytes; its NITF blocks describe the codestream's own tiles, and OpenJPEG decodes only the tiles the Window touches (M34). The codec accepts each Image when the Source is opened (section 10, "Chosen once"): it reads the codestream's header and checks it against the subheader, the same columns, rows and bands, no subsampling, and samples of no more than NBPP bits, signed where PVTYPE is <code>SI</code>. A codestream that disagrees or is damaged does not stop the open; every read of that Image is then an error (M35). An accepted Image's resolution levels are its stored levels, from the fewest decomposition levels its main header states, and are read by OpenJPEG at reduced resolution; they are aligned (M48). A read checks the header again before any pixel memory is taken, and a codestream that is damaged or makes OpenJPEG warn is an error (section 3.3). A JP2 file holding a palette, component mapping or channel definitions is refused as unsupported, since they are neither applied nor reported yet (M34). Compressed integers of other widths than 8, 16 and 32 bits take the smallest type that holds them, and are delivered aligned to the right, whatever PJUST says (M33). Behind a mask table, pad pixels are marked as for uncompressed data, and an Image whose only block was never recorded is delivered with every pixel missing.</p>
 <p><strong>The codec</strong> (<code>bil::codec::jpeg2000</code>, behind the <code>openjpeg</code> feature) decodes a codestream or JP2 file where it lies in any <code>ReadAt</code>, through OpenJPEG's stream callbacks, with nothing copied out first; OpenJPEG reads ahead in chunks of up to 1 MiB and skips what it does not need. <code>read_header</code> reads the header alone, as a driver does at open; <code>Format::sniff</code> tells a codestream from a JP2 file. <code>decode</code> takes the place and length, a <code>Request</code> (an area in pixels from the Image's corner, and resolution levels to discard) and a check that sees the header before anything is decoded; it returns the header and a <code>Decoded</code>, whose components are read in OpenJPEG's own buffers, with no copy. Its errors tell corrupt data (<code>Corrupt</code>), a refused header (<code>Refused</code>), an OpenJPEG too old (<code>Unsupported</code>) and a Source that could not be read (<code>Io</code>) apart.</p>
 <pre><code class="language-rust">use bil::codec::jpeg2000::{decode, Format, Request};
 
@@ -2198,9 +2268,9 @@ fragment.validity;                              // pixels holding the no-data va
 </thead>
 <tbody>
 <tr>
-<td><code>GeoTiffSource::open(reader)</code></td>
+<td><code>GeoTiffSource::open(reader)</code>, <code>open_with(reader, options)</code></td>
 <td><code>open_source</code></td>
-<td>As the NITF reader's: any <code>ReadAt</code>, no <code>OpenOptions</code></td>
+<td>As the NITF reader's; <code>max_directories</code> and <code>max_subdirectories</code> bound the chain of IFDs and an Image's SubIFDs, and a refusal is unsupported (M41)</td>
 </tr>
 <tr>
 <td><code>image_count</code>, <code>image_info(i)</code></td>
@@ -2225,12 +2295,12 @@ fragment.validity;                              // pixels holding the no-data va
 <tr>
 <td><code>bil::geotiff::Error</code></td>
 <td>Section 3.3</td>
-<td>NITF's variants, with <code>NotTiff</code> for <code>NotNitf</code>; a type of its own for now (M45)</td>
+<td><code>bil::Error</code>, the one type of every reader (M45)</td>
 </tr>
 </tbody>
 </table></div>
 <p><strong>What it reads.</strong> Strips and tiles, chunky and planar; unsigned and signed integers of any width from 1 to 64 bits, widened to the smallest of 8, 16, 32 and 64 bits with <code>significant_bits</code> the stored width, read as a stream of bits, most significant first, whatever the file's byte order, as GDAL reads them (M43); float16 (as <code>F16</code>), float32 and float64; complex integers of 8 and 16 bits and complex floats of 32 and 64 bits; any number of samples a pixel; several Images in one file; overviews as stored levels; horizontal and floating-point predictors; FillOrder 2. Samples are as stored, whatever the photometric interpretation: WhiteIsZero is not inverted, CIELab and palette Images give their stored values and indexes, and extra samples are kept (section 4). Every tag is a field, named as TIFF 6.0 and the GeoTIFF and GDAL tags spell it, with its value decoded and its stored bytes in the file's byte order; an unknown tag is named by its number. Text is read from its own bytes, as Latin-1, and a tag of several strings gives a list (M36). The GeoTIFF key directory is read key by key, with the GeoTIFF 1.0 names, values from the double and ASCII parameter tags where the key points there, and a key listed twice numbered by its place (M36). <code>GDAL_NODATA</code> marks a pixel missing when every one of its samples holds it, the value rounded to float32 or float16 for those types (M37). A chunk whose byte count is 0 was never written, as in a sparse file, and its pixels are missing (section 4).</p>
-<p><strong>What it checks.</strong> At open: a chain of IFDs that loops or points past the file, chunk offsets and byte counts whose numbers disagree with the Image's chunks, and any chunk that runs past the end of the file, all fail the open (section 3.3, M42). An IFD whose layout is sound but whose coding cannot be read, such as a predictor TIFF does not define or YCbCr subsampled outside JPEG, is listed with the reason, and its reads fail (M42). At read: the Window against the Image, and its size before memory is taken; a chunk whose data is too short for its rows, or whose declared size is more than its coding could make of its bytes, is corrupt. The <code>tiff</code> crate refuses a tag's values beyond 256 MiB, and the reader a chain of more than 100,000 IFDs, 1,000 SubIFDs an Image, or a text tag of more than 256 MiB: refusals, not damage (M41). A SubIFD that cannot be read is skipped, since it is not in the chain that locates the Images and holds at most an overview. LZW written before TIFF 5.0 is refused as unsupported.</p>
+<p><strong>What it checks.</strong> At open: a chain of IFDs that loops or points past the file, chunk offsets and byte counts whose numbers disagree with the Image's chunks, and any chunk that runs past the end of the file, all fail the open (section 3.3, M42). An IFD whose layout is sound but whose coding cannot be read, such as a predictor TIFF does not define or YCbCr subsampled outside JPEG, is listed with the reason, and its reads fail (M42). At read: the Window against the Image, and its size before memory is taken; a chunk whose data is too short for its rows, or whose declared size is more than its coding could make of its bytes, is corrupt. The <code>tiff</code> crate refuses a tag's values beyond 256 MiB, and the reader, by default, a chain of more than 100,000 IFDs (<code>max_directories</code>), 1,000 SubIFDs an Image (<code>max_subdirectories</code>), or a text tag of more than 256 MiB: refusals, not damage (M41). A SubIFD that cannot be read is skipped, since it is not in the chain that locates the Images and holds at most an overview. LZW written before TIFF 5.0 is refused as unsupported.</p>
 <p><strong>How the <code>tiff</code> crate is kept to directories.</strong> The crate makes an image of the first IFD it is given, and refuses there what it cannot make one of. So it is given the file through a view whose header points at a placeholder IFD of one pixel, served past the file's end; BIL walks the file's own chain and asks the crate only to read each directory and its values. A mode of the crate that reads directories alone, or returns stored samples, would remove the view; it is to be offered to the crate's maintainers (M39 (c)).</p>
 <p><strong>How it is tested</strong></p>
 <ul>
@@ -2398,10 +2468,10 @@ cargo run --release -- --check                          # needs libjpeg-turbo 2.
 cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
 <p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
-<p><strong>What comes next</strong> in code: stored levels, from both readers; then the rest of the rulings on M31 to M45 that wait for the Source interface (M41, M45) or for packaging (M31's private copy); the Fragment cache, Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 to 75 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What comes next</strong> in code: section 3's <code>ImageInfo</code> for both readers (M52); then M31's private copy, which waits for packaging; the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p><strong>What specification versions 68 to 76 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 to 75, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 76, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2662,9 +2732,29 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td><strong>One error type for every reader.</strong> The NITF and GeoTIFF readers each have their own, with the same variants.</td>
 <td>Accepted as proposed, by the author's ruling (version 74): section 3.3</td>
 </tr>
+<tr>
+<td>M46</td>
+<td><strong>A Fragment from a stored level.</strong> Section 5 gives a stored level's Window in full-resolution rows and columns, covering the stored pixels whose centers fall inside it. Section 4's <code>Fragment</code> has a <code>window</code> and no <code>origin</code> or <code>scale</code>, so it does not say which stored pixels it holds.</td>
+<td>Accepted as proposed, by the author's ruling (version 76): sections 4 and 5</td>
+</tr>
+<tr>
+<td>M47</td>
+<td><strong>Where a stored level's pixels lie.</strong> <code>list_stored_levels</code> reports a position relative to full resolution, but section 5 does not say how it is stated, nor where a TIFF overview's pixels lie, since TIFF does not say.</td>
+<td>Accepted as proposed, by the author's ruling (version 76): section 5, "Listed" and "TIFF overviews"</td>
+</tr>
+<tr>
+<td>M48</td>
+<td><strong>JPEG 2000 resolution levels as stored levels.</strong> Section 5 lists them as a source of stored levels; a NITF JPEG 2000 Image is one codestream (M34), whose decomposition levels give its reduced resolutions.</td>
+<td>Accepted as proposed, by the author's ruling (version 76): section 5, "JPEG 2000 resolution levels"; such levels are now reported as aligned</td>
+</tr>
+<tr>
+<td>M49</td>
+<td><strong>What a TIFF overview shares with its Image.</strong> TIFF lets an overview's IFD state its own bands, sample type and tags, GDAL_NODATA among them. Section 5 does not say whether a stored level must match its Image, nor whose no-data value applies.</td>
+<td>Accepted as proposed, by the author's ruling (version 76): section 5, "TIFF overviews"</td>
+</tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> M46 to M49, from reading stored levels. The code does what each proposes, so that it can be tested; a ruling otherwise changes it.</p>
+<p><strong>Open, for the author.</strong> M50 to M54, from writing the Source interface. The code does what each proposes, so that it can be tested; a ruling otherwise changes it.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -2675,24 +2765,29 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </thead>
 <tbody>
 <tr>
-<td>M46</td>
-<td><strong>A Fragment from a stored level.</strong> Section 5 gives a stored level's Window in full-resolution rows and columns, covering the stored pixels whose centers fall inside it. Section 4's <code>Fragment</code> has a <code>window</code> and no <code>origin</code> or <code>scale</code>, so it does not say which stored pixels it holds.</td>
-<td>The Fragment's <code>window</code> is in the stored level's own rows and columns: the pixels it covers. With <code>list_stored_levels</code>, which gives each level's scale and position, that places them. A Window holding no center gives a Fragment of no pixels, not an error.</td>
+<td>M50</td>
+<td><strong><code>OpenOptions</code> in Rust.</strong> Section 3.4 lists twenty options and says <code>open_source</code> takes them, but not in what form a Rust caller passes them, nor whether options not yet acted on exist before their code.</td>
+<td>A struct with public fields and <code>Default</code>, opened by <code>OpenOptions::open(path)</code> or <code>open_from(reader)</code>, as Rust's own <code>std::fs::OpenOptions</code> opens a file; <code>open_source(path)</code> opens with the defaults. A caller sets what it needs and writes <code>..Default::default()</code> for the rest, so adding a field later breaks no caller. An option joins the struct with the code that acts on it, so none is accepted and ignored: today <code>max_directories</code> and <code>max_subdirectories</code>.</td>
 </tr>
 <tr>
-<td>M47</td>
-<td><strong>Where a stored level's pixels lie.</strong> <code>list_stored_levels</code> reports a position relative to full resolution, but section 5 does not say how it is stated, nor where a TIFF overview's pixels lie, since TIFF does not say.</td>
-<td>A level's <code>position</code> is where its first pixel's center lies, in full-resolution rows and columns, counting each full-resolution pixel's center as a whole number; pixel i's center is then position + i × scale. A TIFF overview covers its Image's extent, as GDAL takes it: its scale is the Image's size over its own, possibly not a whole number, and its position half a stored pixel in, scale/2 − ½. Its alignment stays unknown (M38).</td>
+<td>M51</td>
+<td><strong>How an unrecognized file is reported.</strong> Section 3.3 reports a file no driver recognizes "with the formats tried", and does not say how a format is named, nor what a reader opened directly reports.</td>
+<td><code>Error::Unrecognized</code> holds the names of the drivers tried, in the order tried: <code>nitf</code> and <code>geotiff</code> today. A reader opened directly lists its own name alone. The NITF and TIFF readers' <code>NotNitf</code> and <code>NotTiff</code> become this one variant.</td>
 </tr>
 <tr>
-<td>M48</td>
-<td><strong>JPEG 2000 resolution levels as stored levels.</strong> Section 5 lists them as a source of stored levels; a NITF JPEG 2000 Image is one codestream (M34), whose decomposition levels give its reduced resolutions.</td>
-<td>List level k, for k from 1 to the fewest decomposition levels the main header's COD and COC markers state, as <code>stored</code>k, of ⌈rows/2^k⌉ × ⌈cols/2^k⌉, scale 2^k and position 0: the low-pass sample i lies on full-resolution pixel i × 2^k. Such levels are aligned; until ruled, they are reported as unknown, so none makes a Level. List none where the codestream's grid does not start at the Image's corner, which would move them. A tile-part's own COD or COC with fewer levels is not read, so a read of a level it lacks fails. Pad pixels are not marked at a reduced level: its samples are filtered, so one equal to the pad value says nothing of what was recorded.</td>
+<td>M52</td>
+<td><strong>Section 3's <code>ImageInfo</code> from both readers.</strong> It holds frame count, representation, component names, relations, storage and <code>may_have_missing</code>; each reader has its own <code>ImageInfo</code>, with what its format states. Representation and component names need the dictionary's mapping from NITF's IREP and IREPBAND and TIFF's Photometric.</td>
+<td>Until it is built, an <code>Image</code> gives its size, component count and pixel type, and each reader's own <code>ImageInfo</code> stays reachable through <code>as_nitf</code> and <code>as_geotiff</code>. Build section 3's <code>ImageInfo</code> next, with frame count <code>Known</code> 1, relations empty, storage from <code>describe_storage</code>, <code>may_have_missing</code> true where blocks can be left out, a mask or pad value, or no-data is stated, and representation and component names from those fields, proposed as a table before it is coded.</td>
 </tr>
 <tr>
-<td>M49</td>
-<td><strong>What a TIFF overview shares with its Image.</strong> TIFF lets an overview's IFD state its own bands, sample type and tags, GDAL_NODATA among them. Section 5 does not say whether a stored level must match its Image, nor whose no-data value applies.</td>
-<td>An overview whose number of bands differs from its Image's is not listed as its stored level, as GDAL requires the same of overviews; its sample type may differ, and is reported by its Fragments. An overview with no GDAL_NODATA of its own takes its Image's, as GDAL applies the dataset's.</td>
+<td>M53</td>
+<td><strong>The <code>Storage</code> of a stored level.</strong> Section 10 gives a <code>Storage</code> "for each Image and stored level", and section 4's blocks carry their stored level, but the illustrative <code>describe_storage(image_index)</code> takes no level. A JPEG 2000 resolution level is read from the same bytes as its Image.</td>
+<td><code>describe_storage</code> takes the level, <code>level0</code> or a stored level, as <code>read_fragment</code> does, and its blocks carry that level's number. A TIFF overview's are its own chunks. A JPEG 2000 resolution level k lists its Image's blocks, the same byte ranges, with block size the Image's halved k times, rounding up, which is exact for the first block row and column, and for every block where the tile size is a multiple of 2^k.</td>
+</tr>
+<tr>
+<td>M54</td>
+<td><strong>Choosing the driver before section 10's probing exists.</strong> Section 10 probes in two stages, the container by name and leading bytes and then each of its drivers by content with a confidence, ties broken by the configured order, never by load order. Two drivers are compiled in, for two containers.</td>
+<td>Until a container has more than one driver, each driver checks its container's leading bytes alone, and since NITF and TIFF share none, at most one recognizes a file, so the order of trying decides nothing but the order <code>Unrecognized</code> lists them in. File names are not consulted. Confidence and the configured order come with the second driver for one container, such as DNG or a whole-slide format beside GeoTIFF.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2797,7 +2892,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 13, written beside the code against version 75 of the Blazing Imaging Library (BIL) specification, as of 15 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 14, written beside the code against version 76 of the Blazing Imaging Library (BIL) specification, as of 16 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

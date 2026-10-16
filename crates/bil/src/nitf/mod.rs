@@ -21,8 +21,6 @@ pub(crate) mod defs;
 pub use defs::{check_extension_code, EXTENSION_TAG_LENGTH};
 
 use std::collections::HashMap;
-use std::fmt;
-use std::io;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::fields::{Field, FieldGroup, FieldName, Origin};
@@ -33,41 +31,15 @@ use crate::types::{
 };
 use defs::{walk, WalkError, Walked};
 
-/// What can go wrong reading NITF.
-#[derive(Debug)]
-pub enum Error {
-    /// The bytes do not begin as NITF 2.0, NITF 2.1 or NSIF 1.0 do.
-    NotNitf,
-    /// The file breaks its own structure: a length, count or field that cannot be right.
-    Corrupt(String),
-    /// Valid NITF that this reader does not read.
-    Unsupported(String),
-    /// A request outside what the Source holds: an Image, a group, a field or a Window.
-    NotFound(String),
-    Io(io::Error),
+pub use crate::error::{Error, Result};
+use crate::source::OpenOptions;
+
+/// The driver's name, as an `Error::Unrecognized` lists it (M51).
+pub const DRIVER: &str = "nitf";
+
+fn unrecognized() -> Error {
+    Error::Unrecognized(vec![DRIVER.into()])
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::NotNitf => f.write_str("not a NITF 2.0, NITF 2.1 or NSIF 1.0 file"),
-            Error::Corrupt(m) => write!(f, "corrupt NITF: {m}"),
-            Error::Unsupported(m) => write!(f, "not supported: {m}"),
-            Error::NotFound(m) => write!(f, "not found: {m}"),
-            Error::Io(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Error {
-        Error::Io(e)
-    }
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 fn corrupt(m: impl Into<String>) -> Error {
     Error::Corrupt(m.into())
@@ -428,12 +400,18 @@ fn codec(ic: &str) -> Option<String> {
 }
 
 impl<R: ReadAt> NitfSource<R> {
-    /// Opens a Source: reads the file header and the image subheaders, and checks that every
-    /// segment lies within the file.
+    /// Opens a Source with the default `OpenOptions`.
     pub fn open(reader: R) -> Result<NitfSource<R>> {
+        Self::open_with(reader, &OpenOptions::default())
+    }
+
+    /// Opens a Source: reads the file header and the image subheaders, and checks that every
+    /// segment lies within the file. NITF has no chain of directories, so none of the options
+    /// built so far applies to it.
+    pub fn open_with(reader: R, _options: &OpenOptions) -> Result<NitfSource<R>> {
         let size = reader.size()?;
         if size < 9 {
-            return Err(Error::NotNitf);
+            return Err(unrecognized());
         }
         let magic = read(&reader, 0, 9)?;
         let (version, layout): (Version, [&[defs::Item]; 2]) = match &magic[..] {
@@ -449,7 +427,7 @@ impl<R: ReadAt> NitfSource<R> {
                 Version::Nitf20,
                 [defs::FILE_HEADER_20, &defs::FILE_HEADER_TAIL],
             ),
-            _ => return Err(Error::NotNitf),
+            _ => return Err(unrecognized()),
         };
         // HL, the header's length, comes after fields some of which are optional, so the walk
         // finds it first, then reads the whole header.
@@ -851,6 +829,32 @@ impl<R: ReadAt> NitfSource<R> {
         Ok(storage)
     }
 
+    /// An Image's stored levels, finest first: a JPEG 2000 Image's resolution levels (section 5,
+    /// `list_stored_levels`).
+    pub fn list_stored_levels(&self, image: usize) -> Result<&[StoredLevel]> {
+        Ok(&self.image(image)?.info.stored_levels)
+    }
+
+    /// How a level's blocks lie in the file: `level0`'s, or a stored level's (section 10,
+    /// "Describe storage"). A JPEG 2000 resolution level is read from the same bytes as its
+    /// Image, so it lists the same blocks, marked with its level; its blocks are its Image's
+    /// halved k times, rounding up, which the first block row and column match (M53).
+    pub fn describe_level_storage(&self, image: usize, level: &str) -> Result<Storage> {
+        let levels = self.list_stored_levels(image)?.len();
+        let n = stored_level_number(level)
+            .filter(|&n| n <= levels)
+            .ok_or_else(|| Error::NotFound(format!("level {level} of image {image}")))?;
+        let mut storage = self.describe_storage(image)?;
+        if n > 0 {
+            let halve = |b: u32| b.div_ceil(1 << n.min(31));
+            storage.block_size = (halve(storage.block_size.0), halve(storage.block_size.1));
+            for b in &mut storage.blocks {
+                b.level = n as u32;
+            }
+        }
+        Ok(storage)
+    }
+
     /// The native pixels of a Window at a level: `level0`, full resolution, or a stored level
     /// such as `stored2`, a JPEG 2000 Image's resolution level (section 5, "Read directly"). The
     /// Window is in full-resolution rows and columns; a stored level gives the pixels whose
@@ -1147,7 +1151,7 @@ fn jpeg2000_error(image: usize, e: crate::codec::jpeg2000::Error) -> Error {
     use crate::codec::jpeg2000::Error as E;
     match e {
         E::Unsupported(m) => Error::Unsupported(format!("image {image}: {m}")),
-        E::Io(kind, m) => Error::Io(io::Error::new(kind, m)),
+        E::Io(kind, m) => Error::Io(std::io::Error::new(kind, m)),
         E::Corrupt(m) | E::Refused(m) => corrupt(format!("image {image}: {m}")),
     }
 }
@@ -1249,7 +1253,7 @@ fn accept_jpeg2000<R: ReadAt>(
     };
     let header = match jpeg2000::read_header(reader, start, end - start, format) {
         Ok(h) => h,
-        Err(E::Io(kind, m)) => return Err(Error::Io(io::Error::new(kind, m))),
+        Err(E::Io(kind, m)) => return Err(Error::Io(std::io::Error::new(kind, m))),
         Err(E::Unsupported(m)) => return Ok(Err(Refusal::Unsupported(m))),
         Err(E::Corrupt(m) | E::Refused(m)) => return Ok(Err(Refusal::Corrupt(m))),
     };

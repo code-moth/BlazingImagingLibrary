@@ -27,7 +27,6 @@ mod chunks;
 mod names;
 
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
 
@@ -45,41 +44,15 @@ use crate::types::{
 };
 pub use crate::types::{Scope, StoredLevel};
 
-/// What can go wrong reading a TIFF file.
-#[derive(Debug)]
-pub enum Error {
-    /// The bytes do not begin as TIFF or BigTIFF do.
-    NotTiff,
-    /// The file breaks its own structure: an offset, count or tag that cannot be right.
-    Corrupt(String),
-    /// Valid TIFF that this reader does not read.
-    Unsupported(String),
-    /// A request outside what the Source holds: an Image, a group, a field or a Window.
-    NotFound(String),
-    Io(io::Error),
+pub use crate::error::{Error, Result};
+use crate::source::OpenOptions;
+
+/// The driver's name, as an `Error::Unrecognized` lists it (M51).
+pub const DRIVER: &str = "geotiff";
+
+fn unrecognized() -> Error {
+    Error::Unrecognized(vec![DRIVER.into()])
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::NotTiff => f.write_str("not a TIFF or BigTIFF file"),
-            Error::Corrupt(m) => write!(f, "corrupt TIFF: {m}"),
-            Error::Unsupported(m) => write!(f, "not supported: {m}"),
-            Error::NotFound(m) => write!(f, "not found: {m}"),
-            Error::Io(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Error {
-        Error::Io(e)
-    }
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 fn corrupt(m: impl Into<String>) -> Error {
     Error::Corrupt(m.into())
@@ -305,13 +278,6 @@ pub struct GeoTiffSource<R: ReadAt> {
     held: Mutex<HashMap<(Scope, String), Arc<FieldGroup>>>,
 }
 
-/// The most IFDs a chain may hold before it is taken as corrupt: far more than any real file,
-/// few enough that walking them is quick.
-const MAX_IFDS: usize = 100_000;
-
-/// The most SubIFDs an Image may hold (M41).
-const MAX_SUB_IFDS: usize = 1_000;
-
 /// The most bytes of text one tag may hold, as the `tiff` crate's limit on a tag's values (M41).
 const MAX_TEXT_BYTES: u64 = 256 << 20;
 
@@ -489,14 +455,19 @@ fn latin1(bytes: &[u8]) -> Value {
 }
 
 impl<R: ReadAt> GeoTiffSource<R> {
-    /// Opens a Source: walks the IFD chain, reads each IFD's tags and checks that every chunk
-    /// lies within the file.
+    /// Opens a Source with the default `OpenOptions`.
     pub fn open(reader: R) -> Result<GeoTiffSource<R>> {
+        Self::open_with(reader, &OpenOptions::default())
+    }
+
+    /// Opens a Source: walks the IFD chain, reads each IFD's tags and checks that every chunk
+    /// lies within the file, within `max_directories` and `max_subdirectories` (M41).
+    pub fn open_with(reader: R, options: &OpenOptions) -> Result<GeoTiffSource<R>> {
         let reader = Arc::new(reader);
         let size = reader.size()?;
         let mut magic = [0u8; 4];
         if size < 8 {
-            return Err(Error::NotTiff);
+            return Err(unrecognized());
         }
         reader.read_exact_at(&mut magic, 0)?;
         let (big_endian, bigtiff) = match &magic {
@@ -504,12 +475,12 @@ impl<R: ReadAt> GeoTiffSource<R> {
             b"II+\0" => (false, true),
             b"MM\0*" => (true, false),
             b"MM\0+" => (true, true),
-            _ => return Err(Error::NotTiff),
+            _ => return Err(unrecognized()),
         };
         // The header, with the first IFD's place, which the `tiff` crate is not given (`At`).
         let mut header = vec![0u8; if bigtiff { 16 } else { 8 }];
         if size < header.len() as u64 {
-            return Err(Error::NotTiff);
+            return Err(unrecognized());
         }
         reader.read_exact_at(&mut header, 0)?;
         let word = |b: &[u8]| -> u64 {
@@ -520,7 +491,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
             }
         };
         if bigtiff && (word(&header[4..6]) != 8 || word(&header[6..8]) != 0) {
-            return Err(Error::NotTiff);
+            return Err(unrecognized());
         }
         let place = if bigtiff { 8..16 } else { 4..8 };
         let first = word(&header[place.clone()]);
@@ -561,9 +532,10 @@ impl<R: ReadAt> GeoTiffSource<R> {
             if !seen.insert(pointer.0) {
                 return Err(corrupt("the chain of image file directories loops"));
             }
-            if ifds.len() >= MAX_IFDS {
+            if ifds.len() as u64 >= options.max_directories {
                 return Err(Error::Unsupported(format!(
-                    "more than {MAX_IFDS} image file directories (M41)"
+                    "more than {} image file directories, max_directories (M41)",
+                    options.max_directories
                 )));
             }
             if pointer.0 >= size {
@@ -640,10 +612,10 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 .as_ref()
                 .map(|l| l.sub_ifds.clone())
                 .unwrap_or_default();
-            if pointers.len() > MAX_SUB_IFDS {
+            if pointers.len() as u64 > options.max_subdirectories {
                 return Err(Error::Unsupported(format!(
-                    "image {} has more than {MAX_SUB_IFDS} SubIFDs (M41)",
-                    image.info.ifd
+                    "image {} has more than {} SubIFDs, max_subdirectories (M41)",
+                    image.info.ifd, options.max_subdirectories
                 )));
             }
             // A SubIFD that cannot be read is skipped: it is not in the chain that locates the
@@ -885,9 +857,28 @@ impl<R: ReadAt> GeoTiffSource<R> {
 
     // -------------------------------------------------------------- pixels
 
+    /// An Image's stored levels, finest first: its overviews and SubIFDs (section 5,
+    /// `list_stored_levels`).
+    pub fn list_stored_levels(&self, image: usize) -> Result<&[StoredLevel]> {
+        Ok(&self.image(image)?.info.stored_levels)
+    }
+
     /// How the Image's chunks lie in the file (section 4, `describe_storage`).
     pub fn describe_storage(&self, image: usize) -> Result<Storage> {
-        let l = &self.image(image)?.full.layout;
+        self.describe_level_storage(image, "level0")
+    }
+
+    /// How a level's chunks lie in the file: `level0`'s, or a stored level's, each block
+    /// marked with its level (section 10, "Describe storage").
+    pub fn describe_level_storage(&self, image: usize, level: &str) -> Result<Storage> {
+        let img = self.image(image)?;
+        let n = stored_level_number(level)
+            .filter(|&n| n <= img.levels.len())
+            .ok_or_else(|| Error::NotFound(format!("level {level} of image {image}")))?;
+        let l = match n {
+            0 => &img.full.layout,
+            n => &img.levels[n - 1].layout,
+        };
         let (across, _) = l.chunks();
         let per_plane = l.offsets.len() as u64 / u64::from(l.planes());
         let mut blocks: Vec<Block> = l
@@ -906,7 +897,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
                 };
                 Block {
                     image: image as u32,
-                    level: 0,
+                    level: n as u32,
                     frame: 0,
                     block_row: (within / across) as u32,
                     block_col: (within % across) as u32,

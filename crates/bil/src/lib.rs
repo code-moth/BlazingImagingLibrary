@@ -16,6 +16,7 @@
 )]
 
 pub mod codec;
+pub mod error;
 pub mod fields;
 #[cfg(feature = "geotiff")]
 pub mod geotiff;
@@ -24,4 +25,8 @@ pub mod kernels;
 #[cfg(feature = "nitf")]
 pub mod nitf;
 pub mod simd;
+pub mod source;
 pub mod types;
+
+pub use error::{Error, Result};
+pub use source::{open_source, Image, OpenOptions, Source};

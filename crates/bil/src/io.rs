@@ -24,6 +24,15 @@ fn from_slice(bytes: &[u8], buf: &mut [u8], offset: u64) -> io::Result<()> {
     Ok(())
 }
 
+impl<T: ReadAt + ?Sized> ReadAt for std::sync::Arc<T> {
+    fn size(&self) -> io::Result<u64> {
+        (**self).size()
+    }
+    fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+        (**self).read_exact_at(buf, offset)
+    }
+}
+
 impl ReadAt for Vec<u8> {
     fn size(&self) -> io::Result<u64> {
         Ok(self.len() as u64)

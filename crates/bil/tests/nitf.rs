@@ -1169,7 +1169,7 @@ fn claims_beyond_the_file_are_refused() {
     // Not NITF.
     assert!(matches!(
         NitfSource::open(b"GIF89a....".to_vec()),
-        Err(Error::NotNitf)
+        Err(Error::Unrecognized(_))
     ));
 }
 
@@ -1634,6 +1634,23 @@ fn jpeg2000_resolution_levels_are_stored_levels() {
             col_count: cols as u32,
         };
         for (k, level) in levels.iter().enumerate() {
+            // Aligned, by the ruling on M48; the same blocks as level0, marked with the level.
+            assert_eq!(level.aligned, Some(true), "{name}");
+            let storage = source.describe_level_storage(0, &level.name).unwrap();
+            let s = 1u32 << (k + 1);
+            assert_eq!(
+                storage.block_size,
+                ((block.0 as u32).div_ceil(s), (block.1 as u32).div_ceil(s)),
+                "{name}"
+            );
+            let level0 = source.describe_storage(0).unwrap();
+            assert_eq!(storage.blocks.len(), level0.blocks.len());
+            for (a, b) in storage.blocks.iter().zip(&level0.blocks) {
+                assert_eq!(
+                    (a.level, a.offset, a.length),
+                    (k as u32 + 1, b.offset, b.length)
+                );
+            }
             let whole = source.read_level_fragment(0, &level.name, all).unwrap();
             assert_eq!(
                 (whole.window.row_count, whole.window.col_count),
@@ -1669,5 +1686,46 @@ fn jpeg2000_resolution_levels_are_stored_levels() {
             }
         }
         assert!(source.read_level_fragment(0, "stored3", all).is_err());
+    }
+}
+
+#[test]
+fn the_source_interface_opens_nitf_and_names_what_it_tried() {
+    let a = with_data(Img::new(5, 6, 1, "INT", 8));
+    let b = with_data(Img::new(7, 3, 2, "INT", 16));
+    let file = File21 {
+        images: vec![a, b],
+        des: vec![],
+        xhd: vec![],
+    }
+    .bytes();
+    let source = bil::OpenOptions::default().open_from(file).unwrap();
+    assert_eq!((source.driver(), source.image_count()), ("nitf", 2));
+    let image = source.image(1).unwrap();
+    assert_eq!(image.size().unwrap(), (7, 3));
+    assert_eq!(image.component_count().unwrap(), 2);
+    assert!(image.list_stored_levels().unwrap().is_empty());
+    let w = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 7,
+        col_count: 3,
+    };
+    let f = image.read_fragment(w, "level0").unwrap();
+    assert_eq!(f.data.len(), 7 * 3 * 2 * 2);
+    assert_eq!(f, source.as_nitf().unwrap().read_fragment(1, w).unwrap());
+    assert!(matches!(
+        image.read_fragment(w, "stored1"),
+        Err(Error::NotFound(_))
+    ));
+    assert!(matches!(
+        image.describe_storage("stored1"),
+        Err(Error::NotFound(_))
+    ));
+    assert!(source.as_geotiff().is_none());
+    // Bytes no driver recognizes: the error names every driver tried.
+    match bil::OpenOptions::default().open_from(b"GIF89a....".to_vec()) {
+        Err(Error::Unrecognized(tried)) => assert_eq!(tried, ["nitf", "geotiff"]),
+        other => panic!("{:?}", other.err()),
     }
 }

@@ -128,7 +128,7 @@ impl StoredLevel {
     }
 
     /// A level whose pixel i lies on full-resolution pixel i·2^k, as a JPEG 2000 resolution
-    /// level does (M48).
+    /// level does: aligned, by the author's ruling on M48 (version 76).
     pub fn on_grid(name: String, rows: u64, cols: u64, k: u32) -> StoredLevel {
         let s = 1i128 << k.min(62);
         StoredLevel {
@@ -137,7 +137,7 @@ impl StoredLevel {
             cols,
             scale: (s as f64, s as f64),
             position: (0.0, 0.0),
-            aligned: None,
+            aligned: Some(true),
             centers: [(0, s, 1); 2],
         }
     }
@@ -232,6 +232,8 @@ mod tests {
         assert_eq!(l.covered(w(99, 10)).row_start, 12);
         // On a grid of 4: samples at 0, 4, 8, ...; a Window from 4 to 8 holds 4 only.
         let g = StoredLevel::on_grid("stored2".into(), 8, 8, 2);
+        assert_eq!(g.aligned, Some(true));
+        assert_eq!(l.aligned, None);
         assert_eq!(
             g.covered(w(4, 4)),
             Window {
