@@ -1111,13 +1111,9 @@ impl<R: ReadAt> GeoTiffSource<R> {
         // Pixels in chunks never written (section 4): 0 in the data, and marked.
         let mut unrecorded = vec![false; (rows * cols) as usize];
         for crow in window.row_start / ch..row_end.div_ceil(ch).min(down) {
-            // Strips end at the Image; tiles are padded to their size. Rows past the Window are
-            // not decoded.
-            let h = if l.tiled {
-                ch
-            } else {
-                ch.min(l.rows - crow * ch)
-            };
+            // Strips end at the Image. A tile's rows below it are padding, which some writers
+            // leave out, so they are neither decoded nor kept.
+            let h = ch.min(l.rows - crow * ch);
             let needed_rows = h.min(row_end - crow * ch);
             for ccol in window.col_start / cw..col_end.div_ceil(cw).min(across) {
                 let r0 = (crow * ch).max(window.row_start);

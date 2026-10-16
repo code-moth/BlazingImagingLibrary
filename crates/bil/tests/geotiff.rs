@@ -1415,7 +1415,7 @@ fn representations_follow_photometric() {
 /// Chunks are decoded once and cut for each Window; the cache's limits hold (section 4).
 #[test]
 fn the_cache_decodes_a_chunk_once() {
-    let mut img = Img::new(40, 40, 2, SampleType::U16);
+    let mut img = Img::new(48, 48, 2, SampleType::U16);
     img.tile = Some((16, 16));
     img.compression = 8;
     let file = write(std::slice::from_ref(&img), false, false);
