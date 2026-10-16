@@ -20,7 +20,7 @@ use crate::geotiff::GeoTiffSource;
 use crate::io::ReadAt;
 #[cfg(feature = "nitf")]
 use crate::nitf::NitfSource;
-use crate::types::{Fragment, PixelType, Scope, Storage, StoredLevel, Window};
+use crate::types::{Fragment, ImageInfo, Scope, Storage, StoredLevel, Window};
 
 /// What `open_source` is given (section 3.4). This preview holds the options the readers act
 /// on; the others join as the code that uses them is written (M50).
@@ -120,6 +120,13 @@ impl Source {
         each!(self.0, s => s.image_count())
     }
 
+    /// An `ImageInfo` for each Image, in order (section 3).
+    pub fn list_images(&self) -> Result<Vec<ImageInfo>> {
+        (0..self.image_count())
+            .map(|i| each!(self.0, s => s.info(i)))
+            .collect()
+    }
+
     /// One Image, by its index, counted from 0.
     pub fn image(&self, index: usize) -> Result<Image<'_>> {
         if index >= self.image_count() {
@@ -179,36 +186,15 @@ pub struct Image<'a> {
     index: usize,
 }
 
-/// Reads a field of the reader's own `ImageInfo`, which every reader names alike.
-macro_rules! info {
-    ($image:expr, $field:ident) => {
-        {
-            let field: Result<_> =
-                each!($image.source.0, s => s.image_info($image.index).map(|i| i.$field.clone()));
-            field
-        }
-    };
-}
-
 impl<'a> Image<'a> {
     /// Its index in the Source.
     pub fn index(&self) -> usize {
         self.index
     }
 
-    /// Rows and columns, at full resolution.
-    pub fn size(&self) -> Result<(u64, u64)> {
-        Ok((info!(self, rows)?, info!(self, cols)?))
-    }
-
-    /// The number of components, which the readers call bands.
-    pub fn component_count(&self) -> Result<u32> {
-        info!(self, bands)
-    }
-
-    /// The pixel type, or `None` where BIL's types do not hold the samples; reads then fail.
-    pub fn pixel_type(&self) -> Result<Option<PixelType>> {
-        info!(self, pixel_type)
+    /// Its `ImageInfo` (section 3).
+    pub fn info(&self) -> Result<ImageInfo> {
+        each!(self.source.0, s => s.info(self.index))
     }
 
     /// Its stored levels, finest first (section 5, `list_stored_levels`).

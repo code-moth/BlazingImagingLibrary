@@ -42,6 +42,18 @@ pub enum SampleType {
 }
 
 impl SampleType {
+    /// Whether it holds floating-point numbers, where a stored NaN is missing (section 5).
+    pub fn is_float(self) -> bool {
+        matches!(
+            self,
+            SampleType::F16
+                | SampleType::F32
+                | SampleType::F64
+                | SampleType::ComplexF32
+                | SampleType::ComplexF64
+        )
+    }
+
     /// Bytes in one sample.
     pub fn size(self) -> usize {
         match self {
@@ -297,6 +309,58 @@ pub struct Storage {
     /// Where the order is known, the blocks in the order they lie in the file. A block that
     /// was never recorded lies nowhere and is not listed.
     pub blocks: Vec<Block>,
+}
+
+/// How many frames an Image holds, and how sure that is (section 3.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameCount {
+    /// Exactly this many.
+    Known(u64),
+    /// At least this many, as in a stream not yet read to its end.
+    AtLeast(u64),
+    /// Not known without reading the whole stream.
+    Unknown,
+}
+
+/// How one Image relates to another (section 3, "Related Images"), in the shape M57 proposes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RelationKind {
+    /// The Images line up pixel for pixel.
+    SameGrid,
+    /// The other Image covers the same scene at a whole-number reduction, down and across,
+    /// its first sample's center at `position` in this Image's pixels.
+    ScaledGrid {
+        reduction: (u32, u32),
+        position: (f64, f64),
+    },
+}
+
+/// A related Image, by its index.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Relation {
+    pub image: usize,
+    pub kind: RelationKind,
+}
+
+/// One Image, described the same way by every driver (section 3, `ImageInfo`). This preview
+/// leaves out `representation` and `component_names`, which wait for the table of M55.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageInfo {
+    pub row_count: u64,
+    pub col_count: u64,
+    pub frame_count: FrameCount,
+    /// `None` where BIL's types do not hold the samples; reads then fail, and the reader's own
+    /// description says why (M56).
+    pub pixel_type: Option<PixelType>,
+    /// The number of components, given even where `pixel_type` is `None` (M56).
+    pub component_count: u32,
+    pub relations: Vec<Relation>,
+    /// The block size, the interleave and whether the block order is known: the first three
+    /// parts of `describe_storage("level0")`, with no blocks listed (M56).
+    pub storage: Storage,
+    /// Whether this Image can have missing pixels (section 5, "No cost where nothing is
+    /// missing").
+    pub may_have_missing: bool,
 }
 
 /// The native pixels of a Window, owned (section 4). This preview fills the parts of a Fragment

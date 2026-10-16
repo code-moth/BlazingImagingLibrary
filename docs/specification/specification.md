@@ -408,7 +408,7 @@ For a framing sensor, a frame is one physical collection cycle: one exposure and
 
 Every call returns a result, and everything that is delivered carries a status. This is the one way BIL says how a request turned out.
 
-**A call either delivers or fails.** A call that cannot deliver returns an error and no value. Errors are a file that cannot be opened, a bad argument, a failed read, a limit exceeded and corrupt data. Every driver reports them through one error type, and a file that no driver recognizes is reported with the formats tried.
+**A call either delivers or fails.** A call that cannot deliver returns an error and no value. Errors are a file that cannot be opened, a bad argument, a failed read, a limit exceeded and corrupt data. Every driver reports them through one error type, and a file that no driver recognizes is reported with the names of the drivers tried, in the order tried, such as `nitf` and `geotiff`. A driver's own reader, opened directly on a file it does not recognize, names itself alone.
 
 **What is delivered carries a status**
 
@@ -434,7 +434,7 @@ Every call returns a result, and everything that is delivered carries a status. 
 
 Every option is listed here, with its default, and every kind of data BIL holds between calls has a stated limit and a report.
 
-**`OpenOptions`**, given to `open_source`
+**`OpenOptions`**, given to `open_source`. In Rust it is a struct with public fields and a `Default`, opened as Rust's own `std::fs::OpenOptions` opens a file: `OpenOptions::open(path)`, or `open_from(reader)` for bytes from memory or any other reader. `open_source(path)` opens with the defaults. A caller sets the options it needs and takes the defaults for the rest (`..Default::default()`), so an option added later breaks no caller.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -620,6 +620,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 | `order` | `Known` or `Unknown`, as a `StorageOrder` |
 | `blocks` | Where the order is known, the blocks in the order they lie in the file: each with its Image, stored level, frame, block row and column, the components it holds, and its byte offset and length. For video, only the frames the frame index already covers, since opening never scans (section 3.2). |
 
+- **One for each level.** `describe_storage` takes the level, as `read_fragment` does, and every block it lists carries that level. A TIFF overview's blocks are its own chunks. A JPEG 2000 resolution level k is read from its Image's bytes, so it lists its Image's blocks, with a block size of its Image's halved k times, rounding up.
 - **One record for every kind of driver.** A compiled driver fills it from its format's own tables. For a scripted driver, BIL derives it from the `PixelLayout`, whose `interleave` and `blocks` already say the same things.
 - **What is read ahead.** After each read, BIL reads the blocks that follow the last block read in storage order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage, where each component's blocks lie apart, it reads ahead along each component the last read used. It stops at `read_ahead_bytes`, and never takes the cache past either of its limits: blocks read ahead count against `set_cache_size` as well as the byte ceiling, so with the cache turned off nothing is read ahead. It runs forward only, in storage order.
 - **Decoded ahead too.** Blocks read ahead are decoded on a background thread into the Fragment cache, so the caller's next read finds them ready. Uncompressed blocks, which have nothing to decode, are only fetched, or for mapped files the operating system is asked to bring them into memory.
@@ -1432,7 +1433,7 @@ External drivers use the C interface because Rust has no stable binary interface
 
 **Driver selection.** Probing runs in two stages, because many formats share one container: DNG, GeoTIFF, whole-slide and many raw camera files are TIFF underneath, NetCDF-4 and several SAR products are HDF5, and DICOS is DICOM.
 
-1. **The container.** The file name and leading bytes identify the container, such as TIFF, HDF5 or DICOM.
+1. **The container.** The file name and leading bytes identify the container, such as TIFF, HDF5 or DICOM. Where a container has one driver, its leading bytes alone decide, and the order of trying matters only to the list of drivers an unrecognized file reports. Confidence and the configured order apply from a container's second driver.
 2. **The content.** The drivers for that container examine its contents, such as GeoTIFF keys, DNG tags or NetCDF conventions, and each returns a confidence. The highest wins.
 3. **Ties.** Equal confidences are broken by the installation's configured order of preference, never by load order.
 
@@ -1523,7 +1524,7 @@ pub trait Driver {
 pub trait SourceReader {
     fn list_images(&self) -> Vec<ImageInfo>;
     fn open_reader(&self, image_index: u32) -> Result<Box<dyn Reader>>;   // one for each thread; holds decoder state
-    fn describe_storage(&self, image_index: u32) -> Storage;               // block size, interleave, and blocks in file order where known
+    fn describe_storage(&self, image_index: u32, stored_level: u32) -> Storage;  // one for each level, its blocks in file order where known
     fn list_field_groups(&self, image_index: u32) -> Vec<String>;
     fn read_field_group(&self, image_index: u32, group_name: &str) -> Result<FieldGroup>;
 }
@@ -2571,7 +2572,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and ninety have been decided. Each lists the current proposal.
+Two points are not yet settled, and ninety-one have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2624,6 +2625,7 @@ Two points are not yet settled, and ninety have been decided. Each lists the cur
 - [x] **The calling interface.** Decided: the gaps found by BIL by Example are closed. A caller lists Images and reads an `ImageInfo`; reads Fragments by Level name; passes selectors with parameters to `read_slices`; sends results to buffers or a callback; reads through a chosen Reader; finds the newest frame, with a timeout and cancellation; names geo models by their main step and makes steps; leaves out a surface where none is needed; registers slice functions and level methods by a stated description; writes field definitions in a stated form; writes into named components and writes geo models; and calls C by five conventions (sections 2, 3, 3.2, 3.4, 4, 5, 9.7, 10, 11, 13.3, 13.4, 14.1 and 14.2).
 - [x] **Red team, second review.** Decided: isolation decodes on request, and a whole copy is a separate choice; Window independence and agreement between machines hold to a stated tolerance, not to the bit; markings are written inside files where they fit, a missing companion is noticed, and refusal is available but off by default; writers write the geo model, hold stated sample types and write Slices on their own grid; deferred Fragments decode themselves; the cache has a byte ceiling and untrusted Sources get limits; remote Sources run on a private runtime with counted, merged requests and timeouts; a live stream has one position and past frames are `Missing`; a static-linking exception; arithmetic never in integers; masks reduced as masks; checked frame indexes and companions not trusted blindly; a stability policy; more conformance tests; and Exif GPS time used first (R26 to R41 except R29).
 - [x] **Stored levels and the Level grid.** Decided: a stored level is used to make a Level only when it is aligned with the Level grid. A misaligned one can be read as it stands, with its true origin and scale, but never makes a Level. A stored level's position is its first pixel's center, a Fragment from it is in its own rows and columns, and JPEG 2000 resolution levels are aligned (sections 4 and 5).
+- [x] **The Source interface in Rust.** Decided: `OpenOptions` is a struct opened like `std::fs::OpenOptions`, an unrecognized file names the drivers tried, `describe_storage` takes the level, and a container with one driver is chosen by its leading bytes alone (sections 3.3, 3.4, 4 and 10).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, the formula for each derived one, and the items of each domain profile. The first entries and first profiles are in section 14.2, and both are settled as drivers are built.
 - [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, and a profile that names itself, directly or through others, is refused. They are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).

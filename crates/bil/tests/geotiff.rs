@@ -718,6 +718,7 @@ fn nodata_marks_pixels_whose_every_sample_holds_it() {
         img.tags.push((42113, 2, v.len() as u64, v));
         let source = GeoTiffSource::open(write(&[img.clone()], false, false)).unwrap();
         assert_eq!(source.image_info(0).unwrap().nodata.as_deref(), Some(text));
+        assert!(source.info(0).unwrap().may_have_missing);
         let f = source.read_fragment(0, whole(&img)).unwrap();
         let size = t.size();
         let expect: Vec<bool> = f
@@ -998,6 +999,7 @@ fn chunks_never_written_are_missing() {
     img.tile = Some((16, 16));
     img.sparse = vec![1, 2];
     let source = GeoTiffSource::open(write(std::slice::from_ref(&img), false, false)).unwrap();
+    assert!(source.info(0).unwrap().may_have_missing);
     let f = source.read_fragment(0, whole(&img)).unwrap();
     let valid = f.validity.clone().unwrap();
     for r in 0..20u64 {
@@ -1269,8 +1271,20 @@ fn the_source_interface_opens_tiff_and_reads_its_levels() {
     let source = bil::OpenOptions::default().open_from(file.clone()).unwrap();
     assert_eq!((source.driver(), source.image_count()), ("geotiff", 1));
     let image = source.image(0).unwrap();
-    assert_eq!(image.size().unwrap(), (40, 60));
-    assert_eq!(image.component_count().unwrap(), 2);
+    let info = image.info().unwrap();
+    assert_eq!(
+        (info.row_count, info.col_count, info.component_count),
+        (40, 60, 2)
+    );
+    assert_eq!(info.frame_count, bil::types::FrameCount::Known(1));
+    assert_eq!(
+        (info.storage.interleave, info.storage.order),
+        (Interleave::Pixel, StorageOrder::Known)
+    );
+    assert!(info.storage.blocks.is_empty() && info.relations.is_empty());
+    // Integers with no no-data value and every chunk written: nothing can be missing.
+    assert!(!info.may_have_missing);
+    assert_eq!(source.list_images().unwrap(), [info]);
     let levels = image.list_stored_levels().unwrap();
     assert_eq!((levels.len(), levels[0].name.as_str()), (1, "stored1"));
     // A stored level's Storage is its own: its chunk size, and its blocks marked with it.

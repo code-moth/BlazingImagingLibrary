@@ -829,6 +829,26 @@ impl<R: ReadAt> NitfSource<R> {
         Ok(storage)
     }
 
+    /// The Image described as every driver describes one (section 3, `ImageInfo`). It can have
+    /// missing pixels where a block mask table may leave blocks out or state a pad value, and
+    /// where its samples are floats, whose stored NaN is missing (M52).
+    pub fn info(&self, image: usize) -> Result<crate::types::ImageInfo> {
+        let info = &self.image(image)?.info;
+        let mut storage = self.describe_storage(image)?;
+        storage.blocks = Vec::new();
+        Ok(crate::types::ImageInfo {
+            row_count: info.rows,
+            col_count: info.cols,
+            frame_count: crate::types::FrameCount::Known(1),
+            pixel_type: info.pixel_type,
+            component_count: info.bands,
+            relations: Vec::new(),
+            storage,
+            may_have_missing: info.masked
+                || info.pixel_type.is_some_and(|p| p.sample_type.is_float()),
+        })
+    }
+
     /// An Image's stored levels, finest first: a JPEG 2000 Image's resolution levels (section 5,
     /// `list_stored_levels`).
     pub fn list_stored_levels(&self, image: usize) -> Result<&[StoredLevel]> {

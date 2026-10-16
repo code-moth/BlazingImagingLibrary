@@ -857,6 +857,32 @@ impl<R: ReadAt> GeoTiffSource<R> {
 
     // -------------------------------------------------------------- pixels
 
+    /// The Image described as every driver describes one (section 3, `ImageInfo`). It can have
+    /// missing pixels where it or a stored level states a no-data value or has a chunk never
+    /// written, and where its samples are floats, whose stored NaN is missing (M52).
+    pub fn info(&self, image: usize) -> Result<crate::types::ImageInfo> {
+        let img = self.image(image)?;
+        let mut storage = self.describe_storage(image)?;
+        storage.blocks = Vec::new();
+        let gaps = std::iter::once(&img.full)
+            .chain(&img.levels)
+            .any(|c| c.layout.nodata.is_some() || c.layout.counts.contains(&0));
+        Ok(crate::types::ImageInfo {
+            row_count: img.info.rows,
+            col_count: img.info.cols,
+            frame_count: crate::types::FrameCount::Known(1),
+            pixel_type: img.info.pixel_type,
+            component_count: img.info.bands,
+            relations: Vec::new(),
+            storage,
+            may_have_missing: gaps
+                || img
+                    .info
+                    .pixel_type
+                    .is_some_and(|p| p.sample_type.is_float()),
+        })
+    }
+
     /// An Image's stored levels, finest first: its overviews and SubIFDs (section 5,
     /// `list_stored_levels`).
     pub fn list_stored_levels(&self, image: usize) -> Result<&[StoredLevel]> {

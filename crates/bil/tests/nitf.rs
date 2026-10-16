@@ -669,6 +669,7 @@ fn masks_mark_missing_blocks_and_pad_pixels() {
     }
     .bytes();
     let source = NitfSource::open(file).unwrap();
+    assert!(source.info(0).unwrap().may_have_missing);
     let w = Window {
         row_start: 0,
         col_start: 0,
@@ -1702,8 +1703,14 @@ fn the_source_interface_opens_nitf_and_names_what_it_tried() {
     let source = bil::OpenOptions::default().open_from(file).unwrap();
     assert_eq!((source.driver(), source.image_count()), ("nitf", 2));
     let image = source.image(1).unwrap();
-    assert_eq!(image.size().unwrap(), (7, 3));
-    assert_eq!(image.component_count().unwrap(), 2);
+    let info = image.info().unwrap();
+    assert_eq!(
+        (info.row_count, info.col_count, info.component_count),
+        (7, 3, 2)
+    );
+    assert_eq!(info.storage.block_size, (7, 3));
+    assert!(!info.may_have_missing);
+    assert_eq!(source.list_images().unwrap().len(), 2);
     assert!(image.list_stored_levels().unwrap().is_empty());
     let w = Window {
         row_start: 0,
