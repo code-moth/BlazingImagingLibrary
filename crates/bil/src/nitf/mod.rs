@@ -31,6 +31,7 @@ use crate::types::{
 };
 use defs::{walk, WalkError, Walked};
 
+use crate::cache::{Cache, CacheReport};
 pub use crate::error::{Error, Result};
 use crate::source::OpenOptions;
 
@@ -344,6 +345,8 @@ pub struct NitfSource<R: ReadAt> {
     segments: Vec<Segment>,
     images: Vec<Image>,
     held: Mutex<HashMap<(Scope, String), Arc<FieldGroup>>>,
+    /// Blocks decoded, kept for the reads that follow (section 4); not yet filled.
+    cache: Cache,
 }
 
 /// Reads `len` bytes at `offset`, which the caller has checked lie within the file.
@@ -574,6 +577,7 @@ impl<R: ReadAt> NitfSource<R> {
             segments,
             images,
             held: Mutex::new(HashMap::new()),
+            cache: Cache::default(),
         })
     }
 
@@ -895,6 +899,27 @@ impl<R: ReadAt> NitfSource<R> {
             may_have_missing: info.masked
                 || info.pixel_type.is_some_and(|p| p.sample_type.is_float()),
         })
+    }
+
+    /// Sets how many decoded blocks this Source keeps; 0 turns the cache off (section 4).
+    pub fn set_cache_size(&self, fragment_count: usize) {
+        self.cache.set_size(fragment_count);
+    }
+
+    /// Sets the most bytes of decoded blocks this Source keeps (section 4).
+    pub fn set_cache_bytes(&self, byte_count: u64) {
+        self.cache.set_bytes(byte_count);
+    }
+
+    /// What the cache holds and has served (section 4). NITF's blocks do not pass through it
+    /// yet, so it stays empty.
+    pub fn describe_cache(&self) -> CacheReport {
+        self.cache.describe()
+    }
+
+    /// Frees every cached block (section 4).
+    pub fn clear_cache(&self) {
+        self.cache.clear();
     }
 
     /// An Image's stored levels, finest first: a JPEG 2000 Image's resolution levels (section 5,

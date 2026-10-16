@@ -1411,3 +1411,80 @@ fn representations_follow_photometric() {
         (R::Complex, names(&["complex"]))
     );
 }
+
+/// Chunks are decoded once and cut for each Window; the cache's limits hold (section 4).
+#[test]
+fn the_cache_decodes_a_chunk_once() {
+    let mut img = Img::new(40, 40, 2, SampleType::U16);
+    img.tile = Some((16, 16));
+    img.compression = 8;
+    let file = write(std::slice::from_ref(&img), false, false);
+    let source = GeoTiffSource::open(file.clone()).unwrap();
+    let w = |r, c| Window {
+        row_start: r,
+        col_start: c,
+        row_count: 8,
+        col_count: 8,
+    };
+    // Two Windows inside the first tile: one decode, one hit.
+    check(&source, 0, &img, w(0, 0));
+    check(&source, 0, &img, w(4, 4));
+    let r = source.describe_cache();
+    assert_eq!((r.misses, r.hits, r.fragment_count), (1, 1, 1));
+    assert_eq!(r.bytes, 16 * 16 * 2 * 2);
+    // A Window across four tiles finds one cached.
+    check(&source, 0, &img, w(12, 12));
+    let r = source.describe_cache();
+    assert_eq!((r.misses, r.hits, r.fragment_count), (4, 2, 4));
+    // The whole Image, then a ceiling of one tile's bytes: one held, and none past it.
+    check(&source, 0, &img, whole(&img));
+    assert_eq!(source.describe_cache().fragment_count, 9);
+    source.set_cache_bytes(16 * 16 * 4);
+    let r = source.describe_cache();
+    assert_eq!((r.fragment_count, r.held_past_ceiling), (1, 0));
+    // A ceiling below one tile: the tile is held alone, and that is reported.
+    source.set_cache_bytes(100);
+    // Lowering the ceiling below the one block held keeps it, and warns.
+    assert_eq!(source.describe_cache().held_past_ceiling, 1);
+    let tile = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 16,
+        col_count: 16,
+    };
+    check(&source, 0, &img, tile);
+    let r = source.describe_cache();
+    assert_eq!((r.fragment_count, r.held_past_ceiling), (1, 2));
+    // The tile held past the ceiling serves a read of part of it.
+    let before = source.describe_cache();
+    check(&source, 0, &img, w(4, 4));
+    let after = source.describe_cache();
+    assert_eq!((after.hits, after.misses), (before.hits + 1, before.misses));
+    // A Window needing fewer rows than such a tile holds decodes only those, keeps nothing,
+    // and leaves what the cache holds as it was (M67).
+    check(&source, 0, &img, w(16, 0));
+    let r = source.describe_cache();
+    assert_eq!((r.fragment_count, r.held_past_ceiling), (1, 2));
+    source.clear_cache();
+    assert_eq!(source.describe_cache().bytes, 0);
+    // Off: the same pixels, nothing kept, every chunk a miss.
+    let off = GeoTiffSource::open(file).unwrap();
+    off.set_cache_size(0);
+    check(&off, 0, &img, whole(&img));
+    check(&off, 0, &img, w(4, 4));
+    let r = off.describe_cache();
+    assert_eq!((r.fragment_count, r.hits, r.misses), (0, 0, 10));
+    // Through the Source interface too.
+    let source = bil::OpenOptions::default()
+        .open_from(write(std::slice::from_ref(&img), false, false))
+        .unwrap();
+    source.set_cache_size(3);
+    let f = source
+        .image(0)
+        .unwrap()
+        .read_fragment(whole(&img), "level0")
+        .unwrap();
+    check_fragment(&f, &img, whole(&img));
+    let r = source.describe_cache();
+    assert_eq!((r.fragment_count, r.max_fragments, r.misses), (3, 3, 9));
+}

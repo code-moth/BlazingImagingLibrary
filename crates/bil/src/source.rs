@@ -13,6 +13,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::cache::CacheReport;
 use crate::error::{Error, Result};
 use crate::fields::{Field, FieldGroup};
 #[cfg(feature = "geotiff")]
@@ -156,6 +157,26 @@ impl Source {
             #[allow(unreachable_patterns)]
             _ => None,
         }
+    }
+
+    /// Sets how many decoded Fragments this Source keeps; 0 turns the cache off (section 4).
+    pub fn set_cache_size(&self, fragment_count: usize) {
+        each!(self.0, s => s.set_cache_size(fragment_count))
+    }
+
+    /// Sets the most bytes of decoded Fragments this Source keeps (section 4).
+    pub fn set_cache_bytes(&self, byte_count: u64) {
+        each!(self.0, s => s.set_cache_bytes(byte_count))
+    }
+
+    /// The Fragments held, the limits, and counts in blocks (section 4).
+    pub fn describe_cache(&self) -> CacheReport {
+        each!(self.0, s => s.describe_cache())
+    }
+
+    /// Frees every cached Fragment (section 4).
+    pub fn clear_cache(&self) {
+        each!(self.0, s => s.clear_cache())
     }
 
     /// The field groups of the Source or one Image (section 14.4).

@@ -44,6 +44,7 @@ use crate::types::{
 };
 pub use crate::types::{Scope, StoredLevel};
 
+use crate::cache::{BlockKey, Cache, CacheReport};
 pub use crate::error::{Error, Result};
 use crate::source::OpenOptions;
 
@@ -283,6 +284,8 @@ pub struct GeoTiffSource<R: ReadAt> {
     images: Vec<Image>,
     decoder: Mutex<Decoder<At<R>>>,
     held: Mutex<HashMap<(Scope, String), Arc<FieldGroup>>>,
+    /// Chunks decoded, kept for the reads that follow (section 4).
+    cache: Cache,
 }
 
 /// The most bytes of text one tag may hold, as the `tiff` crate's limit on a tag's values (M41).
@@ -673,6 +676,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
             images,
             decoder: Mutex::new(decoder),
             held: Mutex::new(HashMap::new()),
+            cache: Cache::default(),
         })
     }
 
@@ -893,6 +897,26 @@ impl<R: ReadAt> GeoTiffSource<R> {
         })
     }
 
+    /// Sets how many decoded chunks this Source keeps; 0 turns the cache off (section 4).
+    pub fn set_cache_size(&self, fragment_count: usize) {
+        self.cache.set_size(fragment_count);
+    }
+
+    /// Sets the most bytes of decoded chunks this Source keeps (section 4).
+    pub fn set_cache_bytes(&self, byte_count: u64) {
+        self.cache.set_bytes(byte_count);
+    }
+
+    /// What the cache holds and has served (section 4).
+    pub fn describe_cache(&self) -> CacheReport {
+        self.cache.describe()
+    }
+
+    /// Frees every cached chunk (section 4).
+    pub fn clear_cache(&self) {
+        self.cache.clear();
+    }
+
     /// An Image's stored levels, finest first: its overviews and SubIFDs (section 5,
     /// `list_stored_levels`).
     pub fn list_stored_levels(&self, image: usize) -> Result<&[StoredLevel]> {
@@ -961,7 +985,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
     /// Reads chunks of its own, so reads of one Source run in parallel (M44).
     pub fn read_fragment(&self, image: usize, window: Window) -> Result<Fragment> {
         let img = self.image(image)?;
-        self.read_coded(image, &img.full, img.info.nodata.as_deref(), window)
+        self.read_coded(image, 0, &img.full, img.info.nodata.as_deref(), window)
     }
 
     /// The native pixels of a Window at a level: `level0`, full resolution, or a stored level
@@ -991,15 +1015,66 @@ impl<R: ReadAt> GeoTiffSource<R> {
             .or(img.info.nodata.as_deref());
         self.read_coded(
             image,
+            n as u32,
             coded,
             nodata,
             img.info.stored_levels[n - 1].covered(window),
         )
     }
 
+    /// One chunk's rows, `rows` of them from its first, decompressed and turned into native
+    /// samples, row after row.
+    fn decode_chunk(
+        &self,
+        coding: Coding,
+        samples: &Samples,
+        index: usize,
+        (offset, count): (u64, u64),
+        (row_bytes, rows): (usize, usize),
+        (values, in_chunk): (usize, usize),
+    ) -> Result<Vec<u8>> {
+        // A declared size the stored bytes cannot make is corrupt, and is refused before any
+        // memory is taken for it.
+        let claimed = (row_bytes as u64).saturating_mul(rows as u64);
+        if claimed > count.saturating_mul(coding.most_per_byte()) {
+            return Err(corrupt(format!(
+                "chunk {index}: {count} bytes cannot hold the {claimed} bytes its rows need"
+            )));
+        }
+        let needed = usize::try_from(claimed)
+            .ok()
+            .filter(|&n| n <= isize::MAX as usize)
+            .ok_or_else(|| Error::Unsupported("a chunk too large to hold".into()))?;
+        // Offsets and counts were checked against the file at open.
+        let mut stored = vec![0u8; count as usize];
+        self.reader.read_exact_at(&mut stored, offset)?;
+        if coding == Coding::Lzw && stored.starts_with(&[0, 1]) {
+            // LZW as written before TIFF 5.0, with its bits reversed: libtiff reads it, and BIL
+            // does not yet.
+            return Err(Error::Unsupported(format!(
+                "chunk {index}: LZW in the form before TIFF 5.0"
+            )));
+        }
+        let mut decoded = vec![0u8; needed];
+        chunks::decompress(coding, &mut stored, samples.reversed_bits, &mut decoded)
+            .map_err(|m| corrupt(format!("chunk {index}: {m}")))?;
+        let mut native = Vec::new();
+        for k in 0..rows {
+            chunks::row(
+                samples,
+                &mut decoded[k * row_bytes..][..row_bytes],
+                values,
+                in_chunk,
+                &mut native,
+            );
+        }
+        Ok(native)
+    }
+
     fn read_coded(
         &self,
         image: usize,
+        level: u32,
         coded: &Coded,
         nodata: Option<&str>,
         window: Window,
@@ -1033,9 +1108,6 @@ impl<R: ReadAt> GeoTiffSource<R> {
         let row_end = window.row_start + rows;
         let col_end = window.col_start + cols;
         let in_chunk = if l.planar { 1 } else { bands };
-        let mut stored = Vec::new();
-        let mut decoded = Vec::new();
-        let mut native = Vec::new();
         // Pixels in chunks never written (section 4): 0 in the data, and marked.
         let mut unrecorded = vec![false; (rows * cols) as usize];
         for crow in window.row_start / ch..row_end.div_ceil(ch).min(down) {
@@ -1071,42 +1143,39 @@ impl<R: ReadAt> GeoTiffSource<R> {
                         .row_bytes(values)
                         .and_then(|b| usize::try_from(b).ok())
                         .ok_or_else(|| Error::Unsupported("a chunk too large to hold".into()))?;
-                    let needed = row_bytes
-                        .checked_mul(needed_rows as usize)
-                        .filter(|&n| n <= isize::MAX as usize)
-                        .ok_or_else(|| Error::Unsupported("a chunk too large to hold".into()))?;
-                    // A declared size the stored bytes cannot make is corrupt, and is refused
-                    // before any memory is taken for it.
-                    if needed as u64 > count.saturating_mul(coding.most_per_byte()) {
-                        return Err(corrupt(format!(
-                            "chunk {index}: {count} bytes cannot hold the {needed} bytes its rows need"
-                        )));
-                    }
-                    // Offsets and counts were checked against the file at open.
-                    stored.resize(count as usize, 0);
-                    self.reader.read_exact_at(&mut stored, offset)?;
-                    if coding == Coding::Lzw && stored.starts_with(&[0, 1]) {
-                        // LZW as written before TIFF 5.0, with its bits reversed: libtiff reads
-                        // it, and BIL does not yet.
-                        return Err(Error::Unsupported(format!(
-                            "chunk {index}: LZW in the form before TIFF 5.0"
-                        )));
-                    }
-                    decoded.resize(needed, 0);
-                    chunks::decompress(coding, &mut stored, samples.reversed_bits, &mut decoded)
-                        .map_err(|m| corrupt(format!("chunk {index}: {m}")))?;
+                    // The whole chunk is decoded and kept (section 4, "One block, one entry"),
+                    // unless the cache is off, or the chunk would pass the ceiling and the read
+                    // needs fewer of its rows: then only the rows down to the Window's end are
+                    // decoded, and nothing is kept (M67).
+                    let whole_bytes = (cw * in_chunk as u64 * size as u64).saturating_mul(h);
+                    let key = BlockKey {
+                        image: image as u32,
+                        level,
+                        frame: 0,
+                        block_row: crow as u32,
+                        block_col: ccol as u32,
+                        components: if l.planar {
+                            (plane, plane + 1)
+                        } else {
+                            (0, l.samples)
+                        },
+                    };
+                    let native = self
+                        .cache
+                        .read(key, whole_bytes, needed_rows < h, |whole| {
+                            self.decode_chunk(
+                                coding,
+                                &samples,
+                                index,
+                                (offset, count),
+                                (row_bytes, if whole { h } else { needed_rows } as usize),
+                                (values as usize, in_chunk),
+                            )
+                        })?;
                     let native_row = cw as usize * in_chunk * size;
                     for r in r0..r1 {
                         let k = (r - crow * ch) as usize;
-                        native.clear();
-                        chunks::row(
-                            &samples,
-                            &mut decoded[k * row_bytes..][..row_bytes],
-                            values as usize,
-                            in_chunk,
-                            &mut native,
-                        );
-                        debug_assert_eq!(native.len(), native_row);
+                        let native = &native[k * native_row..][..native_row];
                         let dst_row = (r - window.row_start) as usize * strides[0];
                         if l.planar {
                             for c in c0..c1 {

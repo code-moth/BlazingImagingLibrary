@@ -15,6 +15,7 @@
     clippy::excessive_precision
 )]
 
+pub mod cache;
 pub mod codec;
 pub mod error;
 pub mod fields;

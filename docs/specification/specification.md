@@ -605,7 +605,11 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 **Fragment cache.** Compressed data decodes in whole blocks: a tile, a strip, a chunk or a video frame. BIL keeps recently decoded blocks, each as a Fragment, so a block that several reads share is decoded once.
 
 - **What it saves.** Adjacent Windows that share a block, the margins BIL reads around a Window, and video frames that are read more than once.
-- **Sized by count, with a ceiling in bytes.** The caller sets how many Fragments are kept. Zero turns the cache off, and the default is 16. A second limit, `set_cache_bytes`, caps the bytes held, by default a quarter of physical memory. Whichever limit is reached first applies, so very large blocks, such as wide-area motion imagery frames, cannot exhaust memory.
+- **One block, one entry.** An entry is one block as `describe_storage` lists it, keyed by its Image, level, frame, block row and column and the components it holds, and held whole, every pixel decoded, so any Window that touches it is cut from it.
+- **Every block that is not borrowed.** Uncompressed blocks that are copied, for want of mapping or because their samples are unpacked or regrouped, are cached like decoded ones, so margins, terrain tiles and remote reads keep what they read.
+- **Sized by count, with a ceiling in bytes.** The caller sets how many Fragments are kept. Zero turns the cache off, and the default is 16. A second limit, `set_cache_bytes`, caps the bytes held, by default a quarter of physical memory, or 1 GiB where BIL cannot find how much the machine has. Whichever limit is reached first applies, so very large blocks, such as wide-area motion imagery frames, cannot exhaust memory.
+- **At least one block.** A block a read decodes that is larger than `set_cache_bytes` is held alone, past the ceiling, rather than decoded again by the next read that needs it: the ceiling gives way for one block, never more, and the next block that fits displaces it. It holds the block's memory until then. The caller is warned each time this happens, so it learns that the ceiling is below the blocks the file holds. A block read ahead never passes the ceiling.
+- **Decoded once among threads.** Where several Readers need one block at once, the first decodes it and the others wait for it. A decode that fails is not cached, and a waiting read then decodes the block in turn, so every error arrives with a read of its own.
 - **One cache for each Source.** Every Reader of the Source shares it, and it is freed when the Source is closed.
 - **Least recently used goes first.** When the cache is full, the Fragment that has gone longest without use is dropped. Under `Sequential`, blocks the reading has passed go before that (below).
 - **Memory follows the block size.** A count does not fix the memory used. `describe_cache` reports the bytes held, and `plan_slice` reports the size of the blocks a read will decode.
@@ -616,7 +620,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 | --- | --- |
 | `set_cache_size(fragment_count)` | Sets how many decoded Fragments this Source keeps |
 | `set_cache_bytes(byte_count)` | Sets the most bytes of decoded Fragments this Source keeps |
-| `describe_cache()` | The Fragments held, the bytes held, how many reads the cache has served, and how many of those it served from blocks read ahead |
+| `describe_cache()` | The Fragments held and the bytes held; the limits; counted in blocks, the hits, the misses, those served from blocks read ahead, and the blocks held past the ceiling |
 | `clear_cache()` | Frees every cached Fragment |
 
 **Access patterns.** Callers move through very large Images in one of two ways, and BIL can read faster when it knows which. The caller says so with `access_pattern` in `OpenOptions`, or for one Reader through `open_reader`. Read-ahead is kept for each Reader, since each holds its own place.
@@ -636,7 +640,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 | `order` | `Known` or `Unknown`, as a `StorageOrder` |
 | `blocks` | Where the order is known, the blocks in the order they lie in the file: each with its Image, stored level, frame, block row and column, the components it holds, and its byte offset and length. For video, only the frames the frame index already covers, since opening never scans (section 3.2). |
 
-- **One for each level.** `describe_storage` takes the level, as `read_fragment` does, and every block it lists carries that level. A TIFF overview's blocks are its own chunks. A JPEG 2000 resolution level k is read from its Image's bytes, so it lists its Image's blocks, with a block size of its Image's halved k times, rounding up.
+- **One for each level.** `describe_storage` takes the level, as `read_fragment` does, and every block it lists carries that level. A TIFF overview's blocks are its own chunks. A JPEG 2000 Image's blocks are its codestream's tiles, each with the byte ranges of its tile-parts, and each decoded alone. A resolution level k is read from its Image's bytes, so it lists its Image's tiles, with a block size of its Image's halved k times, rounding up.
 - **One record for every kind of driver.** A compiled driver fills it from its format's own tables. For a scripted driver, BIL derives it from the `PixelLayout`, whose `interleave` and `blocks` already say the same things.
 - **What is read ahead.** After each read, BIL reads the blocks that follow the last block read in storage order, for the same Image, Level and components, and for video the frames that follow. In band-sequential storage, where each component's blocks lie apart, it reads ahead along each component the last read used. It stops at `read_ahead_bytes`, and never takes the cache past either of its limits: blocks read ahead count against `set_cache_size` as well as the byte ceiling, so with the cache turned off nothing is read ahead. It runs forward only, in storage order.
 - **Decoded ahead too.** Blocks read ahead are decoded on a background thread into the Fragment cache, so the caller's next read finds them ready. Uncompressed blocks, which have nothing to decode, are only fetched, or for mapped files the operating system is asked to bring them into memory.
@@ -2588,7 +2592,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and ninety-two have been decided. Each lists the current proposal.
+Two points are not yet settled, and ninety-three have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2643,6 +2647,7 @@ Two points are not yet settled, and ninety-two have been decided. Each lists the
 - [x] **Stored levels and the Level grid.** Decided: a stored level is used to make a Level only when it is aligned with the Level grid. A misaligned one can be read as it stands, with its true origin and scale, but never makes a Level. A stored level's position is its first pixel's center, a Fragment from it is in its own rows and columns, and JPEG 2000 resolution levels are aligned (sections 4 and 5).
 - [x] **The Source interface in Rust.** Decided: `OpenOptions` is a struct opened like `std::fs::OpenOptions`, an unrecognized file names the drivers tried, `describe_storage` takes the level, and a container with one driver is chosen by its leading bytes alone (sections 3.3, 3.4, 4 and 10).
 - [x] **Representations from NITF and TIFF.** Decided: representations and component names follow IREP, IREPBAND and Photometric by one table, which covers every band count and ExtraSamples; `pixel_type` may be none beside `component_count`; `storage` is a `Storage` without blocks; a relation's reduction is per axis (section 3).
+- [x] **The Fragment cache's entries.** Decided: one entry for each block `describe_storage` lists, JPEG 2000 tiles among them; every block not borrowed is cached; the ceiling in bytes gives way for one block a read decodes, with a warning; a block several Readers need is decoded once; `describe_cache` counts blocks (section 4).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, the formula for each derived one, and the items of each domain profile. The first entries and first profiles are in section 14.2, and both are settled as drivers are built.
 - [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, and a profile that names itself, directly or through others, is refused. They are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).
