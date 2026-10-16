@@ -346,9 +346,7 @@ pub struct Relation {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Representation {
     /// `white_is_zero` where the samples, as stored, count down from white (TIFF Photometric 0).
-    Intensity {
-        white_is_zero: bool,
-    },
+    Intensity { white_is_zero: bool },
     /// Color, in its model.
     Color(ColorModel),
     /// Indices into a color table.
