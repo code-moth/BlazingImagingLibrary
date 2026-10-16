@@ -63,6 +63,9 @@ struct Img {
     ixshd: Vec<u8>,
     ixsofl: u64,
     data: Vec<u8>,
+    /// IREP and each band's IREPBAND, where not MONO or MULTI and `M`.
+    irep: Option<&'static str>,
+    irepband: Vec<&'static str>,
 }
 
 impl Img {
@@ -81,6 +84,8 @@ impl Img {
             udid: Vec::new(),
             ixshd: Vec::new(),
             ixsofl: 0,
+            irep: None,
+            irepband: Vec::new(),
             data: Vec::new(),
         }
     }
@@ -108,7 +113,8 @@ impl Img {
         h.extend(num(self.rows, 8));
         h.extend(num(self.cols, 8));
         h.extend(pad(self.pvtype, 3));
-        h.extend(pad(if self.bands == 1 { "MONO" } else { "MULTI" }, 8));
+        let irep = if self.bands == 1 { "MONO" } else { "MULTI" };
+        h.extend(pad(self.irep.unwrap_or(irep), 8));
         h.extend(pad("VIS", 8));
         h.extend(num(self.abpp, 2));
         h.extend(pad(self.pjust, 1));
@@ -126,7 +132,11 @@ impl Img {
             h.extend(num(self.bands, 5));
         }
         for b in 0..self.bands {
-            h.extend(pad(if self.bands == 1 { "" } else { "M" }, 2));
+            let band = if self.bands == 1 { "" } else { "M" };
+            h.extend(pad(
+                self.irepband.get(b as usize).copied().unwrap_or(band),
+                2,
+            ));
             h.extend(pad("", 6));
             h.extend(pad("N", 1));
             h.extend(pad("", 3));
@@ -1735,4 +1745,73 @@ fn the_source_interface_opens_nitf_and_names_what_it_tried() {
         Err(Error::Unrecognized(tried)) => assert_eq!(tried, ["nitf", "geotiff"]),
         other => panic!("{:?}", other.err()),
     }
+}
+
+/// Representations and component names follow IREP, IREPBAND and PVTYPE (section 3,
+/// "Representations").
+#[test]
+fn representations_follow_irep() {
+    use bil::types::{ColorModel, Representation as R, BT601};
+    let case = |bands: u64,
+                pvtype: &'static str,
+                nbpp: u64,
+                irep: &'static str,
+                irepband: &[&'static str]| {
+        let mut img = Img::new(3, 4, bands, pvtype, nbpp);
+        img.irep = Some(irep);
+        img.irepband = irepband.to_vec();
+        let img = with_data(img);
+        let file = File21 {
+            images: vec![img],
+            des: vec![],
+            xhd: vec![],
+        }
+        .bytes();
+        let info = NitfSource::open(file).unwrap().info(0).unwrap();
+        (info.representation, info.component_names)
+    };
+    let names = |n: &[&str]| n.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        case(1, "INT", 8, "MONO", &[]),
+        (
+            R::Intensity {
+                white_is_zero: false
+            },
+            names(&["intensity"])
+        )
+    );
+    assert_eq!(
+        case(3, "INT", 8, "RGB", &["R", "G", "B"]),
+        (R::Color(ColorModel::Rgb), names(&["red", "green", "blue"]))
+    );
+    // A color that would repeat takes its place number.
+    assert_eq!(
+        case(4, "INT", 16, "MULTI", &["B", "G", "R", "R"]),
+        (R::Spectral, names(&["blue", "green", "red", "red4"]))
+    );
+    assert_eq!(
+        case(2, "INT", 16, "MULTI", &["M", "M"]).1,
+        names(&["component1", "component2"])
+    );
+    assert_eq!(
+        case(1, "INT", 8, "RGB/LUT", &["LU"]),
+        (R::Palette, names(&["index"]))
+    );
+    assert_eq!(
+        case(3, "INT", 8, "YCbCr601", &["Y", "Cb", "Cr"]),
+        (
+            R::Color(ColorModel::YCbCr {
+                coefficients: BT601
+            }),
+            names(&["luma", "chroma_blue", "chroma_red"])
+        )
+    );
+    assert_eq!(
+        case(2, "INT", 8, "NODISPLY", &[]),
+        (R::Vector, names(&["component1", "component2"]))
+    );
+    assert_eq!(
+        case(1, "C", 64, "NODISPLY", &[]),
+        (R::Complex, names(&["complex"]))
+    );
 }

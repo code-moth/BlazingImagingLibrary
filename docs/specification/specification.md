@@ -308,6 +308,21 @@ A driver opens the file and produces Fragments. The core applies a slice functio
 | Field | One named item of metadata with its value, decoded when first needed and then held. Essential items share one name across formats, through the metadata dictionary (section 14). |
 | `Driver` | A plugin that opens Sources of one format family and produces Fragments. |
 
+**Representations.** A representation is named in snake\_case, as slice families are, with its parameters: `intensity`, `color` with its model (`rgb`; `ycbcr` with its luma coefficients; `lab` with its encoding; `cmyk`), `palette`, `complex`, `spectral`, and `vector` for samples whose meaning the file does not state. Complex samples are `complex` whatever the file declares, each component named `complex`. A component name that would repeat takes its place number, counted from 1, as a second red band in place 4 is `red4`; otherwise components are named `component1` onward.
+
+| NITF IREP | TIFF Photometric | Representation | Component names |
+| --- | --- | --- | --- |
+| `MONO` | 0 (WhiteIsZero, with `white_is_zero`) or 1, one sample; none stated | `intensity` | `intensity` |
+| `RGB` | 2 | `color` `rgb` | NITF: by IREPBAND, `R`, `G`, `B` as `red`, `green`, `blue`; TIFF: `red`, `green`, `blue` |
+| `RGB/LUT` | 3 | `palette` | `index` |
+| `YCbCr601` | 6, BT.601's luma coefficients unless YCbCrCoefficients says otherwise | `color` `ycbcr` | `luma`, `chroma_blue`, `chroma_red` |
+| | 8, 9 and 10, the encoding as a parameter | `color` `lab` | `lightness`, `green_red`, `blue_yellow` |
+| | 5 with InkSet 1, TIFF's default, and four samples | `color` `cmyk` | `cyan`, `magenta`, `yellow`, `black` |
+| `MULTI` | 0, 1 or none stated, with more than one sample and no ExtraSamples | `spectral` | NITF: by IREPBAND where it names a color, else `component`k; a numeric ISUBCAT is the band's wavelength in nanometers, when coordinates come |
+| `NODISPLY`, `NVECTOR`, `POLAR`, `VPH`, any other | 5 otherwise, 32803, 34892, 32844, 32845, any other | `vector` | `component`k |
+
+In TIFF, ExtraSamples 1 and 2 name their component `alpha`, and its other extra samples are `component`k.
+
 **Why a Source holds several Images.** A vector pixel means all its components share one grid and one sample type. Data on different grids are separate Images: a panchromatic band beside lower-resolution multispectral bands, the image segments of one NITF file, or the luma and reduced chroma of video.
 
 **Related Images.** A driver declares how Images relate to one another, so that a slice function can use them together (section 5).
@@ -332,11 +347,12 @@ A driver opens the file and produces Fragments. The core applies a slice functio
 | --- | --- |
 | `row_count`, `col_count` | The size of the Image, in pixels |
 | `frame_count` | The number of frames, with whether it is `Known`, `AtLeast` or `Unknown` (section 3.2) |
-| `pixel_type` | The sample type, component count, significant bits and bit shift (section 4) |
+| `pixel_type` | The sample type, component count, significant bits and bit shift (section 4), or none where BIL's types do not hold the samples, whose reads then fail |
+| `component_count` | The number of components, given even where there is no `pixel_type` |
 | `representation` | What the samples are, with its parameters (section 3, above) |
 | `component_names` | The name of each component |
-| `relations` | Each related Image: its index, the relation, and for a scaled grid the reduction and the position of its samples |
-| `storage` | How the pixels lie in the file: the block size, the interleave and whether the block order is known, from the `Storage` of section 4 |
+| `relations` | Each related Image: its index, the relation, and for a scaled grid the reduction, a whole number down and across, and the position of the other Image's first sample's center, in this Image's pixels, counted as a stored level's position is (section 5) |
+| `storage` | How the pixels lie in the file: a `Storage` (section 4) with its block size, interleave and whether the block order is known, and no blocks listed; `describe_storage` lists them |
 | `may_have_missing` | Whether the driver states that this Image can have missing pixels. Where it is false, no checks are made for them (section 5). |
 
 ### 3.1 Indexes and coordinates
@@ -2572,7 +2588,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and ninety-one have been decided. Each lists the current proposal.
+Two points are not yet settled, and ninety-two have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2626,6 +2642,7 @@ Two points are not yet settled, and ninety-one have been decided. Each lists the
 - [x] **Red team, second review.** Decided: isolation decodes on request, and a whole copy is a separate choice; Window independence and agreement between machines hold to a stated tolerance, not to the bit; markings are written inside files where they fit, a missing companion is noticed, and refusal is available but off by default; writers write the geo model, hold stated sample types and write Slices on their own grid; deferred Fragments decode themselves; the cache has a byte ceiling and untrusted Sources get limits; remote Sources run on a private runtime with counted, merged requests and timeouts; a live stream has one position and past frames are `Missing`; a static-linking exception; arithmetic never in integers; masks reduced as masks; checked frame indexes and companions not trusted blindly; a stability policy; more conformance tests; and Exif GPS time used first (R26 to R41 except R29).
 - [x] **Stored levels and the Level grid.** Decided: a stored level is used to make a Level only when it is aligned with the Level grid. A misaligned one can be read as it stands, with its true origin and scale, but never makes a Level. A stored level's position is its first pixel's center, a Fragment from it is in its own rows and columns, and JPEG 2000 resolution levels are aligned (sections 4 and 5).
 - [x] **The Source interface in Rust.** Decided: `OpenOptions` is a struct opened like `std::fs::OpenOptions`, an unrecognized file names the drivers tried, `describe_storage` takes the level, and a container with one driver is chosen by its leading bytes alone (sections 3.3, 3.4, 4 and 10).
+- [x] **Representations from NITF and TIFF.** Decided: representations and component names follow IREP, IREPBAND and Photometric by one table; `pixel_type` may be none beside `component_count`; `storage` is a `Storage` without blocks; a relation's reduction is per axis (section 3).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, the formula for each derived one, and the items of each domain profile. The first entries and first profiles are in section 14.2, and both are settled as drivers are built.
 - [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, and a profile that names itself, directly or through others, is refused. They are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).

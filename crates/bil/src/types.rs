@@ -322,7 +322,7 @@ pub enum FrameCount {
     Unknown,
 }
 
-/// How one Image relates to another (section 3, "Related Images"), in the shape M57 proposes.
+/// How one Image relates to another (section 3, "Related Images").
 #[derive(Clone, Debug, PartialEq)]
 pub enum RelationKind {
     /// The Images line up pixel for pixel.
@@ -342,21 +342,98 @@ pub struct Relation {
     pub kind: RelationKind,
 }
 
-/// One Image, described the same way by every driver (section 3, `ImageInfo`). This preview
-/// leaves out `representation` and `component_names`, which wait for the table of M55.
+/// What an Image's samples are (section 3, "Representations").
+#[derive(Clone, Debug, PartialEq)]
+pub enum Representation {
+    /// `white_is_zero` where the samples, as stored, count down from white (TIFF Photometric 0).
+    Intensity {
+        white_is_zero: bool,
+    },
+    /// Color, in its model.
+    Color(ColorModel),
+    /// Indices into a color table.
+    Palette,
+    /// Complex samples, whatever the file declares.
+    Complex,
+    /// Bands of one scene, such as multispectral data.
+    Spectral,
+    /// Samples whose meaning the file does not state.
+    Vector,
+}
+
+/// A color representation's model.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ColorModel {
+    Rgb,
+    /// Luma weights of red, green and blue: BT.601's (0.299, 0.587, 0.114) unless stated.
+    YCbCr {
+        coefficients: (f64, f64, f64),
+    },
+    Lab {
+        encoding: LabEncoding,
+    },
+    Cmyk,
+}
+
+/// How Lab samples are encoded, as TIFF's Photometric 8, 9 and 10 state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LabEncoding {
+    /// CIELab (Photometric 8).
+    Cie,
+    /// ICCLab (Photometric 9).
+    Icc,
+    /// ITULab (Photometric 10).
+    Itu,
+}
+
+/// BT.601's luma weights.
+pub const BT601: (f64, f64, f64) = (0.299, 0.587, 0.114);
+
+impl Representation {
+    /// Its snake_case name.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Representation::Intensity { .. } => "intensity",
+            Representation::Color(_) => "color",
+            Representation::Palette => "palette",
+            Representation::Complex => "complex",
+            Representation::Spectral => "spectral",
+            Representation::Vector => "vector",
+        }
+    }
+}
+
+/// Component names as section 3 gives them: `None` becomes `component`k, and a name that would
+/// repeat takes its place number, counted from 1.
+pub fn component_names(names: impl IntoIterator<Item = Option<&'static str>>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    names
+        .into_iter()
+        .enumerate()
+        .map(|(i, n)| match n {
+            Some(n) if seen.insert(n) => n.to_string(),
+            Some(n) => format!("{n}{}", i + 1),
+            None => format!("component{}", i + 1),
+        })
+        .collect()
+}
+
+/// One Image, described the same way by every driver (section 3, `ImageInfo`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageInfo {
     pub row_count: u64,
     pub col_count: u64,
     pub frame_count: FrameCount,
+    pub representation: Representation,
+    pub component_names: Vec<String>,
     /// `None` where BIL's types do not hold the samples; reads then fail, and the reader's own
-    /// description says why (M56).
+    /// description says why.
     pub pixel_type: Option<PixelType>,
-    /// The number of components, given even where `pixel_type` is `None` (M56).
+    /// The number of components, given even where `pixel_type` is `None`.
     pub component_count: u32,
     pub relations: Vec<Relation>,
     /// The block size, the interleave and whether the block order is known: the first three
-    /// parts of `describe_storage("level0")`, with no blocks listed (M56).
+    /// parts of `describe_storage("level0")`, with no blocks listed.
     pub storage: Storage,
     /// Whether this Image can have missing pixels (section 5, "No cost where nothing is
     /// missing").

@@ -1319,3 +1319,95 @@ fn the_source_interface_opens_tiff_and_reads_its_levels() {
     };
     assert!(two.open_from(file).is_ok());
 }
+
+/// Representations and component names follow Photometric and the tags beside it (section 3,
+/// "Representations").
+#[test]
+fn representations_follow_photometric() {
+    use bil::types::{ColorModel, LabEncoding, Representation as R, BT601};
+    let tag = |code: u16, v: &[u16]| {
+        (
+            code,
+            3u16,
+            v.len() as u64,
+            v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>(),
+        )
+    };
+    let case = |bands: u64, t: SampleType, tags: Vec<(u16, u16, u64, Vec<u8>)>| {
+        let mut img = Img::new(4, 5, bands, t);
+        img.tags = tags;
+        let source = GeoTiffSource::open(write(&[img], false, false)).unwrap();
+        let info = source.info(0).unwrap();
+        (info.representation, info.component_names)
+    };
+    let names = |n: &[&str]| n.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        case(1, SampleType::U8, vec![]),
+        (
+            R::Intensity {
+                white_is_zero: false
+            },
+            names(&["intensity"])
+        )
+    );
+    assert_eq!(
+        case(1, SampleType::U16, vec![tag(262, &[0])]).0,
+        R::Intensity {
+            white_is_zero: true
+        }
+    );
+    assert_eq!(
+        case(3, SampleType::U8, vec![]),
+        (R::Color(ColorModel::Rgb), names(&["red", "green", "blue"]))
+    );
+    assert_eq!(
+        case(4, SampleType::U16, vec![]),
+        (
+            R::Spectral,
+            names(&["component1", "component2", "component3", "component4"])
+        )
+    );
+    assert_eq!(
+        case(5, SampleType::U8, vec![tag(262, &[2]), tag(338, &[2, 0])]),
+        (
+            R::Color(ColorModel::Rgb),
+            names(&["red", "green", "blue", "alpha", "component5"])
+        )
+    );
+    // Two gray samples and an alpha: spectral, alpha named (M58).
+    assert_eq!(
+        case(3, SampleType::U8, vec![tag(262, &[1]), tag(338, &[2])]),
+        (R::Spectral, names(&["component1", "component2", "alpha"]))
+    );
+    assert_eq!(
+        case(3, SampleType::U8, vec![tag(262, &[8])]),
+        (
+            R::Color(ColorModel::Lab {
+                encoding: LabEncoding::Cie
+            }),
+            names(&["lightness", "green_red", "blue_yellow"])
+        )
+    );
+    assert_eq!(
+        case(4, SampleType::U8, vec![tag(262, &[5])]).1,
+        names(&["cyan", "magenta", "yellow", "black"])
+    );
+    assert_eq!(
+        case(3, SampleType::U8, vec![tag(262, &[6])]).0,
+        R::Color(ColorModel::YCbCr {
+            coefficients: BT601
+        })
+    );
+    assert_eq!(
+        case(1, SampleType::U8, vec![tag(262, &[3])]).1,
+        names(&["index"])
+    );
+    assert_eq!(
+        case(2, SampleType::U16, vec![tag(262, &[32803])]),
+        (R::Vector, names(&["component1", "component2"]))
+    );
+    assert_eq!(
+        case(1, SampleType::ComplexF32, vec![]),
+        (R::Complex, names(&["complex"]))
+    );
+}

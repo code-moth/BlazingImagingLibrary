@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::fields::{Field, FieldGroup, FieldName, Origin};
 use crate::io::ReadAt;
 use crate::types::{
-    stored_level_number, Block, Fragment, Interleave, PixelType, SampleType, Status, Storage,
-    StorageOrder, Window,
+    stored_level_number, Block, ColorModel, Fragment, Interleave, PixelType, Representation,
+    SampleType, Status, Storage, StorageOrder, Window,
 };
 use defs::{walk, WalkError, Walked};
 
@@ -76,6 +76,50 @@ pub struct Segment {
 }
 
 pub use crate::types::{Scope, StoredLevel};
+
+/// An Image's representation and component names from IREP, IREPBAND and PVTYPE (section 3,
+/// "Representations").
+fn representation(sub: &Header, bands: u32) -> (Representation, Vec<String>) {
+    let band = |k: u32| sub.text(&format!("IREPBAND[{k}]"));
+    let color = |k: u32| match band(k).as_str() {
+        "R" => Some("red"),
+        "G" => Some("green"),
+        "B" => Some("blue"),
+        _ => None,
+    };
+    let fixed = |names: &[&'static str]| -> Vec<Option<&'static str>> {
+        (0..bands as usize).map(|i| names.get(i).copied()).collect()
+    };
+    let (r, names): (Representation, Vec<Option<&'static str>>) = if sub.text("PVTYPE") == "C" {
+        (
+            Representation::Complex,
+            vec![Some("complex"); bands as usize],
+        )
+    } else {
+        match sub.text("IREP").as_str() {
+            "MONO" => (
+                Representation::Intensity {
+                    white_is_zero: false,
+                },
+                vec![Some("intensity"); bands as usize],
+            ),
+            "RGB" => (
+                Representation::Color(ColorModel::Rgb),
+                (1..=bands).map(color).collect(),
+            ),
+            "RGB/LUT" => (Representation::Palette, fixed(&["index"])),
+            "YCbCr601" => (
+                Representation::Color(ColorModel::YCbCr {
+                    coefficients: crate::types::BT601,
+                }),
+                fixed(&["luma", "chroma_blue", "chroma_red"]),
+            ),
+            "MULTI" => (Representation::Spectral, (1..=bands).map(color).collect()),
+            _ => (Representation::Vector, vec![None; bands as usize]),
+        }
+    };
+    (r, crate::types::component_names(names))
+}
 
 /// What opening found about one image segment.
 #[derive(Clone, Debug, PartialEq)]
@@ -833,13 +877,17 @@ impl<R: ReadAt> NitfSource<R> {
     /// missing pixels where a block mask table may leave blocks out or state a pad value, and
     /// where its samples are floats, whose stored NaN is missing (M52).
     pub fn info(&self, image: usize) -> Result<crate::types::ImageInfo> {
-        let info = &self.image(image)?.info;
+        let img = self.image(image)?;
+        let info = &img.info;
+        let (representation, component_names) = representation(&img.header, info.bands);
         let mut storage = self.describe_storage(image)?;
         storage.blocks = Vec::new();
         Ok(crate::types::ImageInfo {
             row_count: info.rows,
             col_count: info.cols,
             frame_count: crate::types::FrameCount::Known(1),
+            representation,
+            component_names,
             pixel_type: info.pixel_type,
             component_count: info.bands,
             relations: Vec::new(),

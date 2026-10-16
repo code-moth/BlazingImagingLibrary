@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 15</p>
+      <p class="eyebrow">Manual · Version 16</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>15</dd></div><div><dt>As of</dt><dd>16 October 2026</dd></div><div><dt>Specification</dt><dd>Version 77</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>16</dd></div><div><dt>As of</dt><dd>16 October 2026</dd></div><div><dt>Specification</dt><dd>Version 78</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 77, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 78, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -2088,7 +2088,7 @@ use bil::types::Window;
 let source = open_source(&quot;scene.tif&quot;)?;               // or OpenOptions { max_directories: 10, ..Default::default() }.open(path)
 source.driver();                                      // &quot;geotiff&quot; or &quot;nitf&quot;
 let image = source.image(0)?;
-let info = image.info()?;                             // section 3's ImageInfo: size, frames, pixel type, storage, may_have_missing
+let info = image.info()?;                             // section 3's ImageInfo: size, representation, component names, storage, ...
 image.list_stored_levels()?;                          // stored1 onward, each with size, scale, position, alignment
 let storage = image.describe_storage(&quot;stored1&quot;)?;     // that level's blocks, in file order
 let fragment = image.read_fragment(window, &quot;level0&quot;)?;
@@ -2116,7 +2116,7 @@ source.as_geotiff();                                  // the reader itself, for 
 <tr>
 <td><code>Source::as_nitf</code>, <code>as_geotiff</code></td>
 <td>None</td>
-<td>Each reader's own <code>ImageInfo</code>, segments and other calls, for what section 3's <code>ImageInfo</code> does not hold yet: representation and component names (M55)</td>
+<td>Each reader's own <code>ImageInfo</code>, segments and other calls, for what only one format has: compression codes, IMODE, chunk layout, segments</td>
 </tr>
 <tr>
 <td><code>list_field_groups</code>, <code>read_field_group</code>, <code>read_field</code>, <code>release_metadata</code></td>
@@ -2124,9 +2124,9 @@ source.as_geotiff();                                  // the reader itself, for 
 <td>As the readers': each takes a <code>Scope</code></td>
 </tr>
 <tr>
-<td><code>Image::info</code>, <code>ImageInfo { row_count, col_count, frame_count, pixel_type, component_count, relations, storage, may_have_missing }</code></td>
+<td><code>Image::info</code>, <code>ImageInfo { row_count, col_count, frame_count, representation, component_names, pixel_type, component_count, relations, storage, may_have_missing }</code></td>
 <td><code>info</code>, <code>ImageInfo</code></td>
-<td>No <code>representation</code> or <code>component_names</code> yet (M55). <code>frame_count</code> is <code>Known(1)</code> and <code>relations</code> empty for both formats. <code>pixel_type</code> is <code>None</code> where BIL's types do not hold the samples, with <code>component_count</code> beside it, and <code>storage</code> has no blocks listed (M56). <code>may_have_missing</code> is true for a NITF Image with a block mask table, a TIFF Image or any of its stored levels with a no-data value or a chunk never written, and float samples in either (M52)</td>
+<td><code>representation</code> is a <code>Representation</code> (<code>Intensity { white_is_zero }</code>, <code>Color(ColorModel)</code>, <code>Palette</code>, <code>Complex</code>, <code>Spectral</code>, <code>Vector</code>), from IREP, IREPBAND and PVTYPE, or Photometric, ExtraSamples, InkSet, YCbCrCoefficients and SampleFormat, by section 3's table (M55, M58); its <code>name()</code> is the snake_case name. <code>frame_count</code> is <code>Known(1)</code> and <code>relations</code> empty for both formats. <code>pixel_type</code> is <code>None</code> where BIL's types do not hold the samples, with <code>component_count</code> beside it, and <code>storage</code> has no blocks listed (M56). <code>may_have_missing</code> is true for a NITF Image with a block mask table, a TIFF Image or any of its stored levels with a no-data value or a chunk never written, and float samples in either (M52)</td>
 </tr>
 <tr>
 <td><code>Image::list_stored_levels</code></td>
@@ -2468,10 +2468,10 @@ cargo run --release -- --check                          # needs libjpeg-turbo 2.
 cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
 <p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
-<p><strong>What comes next</strong> in code: representation and component names, once M55's table is ruled; then M31's private copy, which waits for packaging; the Fragment cache, Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 to 77 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What comes next</strong> in code: M31's private copy, which waits for packaging; the Fragment cache, Readers, read-ahead and the dictionary.</p>
+<p><strong>What specification versions 68 to 78 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 to 77, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 78, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2765,7 +2765,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <tr>
 <td>M52</td>
 <td><strong>Section 3's <code>ImageInfo</code> from both readers.</strong> It holds frame count, representation, component names, relations, storage and <code>may_have_missing</code>; each reader has its own <code>ImageInfo</code>, with what its format states. Representation and component names need the dictionary's mapping from NITF's IREP and IREPBAND and TIFF's Photometric.</td>
-<td>Accepted as proposed, by the author's ruling (version 77): built, but for representation and component names, whose table is M55</td>
+<td>Accepted as proposed, by the author's ruling (version 77): built, representation and component names in version 78 (M55)</td>
 </tr>
 <tr>
 <td>M53</td>
@@ -2777,9 +2777,24 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td><strong>Choosing the driver before section 10's probing exists.</strong> Section 10 probes in two stages, the container by name and leading bytes and then each of its drivers by content with a confidence, ties broken by the configured order, never by load order. Two drivers are compiled in, for two containers.</td>
 <td>Accepted as proposed, by the author's ruling (version 77): section 10, "Driver selection"</td>
 </tr>
+<tr>
+<td>M55</td>
+<td><strong>Representation and component names from NITF and TIFF.</strong> Section 3 asks a driver to declare each Image's representation "named with its parameters", and section 9.1 names components <code>intensity</code>; <code>red</code>, <code>green</code>, <code>blue</code>; band names; else <code>component1</code> onward. Neither section lists the representations' names or says how NITF's IREP and IREPBAND or TIFF's Photometric map to them.</td>
+<td>Accepted as proposed, by the author's ruling (version 78): section 3, "Representations"</td>
+</tr>
+<tr>
+<td>M56</td>
+<td><strong>Two parts of <code>ImageInfo</code> the readers cannot always fill as section 3 states them.</strong> <code>pixel_type</code> holds the component count, but some valid data has no BIL pixel type (24-bit floats, NITF's 4-bit samples), so the count would be lost; and <code>storage</code> is <code>Storage</code>'s first three parts, which have no type of their own.</td>
+<td>Accepted as proposed, by the author's ruling (version 78): section 3, <code>ImageInfo</code></td>
+</tr>
+<tr>
+<td>M57</td>
+<td><strong>The shape of a relation.</strong> Section 3 gives a relation as an Image's index, the relation, and for a scaled grid "the reduction and the position of its samples", without saying whether the reduction is one number or one for each axis, or how the position is stated.</td>
+<td>Accepted as proposed, by the author's ruling (version 78): section 3, <code>ImageInfo</code></td>
+</tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> M55 to M57, from writing <code>ImageInfo</code>. M56 and M57 are coded as proposed; M55 waits for the ruling, as M52 asked.</p>
+<p><strong>Open, for the author.</strong> M58, from coding M55's table. It is coded as proposed, so that it can be tested; a ruling otherwise changes it.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -2790,19 +2805,9 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </thead>
 <tbody>
 <tr>
-<td>M55</td>
-<td><strong>Representation and component names from NITF and TIFF.</strong> Section 3 asks a driver to declare each Image's representation "named with its parameters", and section 9.1 names components <code>intensity</code>; <code>red</code>, <code>green</code>, <code>blue</code>; band names; else <code>component1</code> onward. Neither section lists the representations' names or says how NITF's IREP and IREPBAND or TIFF's Photometric map to them.</td>
-<td>Representations named in snake_case, as slice families are: <code>intensity</code>, <code>color</code> with its model (<code>rgb</code>, <code>ycbcr</code> with its matrix, <code>lab</code>, <code>cmyk</code>), <code>palette</code>, <code>complex</code>, <code>spectral</code>, and <code>vector</code> for samples whose meaning the file does not state. Complex samples are <code>complex</code> whatever IREP or Photometric says, one component named <code>complex</code>. <strong>NITF:</strong> <code>MONO</code> → <code>intensity</code>; <code>RGB</code> → <code>color</code> <code>rgb</code>, bands named by IREPBAND (<code>R</code>, <code>G</code>, <code>B</code> → <code>red</code>, <code>green</code>, <code>blue</code>); <code>RGB/LUT</code> → <code>palette</code>, one component <code>index</code>; <code>YCbCr601</code> → <code>color</code> <code>ycbcr</code> (BT.601), <code>luma</code>, <code>chroma_blue</code>, <code>chroma_red</code>; <code>MULTI</code> → <code>spectral</code>, bands named by IREPBAND where it names a color, else <code>component</code>k, a numeric ISUBCAT kept as the band's wavelength in nanometers when coordinates come; <code>NODISPLY</code>, <code>NVECTOR</code>, <code>POLAR</code> and <code>VPH</code> → <code>vector</code>, <code>component</code>k. <strong>TIFF:</strong> Photometric 0 (WhiteIsZero) and 1 (BlackIsZero) → <code>intensity</code>, with <code>white_is_zero</code> as a parameter since samples are as stored (M39), one sample <code>intensity</code>, and more than one with no ExtraSamples <code>spectral</code>, <code>component</code>k; 2 → <code>color</code> <code>rgb</code>; 3 → <code>palette</code>, <code>index</code>; 5 with InkSet 1 and four samples → <code>color</code> <code>cmyk</code>, <code>cyan</code>, <code>magenta</code>, <code>yellow</code>, <code>black</code>, else <code>vector</code>; 6 → <code>color</code> <code>ycbcr</code> (BT.601 unless YCbCrCoefficients says otherwise); 8, 9 and 10 → <code>color</code> <code>lab</code>, with the encoding as a parameter, <code>lightness</code>, <code>green_red</code>, <code>blue_yellow</code>; 32803 (CFA), 34892 (LinearRaw), 32844 and 32845 (LogL, LogLuv) → <code>vector</code> until a driver for them comes; no Photometric → as 1. ExtraSamples 1 and 2 name a component <code>alpha</code>, others <code>component</code>k. A name that would repeat takes its place number, as <code>red2</code>.</td>
-</tr>
-<tr>
-<td>M56</td>
-<td><strong>Two parts of <code>ImageInfo</code> the readers cannot always fill as section 3 states them.</strong> <code>pixel_type</code> holds the component count, but some valid data has no BIL pixel type (24-bit floats, NITF's 4-bit samples), so the count would be lost; and <code>storage</code> is <code>Storage</code>'s first three parts, which have no type of their own.</td>
-<td><code>pixel_type</code> is <code>None</code> where BIL's types do not hold the samples, and a <code>component_count</code> beside it always gives the count. <code>storage</code> is a <code>Storage</code> with no blocks listed, <code>describe_storage</code> listing them; one type serves both.</td>
-</tr>
-<tr>
-<td>M57</td>
-<td><strong>The shape of a relation.</strong> Section 3 gives a relation as an Image's index, the relation, and for a scaled grid "the reduction and the position of its samples", without saying whether the reduction is one number or one for each axis, or how the position is stated.</td>
-<td><code>Relation { image, kind }</code>, <code>kind</code> being <code>SameGrid</code> or <code>ScaledGrid { reduction, position }</code>: <code>reduction</code> a whole number down and across, since video chroma is often halved across only, and <code>position</code> the other Image's first sample's center in this Image's pixels, counted as M47 counts a stored level's. Neither reader declares a relation yet.</td>
+<td>M58</td>
+<td><strong>Two cases section 3's table leaves out.</strong> TIFF Photometric 0 or 1 with more than one sample beside its ExtraSamples, such as two gray samples and an alpha; and NITF <code>MONO</code> with more than one band.</td>
+<td>The TIFF case is <code>spectral</code>, as it is without ExtraSamples, the extra samples named as the table says (<code>alpha</code> for ExtraSamples 1 and 2). NITF <code>MONO</code> stays <code>intensity</code> whatever its bands, each named <code>intensity</code> and so, after the first, by its place: <code>intensity2</code> onward.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2907,7 +2912,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 15, written beside the code against version 77 of the Blazing Imaging Library (BIL) specification, as of 16 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 16, written beside the code against version 78 of the Blazing Imaging Library (BIL) specification, as of 16 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

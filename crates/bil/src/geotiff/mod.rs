@@ -39,8 +39,8 @@ use self::chunks::{Coding, Samples};
 use crate::fields::{Field, FieldGroup, FieldName, Origin, Value};
 use crate::io::ReadAt;
 use crate::types::{
-    stored_level_number, Block, Fragment, Interleave, PixelType, SampleType, Status, Storage,
-    StorageOrder, Window,
+    stored_level_number, Block, ColorModel, Fragment, Interleave, LabEncoding, PixelType,
+    Representation, SampleType, Status, Storage, StorageOrder, Window,
 };
 pub use crate::types::{Scope, StoredLevel};
 
@@ -189,6 +189,13 @@ struct Layout {
     subfile: u32,
     /// The SubIFDs tag's directories, where some of a file's overviews may lie.
     sub_ifds: Vec<u64>,
+    /// What the samples are: Photometric, ExtraSamples, InkSet, YCbCrCoefficients, and whether
+    /// SampleFormat says complex (section 3, "Representations").
+    photometric: Option<u16>,
+    extra_samples: Vec<u16>,
+    ink_set: Option<u16>,
+    ycbcr_coefficients: Option<(f64, f64, f64)>,
+    complex: bool,
 }
 
 impl Layout {
@@ -862,6 +869,7 @@ impl<R: ReadAt> GeoTiffSource<R> {
     /// written, and where its samples are floats, whose stored NaN is missing (M52).
     pub fn info(&self, image: usize) -> Result<crate::types::ImageInfo> {
         let img = self.image(image)?;
+        let (representation, component_names) = representation(&img.full.layout);
         let mut storage = self.describe_storage(image)?;
         storage.blocks = Vec::new();
         let gaps = std::iter::once(&img.full)
@@ -871,6 +879,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
             row_count: img.info.rows,
             col_count: img.info.cols,
             frame_count: crate::types::FrameCount::Known(1),
+            representation,
+            component_names,
             pixel_type: img.info.pixel_type,
             component_count: img.info.bands,
             relations: Vec::new(),
@@ -1281,6 +1291,29 @@ fn read_layout<R: ReadAt>(
         .ok()
         .flatten()
         .unwrap_or_else(|| vec![2, 2]);
+    let extra_samples = t
+        .find_tag_unsigned_vec::<u16>(Tag::ExtraSamples)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let ink_set = t
+        .find_tag_unsigned::<u16>(Tag::from_u16_exhaustive(332))
+        .ok()
+        .flatten();
+    // YCbCrCoefficients: three rationals, the luma weights of red, green and blue.
+    let ycbcr_coefficients = match t.find_tag(Tag::from_u16_exhaustive(529)) {
+        Ok(Some(TiffValue::List(v))) if v.len() == 3 => {
+            let r = |v: &TiffValue| match *v {
+                TiffValue::Rational(n, d) if d != 0 => Some(f64::from(n) / f64::from(d)),
+                _ => None,
+            };
+            match (r(&v[0]), r(&v[1]), r(&v[2])) {
+                (Some(a), Some(b), Some(c)) => Some((a, b, c)),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
     let coding_problem = (photometric == Some(6)
         && !matches!(compression, 6 | 7)
         && subsampling.iter().any(|&f| f != 1))
@@ -1323,7 +1356,73 @@ fn read_layout<R: ReadAt>(
         nodata,
         subfile: subfile as u32,
         sub_ifds,
+        photometric,
+        extra_samples,
+        ink_set,
+        ycbcr_coefficients,
+        complex: formats.iter().any(|&f| f == 5 || f == 6),
     })
+}
+
+/// An Image's representation and component names from its Photometric and the tags beside it
+/// (section 3, "Representations").
+fn representation(l: &Layout) -> (Representation, Vec<String>) {
+    let n = l.samples as usize;
+    let extras = l.extra_samples.len().min(n);
+    let base = n - extras;
+    let named = |names: &[&'static str]| -> Vec<Option<&'static str>> {
+        (0..base).map(|i| names.get(i).copied()).collect()
+    };
+    let (r, mut names): (Representation, Vec<Option<&'static str>>) = if l.complex {
+        (Representation::Complex, vec![Some("complex"); base])
+    } else {
+        match l.photometric {
+            // More than one sample: spectral by section 3's table, and with ExtraSamples beside them
+            // by M58, as proposed.
+            Some(0) | Some(1) | None if base > 1 => {
+                (Representation::Spectral, vec![None; base])
+            }
+            p @ (Some(0) | Some(1) | None) => (
+                Representation::Intensity {
+                    white_is_zero: p == Some(0),
+                },
+                named(&["intensity"]),
+            ),
+            Some(2) => (
+                Representation::Color(ColorModel::Rgb),
+                named(&["red", "green", "blue"]),
+            ),
+            Some(3) => (Representation::Palette, named(&["index"])),
+            // InkSet 1, CMYK, is TIFF's default.
+            Some(5) if l.ink_set.unwrap_or(1) == 1 && base == 4 => (
+                Representation::Color(ColorModel::Cmyk),
+                named(&["cyan", "magenta", "yellow", "black"]),
+            ),
+            Some(6) => (
+                Representation::Color(ColorModel::YCbCr {
+                    coefficients: l.ycbcr_coefficients.unwrap_or(crate::types::BT601),
+                }),
+                named(&["luma", "chroma_blue", "chroma_red"]),
+            ),
+            Some(p @ 8..=10) => (
+                Representation::Color(ColorModel::Lab {
+                    encoding: match p {
+                        8 => LabEncoding::Cie,
+                        9 => LabEncoding::Icc,
+                        _ => LabEncoding::Itu,
+                    },
+                }),
+                named(&["lightness", "green_red", "blue_yellow"]),
+            ),
+            _ => (Representation::Vector, vec![None; base]),
+        }
+    };
+    names.extend(
+        l.extra_samples[..extras]
+            .iter()
+            .map(|&e| matches!(e, 1 | 2).then_some("alpha")),
+    );
+    (r, crate::types::component_names(names))
 }
 
 /// A no-data value in a sample type's own terms.
