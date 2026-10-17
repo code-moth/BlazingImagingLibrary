@@ -250,9 +250,9 @@ BIL has one naming rule, the same in every language: types are UpperCamelCase, a
 
 | Convention | Rule | Examples |
 | --- | --- | --- |
-| Objects | Each Rust type is a C++ class of the same name, with the same methods. A Source, an Image and a delivered Fragment or Slice are values that may be copied and shared between threads, as in Rust; a Reader may be moved, not copied. | `bil::Source`, `bil::Image`, `bil::Fragment`, `bil::Slice`, `bil::Reader` |
+| Objects | Each Rust type is a C++ class of the same name, with the same methods. A Rust enum whose variants carry data is a struct with a `kind`, an `enum class` of the variants' names, beside the variants' fields; a Rust method on an enum is a free function, as `bil::name(code)`. A Source, an Image and a delivered Fragment or Slice are values that may be copied and shared between threads, as in Rust; a Reader may be moved, not copied. | `bil::Source`, `bil::Image`, `bil::Fragment`, `bil::Slice`, `bil::Reader` |
 | Lifetime | Ownership is held by the objects themselves (RAII). A Source closes when the last copy of it goes, or at `close()`; nothing is freed by hand. | `source.close()` |
-| Results and failures | A call returns its value. A failure throws `bil::Error`, which carries the same kinds as Rust's `Error` and its message. | `catch (const bil::Error& e) { e.kind(); }` |
+| Results and failures | A call returns its value. A failure throws `bil::Error`, which carries the same kinds as Rust's `Error` and its message. A call on a closed Source throws `std::logic_error`, C++'s own misuse error. | `catch (const bil::Error& e) { e.kind(); }` |
 | Data | Array data is a view of the memory it borrows or owns, with its size and strides, valid for as long as the Fragment or Slice that holds it. | `slice.data()`, `fragment.strides()` |
 | Options | `OpenOptions` and every other options record is a struct with the Rust fields and defaults, set by name. | `bil::OpenOptions options; options.max_directories = 10;` |
 
@@ -426,6 +426,10 @@ Every call returns a result, and everything that is delivered carries a status. 
 
 **A call either delivers or fails.** A call that cannot deliver returns an error and no value. Errors are a file that cannot be opened, a bad argument, a failed read, a limit exceeded and corrupt data. Every driver reports them through one error type, and a file that no driver recognizes is reported with the names of the drivers tried, in the order tried, such as `nitf` and `geotiff`. A driver's own reader, opened directly on a file it does not recognize, names itself alone.
 
+**The kinds of error.** One error type has six kinds: `Unrecognized`, with the drivers tried; `Corrupt`, data that breaks its format's structure; `Unsupported`, valid data this build does not read, or a read a limit refuses; `NotFound`, a request outside what the Source holds; `Io`, a failed read of the bytes; and `Internal`, a failure of BIL's own, such as a panic in Rust code, caught at the interface. `Internal` is always a bug in BIL, to be reported, never in the file or the call.
+
+**Misuse is not a kind.** A call on a closed Source is the caller's bug, and each language reports it in its own way, as for any object used after it is closed: in Rust it cannot be written, since `close(self)` consumes the Source; in C++ it throws `std::logic_error`; in Python it raises `ValueError`.
+
 **What is delivered carries a status**
 
 | Status | Meaning | For pixels | For positions | For accuracy | For fields |
@@ -581,7 +585,7 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 - **Read-only under `Shared` mapping.** Borrowed pixels cannot be changed, and in Python they appear as a read-only NumPy array. Under `Private` mapping they can be changed, and the changes stay in the caller's memory.
 - **Shared within one Source under `Private`.** Every array borrowed from one Source shares its copy-on-write pages, so a change through one is seen through the others. A change while another thread reads the same pages is a data race in the caller's code, as for any memory the caller shares; BIL itself never writes them.
 - **It keeps its memory.** A borrowed Fragment, and in Python its array, holds a reference to the mapped or read memory it borrows from for as long as it lives.
-- **Closing a Source.** A Source closes when the last reference to it goes, which in Rust is when it is dropped. `close()` in Python and C++ closes it at a chosen moment: it frees what the Source holds, its cache, read-ahead, metadata and Readers, and in Python every later read from it is an error. Arrays borrowed from it stay valid, and keep only the memory they borrow, which goes with the last of them. In C++, copies of a closed Source remain objects, and every later read through them is an error, as in Python; Fragments and Slices already read stay valid while they are held.
+- **Closing a Source.** A Source closes when the last reference to it goes, which in Rust is when it is dropped. `close()` closes it at a chosen moment: it frees what the Source holds, its cache, read-ahead, metadata and Readers. In Rust, `close(self)` consumes the Source, so no later call can be written; in Python and C++, a later call is the language's own misuse error (section 3.3). Arrays borrowed from it stay valid, and keep only the memory they borrow, which goes with the last of them. In C++, copies of a closed Source remain objects, and a later call through any of them throws `std::logic_error`; Fragments and Slices already read stay valid while they are held.
 - **A choice of mapping.** `mapping` in `OpenOptions` is `Shared` by default. `Private` maps the file copy-on-write, so a caller can change the array without touching the file. `Off` reads into owned buffers, for network file systems where mapping is unreliable.
 - **Files that change are not supported.** Mapping a file while another process changes or shortens it is not supported, and on most systems it can end the reading process.
 
@@ -2611,7 +2615,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and ninety-seven have been decided. Each lists the current proposal.
+Two points are not yet settled, and ninety-eight have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2671,6 +2675,7 @@ Two points are not yet settled, and ninety-seven have been decided. Each lists t
 - [x] **Warnings.** Decided: warnings are recorded as codes with small structured context in one store on the Source, kept once for each code and detail with a count and the first few locations, messages built only when retrieved, bounded with a count of those dropped, and drained when the caller chooses; the read path is untouched, and the store's lock is taken only when a warning occurs (section 3.3).
 - [x] **C++ in place of C.** Decided: BIL's interface for callers and external plugins is C++, akin to Rust's, in place of a C interface (sections 2 and 10): C++20 and header-only, over a narrow binary layer the shared library exports; failures thrown as `bil::Error`; header code under the linking exception.
 - [x] **Blocks larger than the read and the ceiling.** Decided: decoded down to the Window and not kept, with the warning `badly_packed` (section 4).
+- [x] **Internal failures and misuse.** Decided: a failure of BIL's own is the error kind `Internal`; a call on a closed Source is no kind of BIL's, but each language's misuse error, and in Rust `close(self)` makes it impossible (sections 3.3 and 4).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, the formula for each derived one, and the items of each domain profile. The first entries and first profiles are in section 14.2, and both are settled as drivers are built.
 - [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, and a profile that names itself, directly or through others, is refused. They are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).

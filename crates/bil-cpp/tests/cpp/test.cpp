@@ -226,13 +226,23 @@ int main() {
     for (auto& t : threads) t.join();
     CHECK(good == 200);
 
-    // Closing closes every copy; what was read stays valid.
+    // Closing closes every copy, and a later call is the caller's misuse, C++'s logic_error,
+    // not a bil::Error; what was read stays valid.
     const auto other = source;
     other.close();
-    e = fails([&] { source.image_count(); });
-    CHECK(e && e->kind() == bil::ErrorKind::NotFound);
-    e = fails([&] { image.info(); });
-    CHECK(e && e->kind() == bil::ErrorKind::NotFound);
+    const auto misuse = [](auto f) {
+        try {
+            f();
+        } catch (const bil::Error&) {
+            return false;
+        } catch (const std::logic_error& e) {
+            return std::string_view(e.what()) == "bil: the Source is closed";
+        }
+        return false;
+    };
+    CHECK(misuse([&] { source.image_count(); }));
+    CHECK(misuse([&] { image.info(); }));
+    CHECK(misuse([&] { other.take_warnings(); }));
     CHECK(holds(whole, cols));
 
     if (failures == 0) std::cout << "C++ interface: every check passed\n";

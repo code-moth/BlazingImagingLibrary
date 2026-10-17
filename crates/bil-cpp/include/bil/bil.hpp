@@ -197,7 +197,7 @@ inline constexpr std::uint32_t abi_version = 1;
 // ------------------------------------------------------------------ failures
 
 /// The kinds of `Error`, as Rust's `bil::Error` names its variants (section 3.3).
-enum class ErrorKind { Unrecognized = 1, Corrupt, Unsupported, NotFound, Io };
+enum class ErrorKind { Unrecognized = 1, Corrupt, Unsupported, NotFound, Io, Internal };
 
 /// What every failed call throws.
 class Error : public std::runtime_error {
@@ -231,9 +231,11 @@ inline void check(bil_abi_error* e) {
     Texts tried;
     bil_abi_error_message(e, bil_abi_cpp_append, &message);
     bil_abi_error_tried(e, bil_abi_cpp_push, &tried);
-    auto kind = static_cast<ErrorKind>(bil_abi_error_kind(e));
+    const auto kind = bil_abi_error_kind(e);
     bil_abi_error_free(e);
-    throw Error(kind, take(message), take(tried));
+    // A call on a closed Source is the caller's misuse, not a kind of BIL's (section 3.3).
+    if (kind == 0) throw std::logic_error("bil: " + take(message));
+    throw Error(static_cast<ErrorKind>(kind), take(message), take(tried));
 }
 
 /// The library must be the one this header was written for; checked once.
@@ -569,7 +571,7 @@ public:
         }
         return out;
     }
-    /// Frees what the Source holds; every later call through any copy fails.
+    /// Frees what the Source holds; a later call through any copy throws `std::logic_error`.
     void close() const { bil_abi_source_close(h()); }
 
 private:

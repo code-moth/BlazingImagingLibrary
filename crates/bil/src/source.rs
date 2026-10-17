@@ -110,6 +110,11 @@ macro_rules! each {
 }
 
 impl Source {
+    /// Closes it now, freeing what it holds: its cache, warnings and readers. It is consumed, so
+    /// no later call can be written (section 4, "Closing a Source"); Fragments already read stay
+    /// valid. Dropping it does the same.
+    pub fn close(self) {}
+
     /// The name of the driver that opened it: `nitf` or `geotiff`.
     pub fn driver(&self) -> &'static str {
         match self.0 {

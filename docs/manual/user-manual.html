@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 20</p>
+      <p class="eyebrow">Manual · Version 21</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>20</dd></div><div><dt>As of</dt><dd>17 October 2026</dd></div><div><dt>Specification</dt><dd>Version 82</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C++</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built; the C++ interface built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>21</dd></div><div><dt>As of</dt><dd>17 October 2026</dd></div><div><dt>Specification</dt><dd>Version 83</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C++</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built; the C++ interface built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -164,7 +164,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
         <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C++</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 82, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 83, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
 <p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
@@ -1892,6 +1892,7 @@ bil.register_driver(VendorDriver)
 <p><strong>Status:</strong> Specified.</p>
 </blockquote>
 <p><strong>A call either delivers or fails.</strong> A call that cannot deliver returns an error and no value: a file that cannot be opened, a bad argument, a failed read, a limit exceeded, or corrupt data. In Python and C++ an error is an exception, and in Rust an <code>Err</code>.</p>
+<p><strong>Kinds of error.</strong> <code>Unrecognized</code> (no driver knows the file, and the drivers tried are named), <code>Corrupt</code>, <code>Unsupported</code> (valid data this build does not read, or a limit's refusal), <code>NotFound</code> (outside what the Source holds), <code>Io</code>, and <code>Internal</code>, a bug in BIL to be reported. A call on a closed Source is not one of these: it is your misuse, reported as each language reports one, <code>std::logic_error</code> in C++ and <code>ValueError</code> in Python, and in Rust it cannot be written, since <code>close(self)</code> consumes the Source.</p>
 <p><strong>What is delivered carries a status</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2155,9 +2156,9 @@ source.as_geotiff();                                  // the reader itself, for 
 <td><code>OpenOptions</code> holds <code>max_directories</code> (100,000) and <code>max_subdirectories</code> (1,000), M41's limits, and <code>max_held_warnings</code> (256); the other options join as their code is written (M50). <code>open_from</code> takes any <code>ReadAt</code>: a file or bytes in memory. Each driver checks its container's leading bytes, <code>nitf</code> then <code>geotiff</code>; one that recognizes them and then fails gives its error (M54)</td>
 </tr>
 <tr>
-<td><code>Source::driver</code>, <code>image_count</code>, <code>list_images</code>, <code>image(i)</code></td>
-<td>Section 3's calls on a Source</td>
-<td><code>driver</code> names the driver that opened it</td>
+<td><code>Source::driver</code>, <code>image_count</code>, <code>list_images</code>, <code>image(i)</code>, <code>close(self)</code></td>
+<td>Section 3's calls on a Source, and closing (section 4)</td>
+<td><code>driver</code> names the driver that opened it. <code>close</code> consumes the Source, so no later call can be written (M72)</td>
 </tr>
 <tr>
 <td><code>Source::as_nitf</code>, <code>as_geotiff</code></td>
@@ -2202,7 +2203,7 @@ source.as_geotiff();                                  // the reader itself, for 
 <tr>
 <td><code>bil::Error</code>, <code>bil::Result</code></td>
 <td>Section 3.3</td>
-<td>One error type for every reader (M45): <code>Unrecognized</code> with the drivers tried (M51), <code>Corrupt</code>, <code>Unsupported</code> (a limit's refusal among them), <code>NotFound</code> and <code>Io</code>. <code>bil::nitf::Error</code> and <code>bil::geotiff::Error</code> are the same type</td>
+<td>One error type for every reader (M45): <code>Unrecognized</code> with the drivers tried (M51), <code>Corrupt</code>, <code>Unsupported</code> (a limit's refusal among them), <code>NotFound</code>, <code>Io</code> and <code>Internal</code>, BIL's own failure (M72). <code>bil::nitf::Error</code> and <code>bil::geotiff::Error</code> are the same type</td>
 </tr>
 </tbody>
 </table></div>
@@ -2234,7 +2235,7 @@ for (const auto&amp; w : source.take_warnings().warnings) std::clog &lt;&lt; w &
 <tr>
 <td><code>bil::Source</code>: <code>driver</code>, <code>image_count</code>, <code>image</code>, <code>list_images</code>, the four cache calls, <code>take_warnings</code>, <code>close</code></td>
 <td>The same</td>
-<td>Copies share one Source, as Rust's <code>Arc</code> does; <code>close()</code> closes it for every copy, and later calls throw <code>NotFound</code> (M72); Fragments already read stay valid</td>
+<td>Copies share one Source, as Rust's <code>Arc</code> does; <code>close()</code> closes it for every copy, and a later call throws <code>std::logic_error</code>, C++'s misuse error, not a <code>bil::Error</code> (M72); Fragments already read stay valid</td>
 </tr>
 <tr>
 <td><code>bil::Image</code>: <code>index</code>, <code>info</code>, <code>list_stored_levels</code>, <code>describe_storage(level)</code>, <code>read_fragment(window, level)</code></td>
@@ -2249,12 +2250,12 @@ for (const auto&amp; w : source.take_warnings().warnings) std::clog &lt;&lt; w &
 <tr>
 <td><code>bil::ImageInfo</code>, <code>Representation</code>, <code>ColorModel</code>, <code>FrameCount</code>, <code>Relation</code>, <code>StoredLevel</code>, <code>Storage</code>, <code>Block</code>, <code>CacheReport</code>, <code>Warnings</code>, <code>Warning</code>, <code>BlockKey</code>, <code>Scope</code></td>
 <td>The same types</td>
-<td>Rust's enums with data are structs with a <code>kind</code> and the variants' fields; <code>Scope</code> is an optional Image index; <code>bil::name(code)</code> names a <code>WarningCode</code> (M73)</td>
+<td>Rust's enums with data are structs with a <code>kind</code> and the variants' fields; <code>Scope</code> is an optional Image index; <code>bil::name(code)</code> names a <code>WarningCode</code>, by the ruling on M73</td>
 </tr>
 <tr>
 <td><code>bil::Error</code> with <code>kind()</code>, <code>what()</code>, <code>tried()</code></td>
 <td><code>bil::Error</code></td>
-<td>Thrown; <code>kind()</code> is one of Rust's variants. A panic in the library is caught at the layer and thrown as <code>Io</code> (M72)</td>
+<td>Thrown; <code>kind()</code> is one of Rust's variants. A panic in the library is caught at the layer and thrown as <code>Internal</code> (M72)</td>
 </tr>
 </tbody>
 </table></div>
@@ -2577,9 +2578,9 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
 <p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
 <p><strong>What comes next</strong> in code: NITF's blocks through the cache, its JPEG 2000 Images by codestream tile (M62), measured first; then M31's private copy, which waits for packaging; Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 to 82 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>, and version 79's (M58) describes what it already did. Version 80's (M59 to M65) brought the Fragment cache, so far for GeoTIFF's chunks. Version 81 brought the warning store, which replaced M66's count, and C++ in place of C; version 82's rulings (M67 to M71) brought <code>badly_packed</code> and the C++ interface itself. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What specification versions 68 to 83 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>, and version 79's (M58) describes what it already did. Version 80's (M59 to M65) brought the Fragment cache, so far for GeoTIFF's chunks. Version 81 brought the warning store, which replaced M66's count, and C++ in place of C; version 82's rulings (M67 to M71) brought <code>badly_packed</code> and the C++ interface itself. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 to 82, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 83, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2970,30 +2971,19 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td><strong>The license of code in the header (a warning).</strong> The header's classes compile into the caller's own object files. LGPL 2.1 section 5 frees such an object only where it uses small inline functions, ten lines or less, and the linking exception covers linking, keeping "any work based on BIL that is not merely linked with it" under the LGPL. A caller's object holding BIL's header code may be such a work, so a closed-source C++ program might not be free to use the header as Rust programs use the crate.</td>
 <td>Accepted, its first option, by the author's ruling (version 82): <code>LINKING-EXCEPTION.md</code> extended to code included from BIL's public headers; section 10.6</td>
 </tr>
-</tbody>
-</table></div>
-<p><strong>Open, for the author.</strong> M72 and M73, from writing the C++ interface. Both are coded as proposed, so that they can be tested; a ruling otherwise changes them.</p>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th></th>
-<th>Found</th>
-<th>Proposed</th>
-</tr>
-</thead>
-<tbody>
 <tr>
 <td>M72</td>
 <td><strong>What a panic in the library becomes, and a call on a closed Source.</strong> Section 3.3 has a failure inside BIL caught at the interface and returned as an error, and Rust's <code>Error</code> has no variant for BIL's own failure: a panic is a bug in BIL, not in the file or the call. Section 4 makes a read after <code>close()</code> "an error", without its kind.</td>
-<td>At the C++ layer, and later the Python one, a panic is caught and returned as <code>Io</code>, with a message beginning "internal failure in BIL", so no new kind is added for a case that should not occur; the alternative is a variant <code>Internal</code> in Rust's <code>Error</code>, shared by every language, which would also let Rust callers tell a bug from a failed read. A call on a closed Source fails with <code>NotFound</code>, "the Source is closed", since it asks for what the Source no longer holds.</td>
+<td>Ruled otherwise (version 83): a panic is BIL's bug and gets a kind of its own, <code>Internal</code>, in Rust's <code>Error</code> and so in every language; a call on a closed Source is the caller's bug, and gets no kind of BIL's: <code>close(self)</code> in Rust makes it impossible to write, and each binding raises its usual misuse error, <code>std::logic_error</code> in C++ and <code>ValueError</code> in Python. Sections 3.3 and 4</td>
 </tr>
 <tr>
 <td>M73</td>
 <td><strong>Rust's enums with data, in C++.</strong> <code>Representation</code>, <code>ColorModel</code>, <code>FrameCount</code>, <code>RelationKind</code> and <code>Scope</code> carry data in their variants, and a <code>WarningCode</code> has a method <code>name()</code>. C++ enums carry neither.</td>
-<td>Each becomes a struct with a <code>kind</code>, an <code>enum class</code> of Rust's variant names, beside the variants' fields: <code>Representation { kind, white_is_zero, color }</code>. <code>Scope</code> is an optional Image index, empty for the Source. A <code>WarningCode</code>'s name is the free function <code>bil::name(code)</code>. The alternative, <code>std::variant</code> of one struct for each variant, is closer to Rust's types but heavier to use, as <code>std::visit</code> is the only way in.</td>
+<td>Accepted, its first option, by the author's ruling (version 83): structs with a <code>kind</code>. Section 2</td>
 </tr>
 </tbody>
 </table></div>
+<p><strong>Open, for the author.</strong> None at present.</p>
 <p><strong>How this list is kept.</strong> Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.</p>
 <h2 id="appendix-where-each-call-is-described">Appendix: where each call is described</h2>
 <div class="table-wrap"><table>
@@ -3099,7 +3089,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 20, written beside the code against version 82 of the Blazing Imaging Library (BIL) specification, as of 17 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 21, written beside the code against version 83 of the Blazing Imaging Library (BIL) specification, as of 17 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

@@ -40,12 +40,12 @@ fn put(sink: Sink, ctx: *mut c_void, text: &str) {
 }
 
 /// Text the header passes: a path or a level name, which must be UTF-8.
-unsafe fn text<'a>(ptr: *const u8, len: usize, what: &str) -> Result<&'a str, Error> {
+unsafe fn text<'a>(ptr: *const u8, len: usize, what: &str) -> Result<&'a str, AbiError> {
     if len == 0 {
         return Ok("");
     }
     std::str::from_utf8(std::slice::from_raw_parts(ptr, len))
-        .map_err(|_| Error::Unsupported(format!("{what} that is not UTF-8")))
+        .map_err(|_| Error::Unsupported(format!("{what} that is not UTF-8")).into())
 }
 
 /// Runs `f`, which cannot fail but for a bug, so that not even a panic crosses the boundary.
@@ -55,15 +55,26 @@ fn quiet(f: impl FnOnce()) {
 
 // ------------------------------------------------------------------ errors
 
-/// An error, boxed.
-pub struct AbiError(Error);
+/// A failure, boxed: one of BIL's errors, or a call on a closed Source, which is the caller's
+/// misuse and no kind of BIL's (specification, section 3.3); the header throws its own
+/// `std::logic_error` for it.
+pub enum AbiError {
+    Bil(Error),
+    Closed,
+}
 
-fn fail(e: Error) -> *mut AbiError {
-    Box::into_raw(Box::new(AbiError(e)))
+impl From<Error> for AbiError {
+    fn from(e: Error) -> AbiError {
+        AbiError::Bil(e)
+    }
+}
+
+fn fail(e: AbiError) -> *mut AbiError {
+    Box::into_raw(Box::new(e))
 }
 
 /// Runs `f`, turning its error or a panic into an error handle.
-fn guard(f: impl FnOnce() -> Result<(), Error>) -> *mut AbiError {
+fn guard(f: impl FnOnce() -> Result<(), AbiError>) -> *mut AbiError {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(())) => std::ptr::null_mut(),
         Ok(Err(e)) => fail(e),
@@ -73,29 +84,37 @@ fn guard(f: impl FnOnce() -> Result<(), Error>) -> *mut AbiError {
                 .map(|s| s.to_string())
                 .or_else(|| panic.downcast_ref::<String>().cloned())
                 .unwrap_or_default();
-            fail(Error::Io(std::io::Error::other(format!(
-                "internal failure in BIL: {why}"
-            ))))
+            fail(AbiError::Bil(Error::Internal(format!("a panic: {why}"))))
         }
     }
 }
 
-/// The error's kind: 1 `Unrecognized`, 2 `Corrupt`, 3 `Unsupported`, 4 `NotFound`, 5 `Io`.
+/// The error's kind: 0 a closed Source, 1 `Unrecognized`, 2 `Corrupt`, 3 `Unsupported`,
+/// 4 `NotFound`, 5 `Io`, 6 `Internal`.
 #[no_mangle]
 pub unsafe extern "C" fn bil_abi_error_kind(e: *const AbiError) -> u32 {
-    match &(&*e).0 {
-        Error::Unrecognized(_) => 1,
-        Error::Corrupt(_) => 2,
-        Error::Unsupported(_) => 3,
-        Error::NotFound(_) => 4,
-        Error::Io(_) => 5,
+    match &*e {
+        AbiError::Closed => 0,
+        AbiError::Bil(Error::Unrecognized(_)) => 1,
+        AbiError::Bil(Error::Corrupt(_)) => 2,
+        AbiError::Bil(Error::Unsupported(_)) => 3,
+        AbiError::Bil(Error::NotFound(_)) => 4,
+        AbiError::Bil(Error::Io(_)) => 5,
+        AbiError::Bil(Error::Internal(_)) => 6,
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn bil_abi_error_message(e: *const AbiError, sink: Sink, ctx: *mut c_void) {
     quiet(|| {
-        put(sink, ctx, &(&*e).0.to_string());
+        put(
+            sink,
+            ctx,
+            &match &*e {
+                AbiError::Bil(e) => e.to_string(),
+                AbiError::Closed => "the Source is closed".to_string(),
+            },
+        );
     });
 }
 
@@ -103,7 +122,7 @@ pub unsafe extern "C" fn bil_abi_error_message(e: *const AbiError, sink: Sink, c
 #[no_mangle]
 pub unsafe extern "C" fn bil_abi_error_tried(e: *const AbiError, sink: Sink, ctx: *mut c_void) {
     quiet(|| {
-        if let Error::Unrecognized(tried) = &(&*e).0 {
+        if let AbiError::Bil(Error::Unrecognized(tried)) = &*e {
             for t in tried {
                 put(sink, ctx, t);
             }
@@ -140,11 +159,12 @@ pub unsafe extern "C" fn bil_abi_open_options_default(out: *mut AbiOpenOptions) 
     });
 }
 
-unsafe fn options(o: *const AbiOpenOptions) -> Result<OpenOptions, Error> {
+unsafe fn options(o: *const AbiOpenOptions) -> Result<OpenOptions, AbiError> {
     if (*o).size < std::mem::size_of::<AbiOpenOptions>() {
         return Err(Error::Unsupported(
             "OpenOptions from an older header than this library's".into(),
-        ));
+        )
+        .into());
     }
     Ok(OpenOptions {
         max_directories: (*o).max_directories,
@@ -160,10 +180,9 @@ fn handle(source: Source) -> *const AbiSource {
     Arc::into_raw(Arc::new(AbiSource(RwLock::new(Some(Arc::new(source))))))
 }
 
-unsafe fn source(h: *const AbiSource) -> Result<Arc<Source>, Error> {
+unsafe fn source(h: *const AbiSource) -> Result<Arc<Source>, AbiError> {
     let lock = (*h).0.read().unwrap_or_else(|p| p.into_inner());
-    lock.clone()
-        .ok_or_else(|| Error::NotFound("the Source is closed".into()))
+    lock.clone().ok_or(AbiError::Closed)
 }
 
 #[no_mangle]
@@ -484,8 +503,11 @@ fn order(o: StorageOrder) -> u32 {
     }
 }
 
-unsafe fn image_info(h: *const AbiSource, i: usize) -> Result<bil_core::types::ImageInfo, Error> {
-    source(h)?.image(i)?.info()
+unsafe fn image_info(
+    h: *const AbiSource,
+    i: usize,
+) -> Result<bil_core::types::ImageInfo, AbiError> {
+    Ok(source(h)?.image(i)?.info()?)
 }
 
 #[no_mangle]

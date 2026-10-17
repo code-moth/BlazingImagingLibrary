@@ -1305,6 +1305,9 @@ fn the_source_interface_opens_tiff_and_reads_its_levels() {
     let f = image.read_fragment(whole(&full), "level0").unwrap();
     check_fragment(&f, &full, whole(&full));
     assert!(matches!(source.image(1), Err(Error::NotFound(_))));
+    // Closing consumes the Source; a Fragment already read stays valid.
+    source.close();
+    check_fragment(&f, &full, whole(&full));
     // M41's limits come from OpenOptions: a chain of two IFDs is refused at one.
     let one = bil::OpenOptions {
         max_directories: 1,

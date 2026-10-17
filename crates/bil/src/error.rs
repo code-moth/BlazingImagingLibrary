@@ -16,7 +16,11 @@ pub enum Error {
     Unsupported(String),
     /// A request outside what the Source holds: an Image, a level, a group, a field or a Window.
     NotFound(String),
+    /// A failed read of the bytes.
     Io(io::Error),
+    /// A failure of BIL's own, such as a panic caught at an interface: a bug in BIL, to be
+    /// reported, never in the file or the call (section 3.3).
+    Internal(String),
 }
 
 impl fmt::Display for Error {
@@ -33,6 +37,7 @@ impl fmt::Display for Error {
             Error::Unsupported(m) => write!(f, "not supported: {m}"),
             Error::NotFound(m) => write!(f, "not found: {m}"),
             Error::Io(e) => write!(f, "{e}"),
+            Error::Internal(m) => write!(f, "internal failure in BIL, to be reported: {m}"),
         }
     }
 }
