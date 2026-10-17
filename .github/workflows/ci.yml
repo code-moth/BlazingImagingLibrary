@@ -112,6 +112,21 @@ jobs:
           n=$(objdump -d target/release/exp1b | grep -E "(call|bl)\s.*(_mm256_|_mm512_|core_arch)" | grep -vcE "xgetbv|cpuid" || true)
           echo "::notice::calls to vector intrinsics in exp1b: $n"
           test "$n" -eq 0
+      # The C++ interface (specification, section 2): the header compiled by each system's own
+      # compilers against the shared library, every warning an error, and on Linux under
+      # AddressSanitizer and UndefinedBehaviorSanitizer too.
+      - name: C++ interface, GCC
+        if: runner.os == 'Linux'
+        run: python crates/bil-cpp/tests/run_cpp.py gcc
+      - name: C++ interface, GCC with sanitizers
+        if: runner.os == 'Linux'
+        run: python crates/bil-cpp/tests/run_cpp.py gcc-asan
+      - name: C++ interface, Clang
+        if: runner.os != 'Windows'
+        run: python crates/bil-cpp/tests/run_cpp.py clang
+      - name: C++ interface, MSVC
+        if: runner.os == 'Windows'
+        run: python crates/bil-cpp/tests/run_cpp.py msvc
 
   c-errors:
     # Experiment 3: libjpeg-turbo and OpenJPEG behind BIL's C layer, fed millions of corrupt

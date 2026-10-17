@@ -24,6 +24,9 @@ pub enum WarningCode {
     SubdirectorySkipped,
     /// Under `corrupt_as_missing`, a corrupt block was delivered as missing.
     CorruptBlockMissing,
+    /// A block larger than the cache's ceiling is decoded again by each read of part of it,
+    /// as for an Image held in one strip; the detail is its bytes.
+    BadlyPacked,
 }
 
 impl WarningCode {
@@ -33,6 +36,7 @@ impl WarningCode {
             WarningCode::CacheCeilingExceeded => "cache_ceiling_exceeded",
             WarningCode::SubdirectorySkipped => "subdirectory_skipped",
             WarningCode::CorruptBlockMissing => "corrupt_block_missing",
+            WarningCode::BadlyPacked => "badly_packed",
         }
     }
 }
@@ -72,6 +76,12 @@ impl fmt::Display for Warning {
             WarningCode::SubdirectorySkipped => write!(
                 f,
                 "{place}: the subdirectory at offset {detail} could not be read and was skipped"
+            )?,
+            WarningCode::BadlyPacked => write!(
+                f,
+                "WARNING: {place} is badly packed for reading in pieces: its blocks of {detail} \
+                 bytes are larger than the cache's ceiling, so each read of part of one decodes \
+                 it again. Raise set_cache_bytes above {detail}, or rewrite the file in tiles"
             )?,
             WarningCode::CorruptBlockMissing => {
                 write!(f, "{place}: a corrupt block was delivered as missing")?

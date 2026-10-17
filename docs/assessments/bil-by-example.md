@@ -2,8 +2,8 @@ This document shows BIL in use, through calls a caller would actually write. It 
 
 **How to read it**
 
-- **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C.
-- **Only calls the specification defines.** Every call, option and name comes from version 70. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where. Version 10 changes only the example extension tag, to the six-letter `VNDRTA` of specification version 72, since NITF's tags have at most six characters; otherwise it stands as written for version 70.
+- **Python first.** Most examples are in Python, because it is the shortest. Section 17 shows the same calls in Rust and C++.
+- **Only calls the specification defines.** Every call, option and name comes from version 70. Version 1 of this document found 17 gaps in the calling interface. Version 58 of the specification closes all of them, and section 18 lists where. Version 10 changes only the example extension tag, to the six-letter `VNDRTA` of specification version 72, since NITF's tags have at most six characters; version 11 shows C++ in place of C, which specification versions 81 and 82 made BIL's interface beside Rust and Python, with Rust's names and shapes, so section 17's C++ follows version 82, `take_warnings` included; otherwise it stands as written for version 70.
 - **Two assumptions.** `bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)` builds a Window, as the Rust struct in section 4 does. Options named in the specification are passed as keyword arguments.
 - **Illustrative.** The specification marks its own code as "not final", and so are these examples.
 
@@ -988,7 +988,7 @@ source = bil.open_source("inbox/received.ntf", options)
 
 A file whose header claims too much fails with an error before any memory is taken for its pixels; one with too many scans fails when the decode reaches the limit.
 
-With `isolation` set to `Untrusted` in the installation's configuration, its C and C++ drivers run in a separate process.
+With `isolation` set to `Untrusted` in the installation's configuration, its drivers over C and C++ libraries run in a separate process.
 
 
 ### 14.2 Audit what is installed
@@ -1026,7 +1026,7 @@ class VendorDriver(bil.ScriptedDriver):
 bil.register_driver(VendorDriver)
 ```
 
-The same driver serves Rust, C and C++ callers. For them, BIL runs it in a helper process with the Python installed on the machine, so a failing script cannot take the caller down. Because `describe_pixels` tells the compiled core where the pixels are, they never pass through Python. A script that returns pixels as an array instead would pay a round trip for every read. Without an installed Python, only scripted drivers are unavailable.
+The same driver serves Rust and C++ callers. For them, BIL runs it in a helper process with the Python installed on the machine, so a failing script cannot take the caller down. Because `describe_pixels` tells the compiled core where the pixels are, they never pass through Python. A script that returns pixels as an array instead would pay a round trip for every read. Without an installed Python, only scripted drivers are unavailable.
 
 ### 15.2 A tiled, compressed vendor format
 
@@ -1116,7 +1116,7 @@ for result in chain.world_to_image(points):
         report(result.status)   # Missing, NotConverged or Ambiguous
 ```
 
-## 17. The same calls in Rust and C
+## 17. The same calls in Rust and C++
 
 ### 17.1 Rust: tiles, a pyramid and geocoding
 
@@ -1153,38 +1153,34 @@ if fragment.is_borrowed() {
 }
 ```
 
-### 17.3 C: open, read and check every status
+### 17.3 C++: open, read and handle failures
 
-```c
-BilSource *source;
-BilImage  *image;
-BilSlice  *slice;
-BilWindow  window = { 0, 0, 1024, 1024, 1, 0 };
+```cpp
+#include <bil/bil.hpp>
 
-BilStatus status = bil_open_source("scene.ntf", &source);
-if (status == BIL_OK) status = bil_image(source, 0, &image);
-if (status == BIL_OK) status = bil_read_slice(image, "complex.polar.magnitude", &window, &slice);
-if (status == BIL_OK) {
-    const float *values;
-    size_t rows, cols, row_stride;
-    status = bil_slice_data(slice, &values, &rows, &cols, &row_stride);
-    /* ... values are valid until the Slice is freed ... */
-    bil_free_slice(slice);
+bil::Window window{0, 0, 1024, 1024};
+
+try {
+    auto source = bil::open_source("scene.ntf");
+    auto image  = source.image(0);
+    auto slice  = image.read_slice("complex.polar.magnitude", window);
+    std::span<const float> values = slice.data();   // valid while the Slice lives
+    if (slice.status() == bil::Status::Partial) {
+        // missing pixels are NaN
+    }
+    for (const auto& w : source.take_warnings().warnings) std::clog << w << '\n';
+} catch (const bil::Error& e) {
+    std::cerr << e.what() << '\n';                   // e.kind() is one of Rust's error kinds
 }
-if (status != BIL_OK) {
-    char message[512];
-    bil_last_error(message, sizeof message);
-}
-bil_close_source(source);
 ```
 
-Every C function returns a status, every object is an opaque handle freed by its matching call, and the message for the last failed call on a thread is read with `bil_last_error`.
+The calls and names are Rust's, in the namespace `bil`. Objects own what they hold, so nothing is freed by hand, and a failure is a `bil::Error`.
 
-### 17.4 C: into a buffer the caller owns
+### 17.4 C++: into a buffer the caller owns
 
-```c
-float *buffer = malloc(4096 * 4096 * sizeof(float));
-status = bil_read_slice_into(image, "pixel.raw.intensity", &window, buffer);
+```cpp
+std::vector<float> buffer(4096 * 4096);
+image.read_slice_into("pixel.raw.intensity", window, std::span<float>(buffer));
 ```
 
 ## 18. Gaps closed in version 58
@@ -1208,7 +1204,7 @@ Version 1 of this document found these gaps in the calling interface. Version 58
 | Registering functions and methods | 15.3 | The descriptions a slice function and a level method give, and how a registered kernel runs | 10 |
 | Field definitions | 15.4 | The parts of a definition, kept as JSON, and `load_field_definitions` | 14.1, 14.4 |
 | Dictionary items | 8.3 | `common.gate_range` and `common.projection_angle` | 14.2 |
-| The C interface | 17.3 | Five conventions: handles, status, ownership, data and errors | 2 |
+| The C++ interface | 17.3 | Rust's names and shapes, in C++ (versions 81 and 82, in place of version 58's C conventions) | 2 |
 | Writing several components | 12.1 | `write_slice(window, slice, component)` and `write_geo_model` | 11 |
 
 **Settled since, in version 59.** A writer writes the geo model without being asked (R30). A live stream has one position for all Readers, and a frame no longer held is `Missing` (R34).

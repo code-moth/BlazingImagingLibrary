@@ -1,6 +1,6 @@
-This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 9 bring the document in step with specification version 70: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays, version 8 experiment 3, containing C errors, and version 9 the author's acceptance of the proposals of the user manual and experiments 1b, 3 and 5. Version 10 records GDAL's part of experiment 3 and the first Tier 1 reader, for NITF, and version 11 the author's acceptance, in specification versions 72 and 73, of the proposals they raised and of one the ruling on M28 raised, M21 to M30 in the user manual's chapter 24. Version 12 brings the whole document in step with specification version 81 and adds section 11, which records what has been built and how it was tested. Versions 71 to 81 settled M19 to M65 of the user manual's chapter 24: the Source interface, stored levels, representations, the Fragment cache, and, in version 81, warnings held on the Source, a principle that the interface is not driven by edge cases, and a C++ interface in place of the C one, which rewrites H9. The rest of the judgment stands as written for version 56.
+This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 9 bring the document in step with specification version 70: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays, version 8 experiment 3, containing C errors, and version 9 the author's acceptance of the proposals of the user manual and experiments 1b, 3 and 5. Version 10 records GDAL's part of experiment 3 and the first Tier 1 reader, for NITF, and version 11 the author's acceptance, in specification versions 72 and 73, of the proposals they raised and of one the ruling on M28 raised, M21 to M30 in the user manual's chapter 24. Version 12 brings the whole document in step with specification version 81, and version 13 with version 82, which built the C++ interface, and adds section 11, which records what has been built and how it was tested. Versions 71 to 81 settled M19 to M65 of the user manual's chapter 24: the Source interface, stored levels, representations, the Fragment cache, and, in version 81, warnings held on the Source, a principle that the interface is not driven by edge cases, and a C++ interface in place of the C one, which rewrites H9. The rest of the judgment stands as written for version 56.
 
-**What has changed between versions 56 and 81**
+**What has changed between versions 56 and 82**
 
 | Change | Where it bears |
 | --- | --- |
@@ -21,7 +21,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 | The Source interface: `OpenOptions`, one error type, `describe_storage` by level, `ImageInfo` with representations and component names (versions 74, 77 to 79) | Section 3, section 11 |
 | The Fragment cache: one entry for each block, every block not borrowed, the byte ceiling giving way for one block with a warning, a block decoded once among threads (version 80) | Section 3, section 10 |
 | Warnings held on the Source and drained when the caller chooses; the interface not driven by edge cases (version 81) | Section 3, section 11 |
-| A C++ interface with Rust's names and shapes in place of the C interface, for callers and external plugins (version 81) | H9, section 9 |
+| A C++ interface with Rust's names and shapes in place of the C interface, for callers and external plugins (version 81): C++20, header-only over a narrow binary layer, failures thrown, header code under the linking exception (version 82) | H9, section 9 |
 
 ## 1. Verdict
 
@@ -31,7 +31,7 @@ This document asks whether BIL, as specification version 56 describes it, can be
 - **Video.** Frame-accurate, deferred and multi-threaded decoding through FFmpeg is a hard problem that many projects have got subtly wrong.
 - **Isolation and the mapped format.** Process isolation that is safe on Linux, macOS and Windows is a project of its own.
 
-**What is done.** Tier 1's two readers, the JPEG 2000 codec, the Source interface, the Fragment cache for GeoTIFF and the warning store are built and tested on Linux, macOS, Windows and ARM, and four of the five first experiments are done. Section 11 has the detail. The judgment below is unchanged by it: the work so far is the part the verdict called realistic.
+**What is done.** Tier 1's two readers, the JPEG 2000 codec, the Source interface, the Fragment cache for GeoTIFF, the warning store and the C++ interface over them are built and tested on Linux, macOS, Windows and ARM, and four of the five first experiments are done. Section 11 has the detail. The judgment below is unchanged by it: the work so far is the part the verdict called realistic.
 
 **The main danger is breadth, not any single part.** Section 8 and Appendix A name roughly 60 kinds of data and about 40 libraries. With one implementer, an attempt to keep all of them working would spend almost all its time on builds and packaging, not on the core. The tier plan is the right defense, and this document argues for holding to it strictly.
 
@@ -58,7 +58,7 @@ Several decisions already taken reduce the work and the risk.
 
 The difficulty ratings are judgments: Low is routine work, Medium needs care, High needs specialist knowledge or design work still to be done, and Very high is a project in its own right.
 
-| Component | Difficulty | Why | Main risk | Done, as of version 81 |
+| Component | Difficulty | Why | Main risk | Done, as of version 82 |
 | --- | --- | --- | --- | --- |
 | Window, Fragment, Slice types | Low | Plain data structures | None of note | Built: Window and owned Fragment in `bil::types`; Slice prototyped in experiment 1b |
 | Strided Fragments and zero-copy | Medium | Lifetimes of borrowed memory across Rust, C++ and Python | A borrowed array outliving its mapping | Prototyped: borrowed arrays in experiment 5; the readers' Fragments are owned until mapping is built |
@@ -81,7 +81,7 @@ The difficulty ratings are judgments: Low is routine work, Medium needs care, Hi
 | Terrain | Medium | Tiling, interpolation, geoid, line-of-sight intersection | Robust intersection at grazing angles | Not started |
 | Writers | Low | Four simple formats | Geocoding and markings in writers (pass 2, R28 and R30) | Not started |
 | Rust interface | Medium | Lifetimes of borrowed Slices and Fragments | Ergonomics of `Cow` and lifetimes for callers | Begun: Source, Image, `OpenOptions`, `ImageInfo`, stored levels, storage, Fragments, the cache and warnings; no Slices or requests |
-| C++ interface over all of Rust | High, and large | Every type and call needs a C++ form over a binary layer Rust can export, with the same names and lifetimes as Rust's | Size of the surface, a binary form stable between compilers, and keeping it stable (pass 2, R39; H9) | Specified in version 81; its binary form, standard and header license proposed (M69 to M71) |
+| C++ interface over all of Rust | High, and large | Every type and call needs a C++ form over a binary layer Rust can export, with the same names and lifetimes as Rust's | Size of the surface, a binary form stable between compilers, and keeping it stable (pass 2, R39; H9) | Built for what the Rust code reads today: the binary layer and the header, tested with GCC, Clang and MSVC on four systems |
 | Python interface | Medium | PyO3 and NumPy are mature. Experiment 5 found the stable interface small enough to declare by hand, about 190 lines for what it needs. | The interpreter lock in callbacks. Borrowed arrays keeping their memory alive passed in experiment 5. | Prototyped in experiment 5 |
 | Python for scripted drivers | Medium | A helper process for Rust and C++ callers; the caller's own Python inside Python | The round trip's cost, which is benchmarked (H5) | Not started |
 | Scripted drivers | Medium | The `PixelLayout` path is simple; the array fallback is not | Keeping the interpreter off the pixel path in every case | Not started |
@@ -89,7 +89,7 @@ The difficulty ratings are judgments: Low is routine work, Medium needs care, Hi
 | Packaging and coexistence | High | Private copies with hidden symbols, conda and system packages | Clashes with GDAL, HDF5 and FFmpeg from other packages (H2) | Begun: crate and package names held, a publishing workflow; experiment 4 not run |
 | Conformance suite | Medium, and large | One suite for every driver, slice function, Level and instruction set | Run time of the full matrix | Begun: each reader's tests and its comparison with GDAL run in CI on four systems |
 | Fuzz testing | Medium | Standard tools exist for Rust | Coverage of the Rust layer over C libraries | Begun: seeded corrupt files for both readers in their tests; no fuzzing harness |
-| Warning store | Low | One bounded store on each Source, recorded into only when a warning occurs | None of note | Built |
+| Warning store | Low | One bounded store on each Source, recorded into only when a warning occurs | None of note | Built, with `badly_packed` for files whose blocks pass the cache's ceiling |
 
 ## 4. The hard problems
 
@@ -206,9 +206,9 @@ Each problem says what it is, why it is hard, how likely and how damaging it is,
 
 **Why it is hard.** Rust cannot export C++ classes, and C++ has no binary form that is stable between compilers and standard libraries, so the classes callers see cannot be what the shared library exports. Every type, option, callback and result still needs a form at that boundary, with rules for ownership; a callback must not let a C++ exception, a Rust panic or a Python exception cross it; and each call is a promise that cannot be broken without a major version. Plugins built by one compiler must load into BIL built by another. The header's own code compiles into callers' programs, which bears on the LGPL (M71).
 
-**Likelihood and impact.** Certain to be large. Medium impact. Smaller than the C interface it replaces in one respect: names and lifetimes can map one to one from Rust, as M70 proposes.
+**Likelihood and impact.** Certain to be large. Medium impact. Smaller than the C interface it replaces in one respect: names and lifetimes map one to one from Rust, as M70, accepted in version 82, has them.
 
-**How to retire it.** The hourglass of M69: a narrow layer of plain functions on opaque handles, exported by the shared library and generated from the Rust interface, and a header-only C++ interface over it, compiled by the caller. Test the header with GCC, Clang and MSVC in CI on all four systems, and load a plugin built by one compiler into BIL built by another. Settle M69 to M71 first.
+**How to retire it.** The hourglass of M69: a narrow layer of plain functions on opaque handles, exported by the shared library and generated from the Rust interface, and a header-only C++ interface over it, compiled by the caller. Test the header with GCC, Clang and MSVC in CI on all four systems, and load a plugin built by one compiler into BIL built by another. Version 82 settled M69 to M71, and the first part is built: the layer and the header for everything the Rust code reads, tested in CI with GCC, Clang and MSVC, and under AddressSanitizer. Still to come: a plugin built by one compiler loaded into BIL built by another, which waits for external drivers.
 
 ### H10. Breadth: the formats and libraries of Tier 3
 
@@ -273,7 +273,7 @@ These are the backing libraries whose health matters most to the early tiers. He
 | GeoTIFF | The GeoTIFF driver passes the full conformance suite on reference files |
 | NITF | The NITF driver, with JPEG 2000 through OpenJPEG, passes the suite on files the author supplies |
 | Geocoding for Tier 1 | `image_window`, `affine` and `rational_polynomial` agree with GDAL to within the tolerance of section 13.8 |
-| Interfaces | Python and C examples from BIL by Example run unchanged against Tier 1 |
+| Interfaces | Python and C++ examples from BIL by Example run unchanged against Tier 1 |
 | Tier 1 | All of the above, plus writers, markings and fuzzing, on Linux, macOS and Windows |
 
 **What changes in the plan**
@@ -358,7 +358,7 @@ The code written so far is experiment 1 and 1b and the `bil` crate's vector laye
 - **Measuring.** Section 12 rule 11 asks for benchmarks of both patterns on strips, tiles and band-sequential files. They need real large files, so they wait for the Tier 1 readers and for files from the author.
 
 
-## 11. What has been built, as of version 81
+## 11. What has been built, as of version 82
 
 Tier 1's reading side is largely built. Everything below is in `crates/bil` and `crates/bil-sys`, tested in CI on Linux on x86 and ARM, macOS and Windows on every change, and on the latest stable Rust.
 
@@ -370,14 +370,15 @@ Tier 1's reading side is largely built. Everything below is in `crates/bil` and 
 | GeoTIFF reader | The `tiff` crate for directories, BIL for chunks: Deflate, LZW, PackBits, predictors, widths 1 to 64, samples as stored, GeoTIFF keys, no-data, overviews and SubIFDs as stored levels, reads in parallel | Unit tests with seeded corrupt files; GDAL 3.8.4's 232 TIFF test files: 160 Images and 9 stored levels agree pixel for pixel, none differ |
 | Source interface | `open_source`, `OpenOptions`, one `Error`, `Source` and `Image`, `ImageInfo` with representation and component names, stored levels, storage by level, Fragments by level | Tests through the interface for both readers |
 | Fragment cache | Blocks kept for each Source, least recently used first, bounded by count and bytes, one block held past the ceiling, a block decoded once among threads | Unit tests, threads included; GeoTIFF reads through it, and the GDAL comparison is unchanged by it |
-| Warning store | Warnings recorded on the Source, kept once with a count and the first blocks, bounded, drained by `take_warnings` | Unit tests; the cache's ceiling and TIFF's skipped SubIFDs record through it |
+| Warning store | Warnings recorded on the Source, kept once with a count and the first blocks, bounded, drained by `take_warnings` | Unit tests; the cache's ceiling, badly packed files and TIFF's skipped SubIFDs record through it |
+| C++ interface | The shared library `bil`, exporting a narrow binary layer, and the C++20 header `bil/bil.hpp` over it: opening, Images, stored levels, storage, Fragments, the cache, warnings and failures, with Rust's names | A C++ test built with GCC, Clang and MSVC, every warning an error, on Linux, macOS and Windows, and under AddressSanitizer with leak checks |
 | License and source checks | `cargo-deny` on what ships and on everything | CI |
 
 **Experiments.** 1 and 1b (the fused loop), 3 (containing C errors, GDAL's part included) and 5 (borrowed arrays) are done; 2 is begun (section 8); 4, packaging, is not.
 
-**Not yet built.** Slices from the readers, requests and the pass over real Images; mapping and borrowed Fragments; Readers and read-ahead; NITF's blocks through the cache, which comes next; the metadata dictionary and profiles; geocoding; writers; the Python package's reading; the C++ interface; and everything of Tiers 2 and 3.
+**Not yet built.** Slices from the readers, requests and the pass over real Images; mapping and borrowed Fragments; Readers and read-ahead; NITF's blocks through the cache, which comes next; the metadata dictionary and profiles; geocoding; writers; the Python package's reading; the C++ interface beyond what the Rust code reads, and external plugins through it; and everything of Tiers 2 and 3.
 
-**What writing it found.** Seventy points the specification left open or stated twice, M2 to M71 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M66 are ruled, and M67 to M71 are open. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.
+**What writing it found.** Seventy-two points the specification left open or stated twice, M2 to M73 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M71 are ruled, and M72 and M73 are open. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.
 
 ## Sources
 

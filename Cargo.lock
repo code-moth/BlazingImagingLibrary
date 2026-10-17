@@ -20,6 +20,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bil-cpp"
+version = "0.0.1"
+dependencies = [
+ "bil",
+]
+
+[[package]]
 name = "bil-exp1"
 version = "0.1.0"
 dependencies = [

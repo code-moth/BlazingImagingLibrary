@@ -1,0 +1,21 @@
+[package]
+name = "bil-cpp"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.97"
+license = "LGPL-2.1-or-later"
+description = "The Blazing Imaging Library's shared library for C++: the binary layer beneath the header bil/bil.hpp (specification, section 2)."
+repository = "https://github.com/code-moth/BlazingImagingLibrary"
+publish = false
+
+[lib]
+# The shared library is `bil` (bil.dll, libbil.so, libbil.dylib), as the specification names it.
+name = "bil"
+crate-type = ["cdylib"]
+
+[features]
+default = []
+openjpeg = ["bil_core/openjpeg"]
+
+[dependencies]
+bil_core = { package = "bil", path = "../bil" }

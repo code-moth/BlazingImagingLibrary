@@ -1472,10 +1472,18 @@ fn the_cache_decodes_a_chunk_once() {
     let after = source.describe_cache();
     assert_eq!((after.hits, after.misses), (before.hits + 1, before.misses));
     // A Window needing fewer rows than such a tile holds decodes only those, keeps nothing,
-    // leaves what the cache holds as it was, and warns of nothing (M67).
+    // leaves what the cache holds as it was, and warns that the file is badly packed (M67).
     check(&source, 0, &img, w(16, 0));
     assert_eq!(source.describe_cache().fragment_count, 1);
-    assert!(ceiling(&source).is_empty());
+    let packed = source.take_warnings().warnings;
+    assert_eq!(packed.len(), 1);
+    assert_eq!(
+        (packed[0].code, packed[0].detail, packed[0].count),
+        (WarningCode::BadlyPacked, Some(16 * 16 * 4), 1)
+    );
+    assert!(packed[0]
+        .to_string()
+        .starts_with("WARNING: image 0 is badly packed"));
     source.clear_cache();
     assert_eq!(source.describe_cache().bytes, 0);
     // Off: the same pixels, nothing kept, every chunk a miss.

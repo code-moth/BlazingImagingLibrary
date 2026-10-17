@@ -171,8 +171,19 @@ impl Cache {
             state = self.decoded.wait(state).unwrap_or_else(|p| p.into_inner());
         }
         state.report.misses += 1;
-        if state.max_fragments == 0 || (partial && whole_bytes > state.max_bytes) {
+        let oversized = partial && whole_bytes > state.max_bytes;
+        if state.max_fragments == 0 || oversized {
             drop(state);
+            if oversized {
+                // The file is badly packed for reading in pieces (section 4, "Larger than the
+                // read and the ceiling").
+                self.warnings.record(
+                    WarningCode::BadlyPacked,
+                    Scope::Image(key.image as usize),
+                    Some(whole_bytes),
+                    Some(key),
+                );
+            }
             return decode(false).map(Arc::new);
         }
         state.pending.insert(key);

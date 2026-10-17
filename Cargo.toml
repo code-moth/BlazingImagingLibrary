@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/bil", "crates/bil-sys", "experiments/exp1-fused-loop", "experiments/exp5-borrowed-arrays"]
+members = ["crates/bil", "crates/bil-sys", "crates/bil-cpp", "experiments/exp1-fused-loop", "experiments/exp5-borrowed-arrays"]
 # Experiment 3 links C libraries that only some systems have, so it is built on its own.
 exclude = ["experiments/exp3-c-errors"]
 

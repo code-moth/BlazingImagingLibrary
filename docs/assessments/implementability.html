@@ -145,27 +145,27 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Assessment · Version 12</p>
+      <p class="eyebrow">Assessment · Version 13</p>
       <h1>BIL Implementability</h1>
       <p class="lede">Whether the Blazing Imaging Library can be built as specified, where it is likely to go wrong, and what to try first.</p>
     </div>
     <svg class="motif" viewBox="0 0 90 33" role="img" aria-label="Ten hard problems"><rect class="px in" x="0" y="0" width="14" height="14" rx="2"/><rect class="px in" x="19" y="0" width="14" height="14" rx="2"/><rect class="px in" x="38" y="0" width="14" height="14" rx="2"/><rect class="px in" x="57" y="0" width="14" height="14" rx="2"/><rect class="px in" x="76" y="0" width="14" height="14" rx="2"/><rect class="px in" x="0" y="19" width="14" height="14" rx="2"/><rect class="px in" x="19" y="19" width="14" height="14" rx="2"/><rect class="px in" x="38" y="19" width="14" height="14" rx="2"/><rect class="px in" x="57" y="19" width="14" height="14" rx="2"/><rect class="px in" x="76" y="19" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>12</dd></div><div><dt>As of</dt><dd>17 October 2026</dd></div><div><dt>Specification</dt><dd>Version 81</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Blocking items</dt><dd>None for Tier 1; M69 to M71 for the C++ interface</dd></div><div><dt>Built</dt><dd>Tier 1 reading: NITF, GeoTIFF, JPEG 2000, Source, cache, warnings</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>13</dd></div><div><dt>As of</dt><dd>17 October 2026</dd></div><div><dt>Specification</dt><dd>Version 82</dd></div><div><dt>Verdict</dt><dd>Buildable in tiers</dd></div><div><dt>Implementer</dt><dd>Claude, with the author reviewing</dd></div><div><dt>Blocking items</dt><dd>None for Tier 1</dd></div><div><dt>Built</dt><dd>Tier 1 reading: NITF, GeoTIFF, JPEG 2000, Source, cache, warnings, C++</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
       <p class="toc-title">Contents</p>
-      <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C++ interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#10-what-version-68-means-for-the-code-already-written">10. What version 68 means for the code already written</a></li><li><a href="#11-what-has-been-built-as-of-version-81">11. What has been built, as of version 81</a></li><li><a href="#sources">Sources</a></li></ol>
+      <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C++ interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#10-what-version-68-means-for-the-code-already-written">10. What version 68 means for the code already written</a></li><li><a href="#11-what-has-been-built-as-of-version-82">11. What has been built, as of version 82</a></li><li><a href="#sources">Sources</a></li></ol>
     </nav>
     <div class="column">
       <details class="toc-inline toc">
         <summary>Contents</summary>
-        <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C++ interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#10-what-version-68-means-for-the-code-already-written">10. What version 68 means for the code already written</a></li><li><a href="#11-what-has-been-built-as-of-version-81">11. What has been built, as of version 81</a></li><li><a href="#sources">Sources</a></li></ol>
+        <ol><li><a href="#1-verdict">1. Verdict</a></li><li><a href="#2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</a></li><li><a href="#3-component-by-component">3. Component by component</a></li><li><a href="#4-the-hard-problems">4. The hard problems</a><ol><li><a href="#h1-the-fused-loop-size-speed-and-agreement-to-the-bit">H1. The fused loop: size, speed and agreement to the bit</a></li><li><a href="#h2-containing-many-c-and-c-libraries-in-one-process">H2. Containing many C and C++ libraries in one process</a></li><li><a href="#h3-jpeg-2000-speed-on-large-nitf-files">H3. JPEG 2000 speed on large NITF files</a></li><li><a href="#h4-video-deferred-frame-accurate-and-threaded">H4. Video: deferred, frame-accurate and threaded</a></li><li><a href="#h5-the-python-interpreter-for-scripted-drivers">H5. The Python interpreter for scripted drivers</a></li><li><a href="#h6-building-and-shipping-six-and-the-other-large-c-libraries">H6. Building and shipping SIX and the other large C++ libraries</a></li><li><a href="#h7-geocoding-steps-with-no-open-reference">H7. Geocoding steps with no open reference</a></li><li><a href="#h8-isolation-and-the-mapped-format">H8. Isolation and the mapped format</a></li><li><a href="#h9-the-c-interface-over-all-of-rust">H9. The C++ interface over all of Rust</a></li><li><a href="#h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</a></li></ol></li><li><a href="#5-dependencies-to-watch">5. Dependencies to watch</a></li><li><a href="#6-who-builds-it-and-at-what-pace">6. Who builds it, and at what pace</a></li><li><a href="#7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</a></li><li><a href="#8-the-first-experiments-in-order">8. The first experiments, in order</a></li><li><a href="#9-if-it-has-to-be-cut">9. If it has to be cut</a></li><li><a href="#10-what-version-68-means-for-the-code-already-written">10. What version 68 means for the code already written</a></li><li><a href="#11-what-has-been-built-as-of-version-82">11. What has been built, as of version 82</a></li><li><a href="#sources">Sources</a></li></ol>
       </details>
       <main>
-<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 9 bring the document in step with specification version 70: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays, version 8 experiment 3, containing C errors, and version 9 the author's acceptance of the proposals of the user manual and experiments 1b, 3 and 5. Version 10 records GDAL's part of experiment 3 and the first Tier 1 reader, for NITF, and version 11 the author's acceptance, in specification versions 72 and 73, of the proposals they raised and of one the ruling on M28 raised, M21 to M30 in the user manual's chapter 24. Version 12 brings the whole document in step with specification version 81 and adds section 11, which records what has been built and how it was tested. Versions 71 to 81 settled M19 to M65 of the user manual's chapter 24: the Source interface, stored levels, representations, the Fragment cache, and, in version 81, warnings held on the Source, a principle that the interface is not driven by edge cases, and a C++ interface in place of the C one, which rewrites H9. The rest of the judgment stands as written for version 56.</p>
-<p><strong>What has changed between versions 56 and 81</strong></p>
+<p>This document asks whether BIL, as specification version 56 describes it, can be built, and where building it is likely to go wrong. It is a judgment made from the specification, from knowledge of the libraries named in it, and from how comparable libraries have fared. Version 2 revised section 6 for the arrangement now intended: Claude writes BIL, and the specification's author leads, reviews and supplies what Claude cannot reach. Versions 3 to 9 bring the document in step with specification version 70: every item that section 7 listed as blocking is now settled, and experiment 1 has been run. Version 5 adds access patterns and domain profiles, and section 10 takes stock of what they mean for the code already written. Version 7 records experiment 5, borrowed NumPy arrays, version 8 experiment 3, containing C errors, and version 9 the author's acceptance of the proposals of the user manual and experiments 1b, 3 and 5. Version 10 records GDAL's part of experiment 3 and the first Tier 1 reader, for NITF, and version 11 the author's acceptance, in specification versions 72 and 73, of the proposals they raised and of one the ruling on M28 raised, M21 to M30 in the user manual's chapter 24. Version 12 brings the whole document in step with specification version 81, and version 13 with version 82, which built the C++ interface, and adds section 11, which records what has been built and how it was tested. Versions 71 to 81 settled M19 to M65 of the user manual's chapter 24: the Source interface, stored levels, representations, the Fragment cache, and, in version 81, warnings held on the Source, a principle that the interface is not driven by edge cases, and a C++ interface in place of the C one, which rewrites H9. The rest of the judgment stands as written for version 56.</p>
+<p><strong>What has changed between versions 56 and 82</strong></p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -243,7 +243,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <td>Section 3, section 11</td>
 </tr>
 <tr>
-<td>A C++ interface with Rust's names and shapes in place of the C interface, for callers and external plugins (version 81)</td>
+<td>A C++ interface with Rust's names and shapes in place of the C interface, for callers and external plugins (version 81): C++20, header-only over a narrow binary layer, failures thrown, header code under the linking exception (version 82)</td>
 <td>H9, section 9</td>
 </tr>
 </tbody>
@@ -255,7 +255,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Video.</strong> Frame-accurate, deferred and multi-threaded decoding through FFmpeg is a hard problem that many projects have got subtly wrong.</li>
 <li><strong>Isolation and the mapped format.</strong> Process isolation that is safe on Linux, macOS and Windows is a project of its own.</li>
 </ul>
-<p><strong>What is done.</strong> Tier 1's two readers, the JPEG 2000 codec, the Source interface, the Fragment cache for GeoTIFF and the warning store are built and tested on Linux, macOS, Windows and ARM, and four of the five first experiments are done. Section 11 has the detail. The judgment below is unchanged by it: the work so far is the part the verdict called realistic.</p>
+<p><strong>What is done.</strong> Tier 1's two readers, the JPEG 2000 codec, the Source interface, the Fragment cache for GeoTIFF, the warning store and the C++ interface over them are built and tested on Linux, macOS, Windows and ARM, and four of the five first experiments are done. Section 11 has the detail. The judgment below is unchanged by it: the work so far is the part the verdict called realistic.</p>
 <p><strong>The main danger is breadth, not any single part.</strong> Section 8 and Appendix A name roughly 60 kinds of data and about 40 libraries. With one implementer, an attempt to keep all of them working would spend almost all its time on builds and packaging, not on the core. The tier plan is the right defense, and this document argues for holding to it strictly.</p>
 <p><strong>Five problems should be tried in small experiments before Tier 1 is coded.</strong> They are listed in section 8: the fused loop and its window independence, OpenJPEG's speed on large NITF files, containing C libraries' error handling, packaging with private copies, and the borrowed-array lifetime in Python. The first, the fused loop, is done, in experiments 1 and 1b; the third, containing C errors, for libjpeg-turbo, OpenJPEG and GDAL in experiment 3; and the fifth, borrowed arrays, in experiment 5.</p>
 <h2 id="2-what-makes-bil-easier-to-build-than-it-looks">2. What makes BIL easier to build than it looks</h2>
@@ -319,7 +319,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <th>Difficulty</th>
 <th>Why</th>
 <th>Main risk</th>
-<th>Done, as of version 81</th>
+<th>Done, as of version 82</th>
 </tr>
 </thead>
 <tbody>
@@ -475,7 +475,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <td>High, and large</td>
 <td>Every type and call needs a C++ form over a binary layer Rust can export, with the same names and lifetimes as Rust's</td>
 <td>Size of the surface, a binary form stable between compilers, and keeping it stable (pass 2, R39; H9)</td>
-<td>Specified in version 81; its binary form, standard and header license proposed (M69 to M71)</td>
+<td>Built for what the Rust code reads today: the binary layer and the header, tested with GCC, Clang and MSVC on four systems</td>
 </tr>
 <tr>
 <td>Python interface</td>
@@ -531,7 +531,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <td>Low</td>
 <td>One bounded store on each Source, recorded into only when a warning occurs</td>
 <td>None of note</td>
-<td>Built</td>
+<td>Built, with <code>badly_packed</code> for files whose blocks pass the cache's ceiling</td>
 </tr>
 </tbody>
 </table></div>
@@ -609,8 +609,8 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <h3 id="h9-the-c-interface-over-all-of-rust">H9. The C++ interface over all of Rust</h3>
 <p><strong>What.</strong> Version 81 replaced the C interface with a C++ one that has Rust's names and shapes, for callers and for external plugins. Section 10.6 says it covers all of BIL.</p>
 <p><strong>Why it is hard.</strong> Rust cannot export C++ classes, and C++ has no binary form that is stable between compilers and standard libraries, so the classes callers see cannot be what the shared library exports. Every type, option, callback and result still needs a form at that boundary, with rules for ownership; a callback must not let a C++ exception, a Rust panic or a Python exception cross it; and each call is a promise that cannot be broken without a major version. Plugins built by one compiler must load into BIL built by another. The header's own code compiles into callers' programs, which bears on the LGPL (M71).</p>
-<p><strong>Likelihood and impact.</strong> Certain to be large. Medium impact. Smaller than the C interface it replaces in one respect: names and lifetimes can map one to one from Rust, as M70 proposes.</p>
-<p><strong>How to retire it.</strong> The hourglass of M69: a narrow layer of plain functions on opaque handles, exported by the shared library and generated from the Rust interface, and a header-only C++ interface over it, compiled by the caller. Test the header with GCC, Clang and MSVC in CI on all four systems, and load a plugin built by one compiler into BIL built by another. Settle M69 to M71 first.</p>
+<p><strong>Likelihood and impact.</strong> Certain to be large. Medium impact. Smaller than the C interface it replaces in one respect: names and lifetimes map one to one from Rust, as M70, accepted in version 82, has them.</p>
+<p><strong>How to retire it.</strong> The hourglass of M69: a narrow layer of plain functions on opaque handles, exported by the shared library and generated from the Rust interface, and a header-only C++ interface over it, compiled by the caller. Test the header with GCC, Clang and MSVC in CI on all four systems, and load a plugin built by one compiler into BIL built by another. Version 82 settled M69 to M71, and the first part is built: the layer and the header for everything the Rust code reads, tested in CI with GCC, Clang and MSVC, and under AddressSanitizer. Still to come: a plugin built by one compiler loaded into BIL built by another, which waits for external drivers.</p>
 <h3 id="h10-breadth-the-formats-and-libraries-of-tier-3">H10. Breadth: the formats and libraries of Tier 3</h3>
 <p><strong>What.</strong> Tier 3 is "the remaining formats of section 8 and the remaining libraries of Appendix A".</p>
 <p><strong>Why it is hard.</strong> Each library needs a wrapper, a driver, reference files, conformance passes on three systems, packaging, and keeping up with its releases. At even one to three months each, forty libraries is several engineer-years before any maintenance. Several are maintained by one person.</p>
@@ -808,7 +808,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </tr>
 <tr>
 <td>Interfaces</td>
-<td>Python and C examples from BIL by Example run unchanged against Tier 1</td>
+<td>Python and C++ examples from BIL by Example run unchanged against Tier 1</td>
 </tr>
 <tr>
 <td>Tier 1</td>
@@ -1010,7 +1010,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Band-sequential storage.</strong> A pass reads every component of a row together. In band-sequential storage those lie in separate parts of the file, so storage order runs band by band while a pass runs row by row. For mapped, uncompressed data that costs nothing. For compressed band-sequential data, read-ahead must follow the blocks of every component the request uses. Section 4 of the specification now proposes that, and section 16 leaves it open with the other details of read-ahead.</li>
 <li><strong>Measuring.</strong> Section 12 rule 11 asks for benchmarks of both patterns on strips, tiles and band-sequential files. They need real large files, so they wait for the Tier 1 readers and for files from the author.</li>
 </ul>
-<h2 id="11-what-has-been-built-as-of-version-81">11. What has been built, as of version 81</h2>
+<h2 id="11-what-has-been-built-as-of-version-82">11. What has been built, as of version 82</h2>
 <p>Tier 1's reading side is largely built. Everything below is in <code>crates/bil</code> and <code>crates/bil-sys</code>, tested in CI on Linux on x86 and ARM, macOS and Windows on every change, and on the latest stable Rust.</p>
 <div class="table-wrap"><table>
 <thead>
@@ -1054,7 +1054,12 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <tr>
 <td>Warning store</td>
 <td>Warnings recorded on the Source, kept once with a count and the first blocks, bounded, drained by <code>take_warnings</code></td>
-<td>Unit tests; the cache's ceiling and TIFF's skipped SubIFDs record through it</td>
+<td>Unit tests; the cache's ceiling, badly packed files and TIFF's skipped SubIFDs record through it</td>
+</tr>
+<tr>
+<td>C++ interface</td>
+<td>The shared library <code>bil</code>, exporting a narrow binary layer, and the C++20 header <code>bil/bil.hpp</code> over it: opening, Images, stored levels, storage, Fragments, the cache, warnings and failures, with Rust's names</td>
+<td>A C++ test built with GCC, Clang and MSVC, every warning an error, on Linux, macOS and Windows, and under AddressSanitizer with leak checks</td>
 </tr>
 <tr>
 <td>License and source checks</td>
@@ -1064,8 +1069,8 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </tbody>
 </table></div>
 <p><strong>Experiments.</strong> 1 and 1b (the fused loop), 3 (containing C errors, GDAL's part included) and 5 (borrowed arrays) are done; 2 is begun (section 8); 4, packaging, is not.</p>
-<p><strong>Not yet built.</strong> Slices from the readers, requests and the pass over real Images; mapping and borrowed Fragments; Readers and read-ahead; NITF's blocks through the cache, which comes next; the metadata dictionary and profiles; geocoding; writers; the Python package's reading; the C++ interface; and everything of Tiers 2 and 3.</p>
-<p><strong>What writing it found.</strong> Seventy points the specification left open or stated twice, M2 to M71 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M66 are ruled, and M67 to M71 are open. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.</p>
+<p><strong>Not yet built.</strong> Slices from the readers, requests and the pass over real Images; mapping and borrowed Fragments; Readers and read-ahead; NITF's blocks through the cache, which comes next; the metadata dictionary and profiles; geocoding; writers; the Python package's reading; the C++ interface beyond what the Rust code reads, and external plugins through it; and everything of Tiers 2 and 3.</p>
+<p><strong>What writing it found.</strong> Seventy-two points the specification left open or stated twice, M2 to M73 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M71 are ruled, and M72 and M73 are open. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.</p>
 <h2 id="sources">Sources</h2>
 <ul>
 <li><a href="https://zeli.app/story/49844629">Rust's SIMD ecosystem, September 2026</a>, summarizing the original at shnatsel.github.io, on <code>std::simd</code> remaining nightly-only.</li>
@@ -1074,7 +1079,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><a href="https://github.com/uclouvain/openjpeg">OpenJPEG on GitHub</a>, on its maintenance status.</li>
 </ul>
       </main>
-      <footer>BIL Implementability, version 12, an assessment of the Blazing Imaging Library (BIL) specification, first made against version 56 and brought in step with version 81, with what has been built, as of 17 October 2026.</footer>
+      <footer>BIL Implementability, version 13, an assessment of the Blazing Imaging Library (BIL) specification, first made against version 56 and brought in step with version 82, with what has been built, as of 17 October 2026.</footer>
     </div>
   </div>
 </div>
