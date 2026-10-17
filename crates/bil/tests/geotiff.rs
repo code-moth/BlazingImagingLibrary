@@ -1751,7 +1751,8 @@ fn missing_pixels_are_nan_and_left_out() {
 }
 
 /// A stored level is read on its own grid, at `stored1` and `stored1.level1`, its origin and
-/// scale from the level's position and scale (section 5, "Read directly").
+/// scale from the level's position and scale (section 5, "Read directly"). A TIFF overview does
+/// not say whether it is aligned, and is taken as aligned (M80).
 #[test]
 fn stored_levels_give_slices_on_their_own_grid() {
     let full = Img::new(40, 60, 2, SampleType::U16);

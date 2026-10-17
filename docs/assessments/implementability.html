@@ -824,7 +824,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <li><strong>Video and isolation are the riskiest Tier 2 work.</strong> Both need many rounds of testing against real streams and real systems, so each depends on the author's test data and CI more than on code.</li>
 </ul>
 <h2 id="7-what-the-specification-must-settle-before-coding">7. What the specification must settle before coding</h2>
-<p>These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 70, every one is settled. Versions 71 to 84 settled what writing the code raised; open now are M75 to M79, the shape of <code>read_slice</code> and its <code>Slice</code>, which are coded as proposed and block nothing. Version 68 opened one point that blocked nothing, the details of access patterns, and version 69 settles it.</p>
+<p>These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 70, every one is settled. Versions 71 to 84 settled what writing the code raised; open now are M75 to M80, the shape of <code>read_slice</code> and its <code>Slice</code>, which are coded as proposed and block nothing. Version 68 opened one point that blocked nothing, the details of access patterns, and version 69 settles it.</p>
 <p><strong>Before Tier 1</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -1048,7 +1048,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </tr>
 <tr>
 <td><code>read_slice</code> for <code>pixel.raw</code></td>
-<td>Experiment 1b's pass, moved into the crate, run on Fragments read through the cache a band of rows at a time, at <code>level0</code>, <code>leveln</code>, stored levels and <code>storedk.leveln</code>, with missing pixels NaN; in Rust and C++ (M75 to M79, open)</td>
+<td>Experiment 1b's pass, moved into the crate, run on Fragments read through the cache a band of rows at a time, at <code>level0</code>, <code>leveln</code>, stored levels and <code>storedk.leveln</code>, with missing pixels NaN; in Rust and C++ (M75 to M80, open)</td>
 <td>Bit for bit against the pass on the whole Image in memory, from strips, tiles, Deflate, NITF blocks and a JPEG 2000 resolution level; timed against a copy and the arithmetic (<code>RESULTS-read-slice.md</code>)</td>
 </tr>
 <tr>
@@ -1075,7 +1075,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </table></div>
 <p><strong>Experiments.</strong> 1 and 1b (the fused loop), 3 (containing C errors, GDAL's part included) and 5 (borrowed arrays) are done; 2 is begun (section 8); 4, packaging, is not.</p>
 <p><strong>Not yet built.</strong> Slice functions beside <code>pixel.raw</code>, <code>SliceRequest</code> and its deliveries, and bands on threads in <code>read_slice</code>; mapping and borrowed Fragments; Readers and read-ahead; the metadata dictionary and profiles; geocoding; writers; the Python package's reading; the C++ interface beyond what the Rust code reads, and external plugins through it; and everything of Tiers 2 and 3.</p>
-<p><strong>What writing it found.</strong> Seventy-eight points the specification left open or stated twice, M2 to M79 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M74 are ruled, and M75 to M79, from <code>read_slice</code>, are open, M72 otherwise than proposed: a sixth error kind, <code>Internal</code>, for BIL's own failures; M74 by its alternative, a <code>Block</code> carrying a list of byte ranges. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.</p>
+<p><strong>What writing it found.</strong> Seventy-nine points the specification left open or stated twice, M2 to M80 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M74 are ruled, M72 otherwise than proposed: a sixth error kind, <code>Internal</code>, for BIL's own failures; and M74 by its alternative, a <code>Block</code> carrying a list of byte ranges. M75 to M80, from <code>read_slice</code>, are open. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.</p>
 <h2 id="sources">Sources</h2>
 <ul>
 <li><a href="https://zeli.app/story/49844629">Rust's SIMD ecosystem, September 2026</a>, summarizing the original at shnatsel.github.io, on <code>std::simd</code> remaining nightly-only.</li>

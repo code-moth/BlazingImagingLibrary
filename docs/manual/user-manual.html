@@ -3005,7 +3005,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> M75 to M79, from building <code>read_slice</code> for <code>pixel.raw</code>. Each is coded as proposed, so that it can be tested; a ruling otherwise changes it.</p>
+<p><strong>Open, for the author.</strong> M75 to M80, from building <code>read_slice</code> for <code>pixel.raw</code>. Each is coded as proposed, so that it can be tested; a ruling otherwise changes it.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -3039,6 +3039,11 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td>M79</td>
 <td><strong>Where the sample types meet <code>pixel.raw</code>.</strong> Section 5 makes <code>U32</code> to <code>I64</code> exact up to 2^24 and rounded above, <code>F64</code> rounded, and the arithmetic of the wide types float64; section 6 shifts integers right by <code>bit_shift</code>. It does not say how <code>F16</code> and <code>I8</code> reach the pass, or whether <code>bit_shift</code> applies to signed samples.</td>
 <td>Every sample is converted once, to float32, by one correctly rounded conversion: integers after <code>bit_shift</code>, signed ones by an arithmetic shift; <code>F16</code> exactly, by BIL's own conversion; <code>F64</code> and the 32 and 64-bit integers rounded to nearest, ties to even. <code>pixel.raw</code> makes nothing in float64 before that, since it has no arithmetic of its own, and its Levels average the float32 values, as for every other type.</td>
+</tr>
+<tr>
+<td>M80</td>
+<td><strong>Computed Levels of a stored level whose alignment is unknown.</strong> Section 5 makes <code>stored2.level1</code> an error when <code>stored2</code> is not aligned. A TIFF overview does not say whether it is (<code>aligned</code> is <code>None</code>, M47), and its pixels span its Image's extent, so their centers fall between the Level grid's points.</td>
+<td>A stored level the file does not call misaligned may be halved: <code>storedk.leveln</code> is computed on the stored level's own grid, and the Slice's <code>origin</code> and <code>scale</code>, from the level's <code>position</code> and <code>scale</code>, say where its values lie. A level known to be misaligned (<code>aligned</code> false) is <code>NotFound</code>. The alternative is to refuse <code>storedk.leveln</code> unless the level is known to be aligned, which leaves TIFF overviews readable only as they stand.</td>
 </tr>
 </tbody>
 </table></div>

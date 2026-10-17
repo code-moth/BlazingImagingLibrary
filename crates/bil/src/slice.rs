@@ -60,6 +60,15 @@ pub(crate) fn read(
             .find(|l| l.name == base)
             .ok_or_else(|| Error::NotFound(format!("level {level} of image {}", image.index())))?;
         check_window(info.row_count, info.col_count, window)?;
+        // Levels computed from a stored level need its samples on the Level grid (section 5); a
+        // level whose file does not say is taken as aligned, its origin and scale reporting where
+        // its values lie (M80).
+        if halvings > 0 && stored.aligned == Some(false) {
+            return Err(Error::NotFound(format!(
+                "level {level} of image {}: {base} is not aligned to the Level grid",
+                image.index()
+            )));
+        }
         let block_rows = u64::from(image.describe_storage(base)?.block_size.0);
         (
             stored.rows,
