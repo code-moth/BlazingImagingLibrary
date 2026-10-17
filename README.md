@@ -122,7 +122,7 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 | Document | What it is |
 | --- | --- |
 | [Specification](docs/specification/specification.md), version 83 | The source of truth for the design |
-| [User Manual](docs/manual/user-manual.md), version 21 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
+| [User Manual](docs/manual/user-manual.md), version 22 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 11 | Calls for every use case, in Python, Rust and C++ |
 | [Implementability](docs/assessments/implementability.md), version 13 | Whether BIL can be built, where it may go wrong, what to try first, what each change means for the code, and what is built |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |

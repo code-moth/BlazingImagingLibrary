@@ -54,6 +54,9 @@ pub struct Tiles {
     tiles: Vec<Parts>,
     /// Whether the codestream ends with EOC.
     ended: bool,
+    /// Every tile-part in the order the codestream holds them: its tile, and where it lies,
+    /// from its SOT marker, in bytes from the start of the source.
+    pub parts: Vec<(u32, u64, u64)>,
     /// The fewest decomposition levels the main header's COD and COC markers state: the
     /// reduced resolutions every component holds. A tile-part's own markers are not read.
     pub levels: u8,
@@ -193,6 +196,7 @@ pub fn read(source: &dyn ReadAt, offset: u64, length: u64) -> Result<Tiles, Stri
             .ok_or("the main header runs past what can be counted")?;
     }
     let mut tiles = vec![Parts::default(); count as usize];
+    let mut parts = Vec::new();
     let mut ended = false;
     while at < end {
         let marker = bytes(source, at, 2, end)?;
@@ -233,6 +237,7 @@ pub fn read(source: &dyn ReadAt, offset: u64, length: u64) -> Result<Tiles, Stri
             tile.declared = tnsot;
         }
         tile.found.push(tpsot);
+        parts.push((u32::from(isot), at, next - at));
         if psot == 0 {
             // To the end, so the bytes must end with EOC.
             ended = end - at >= 14 && bytes(source, end - 2, 2, end)? == [0xFF, 0xD9];
@@ -244,6 +249,7 @@ pub fn read(source: &dyn ReadAt, offset: u64, length: u64) -> Result<Tiles, Stri
         tiling,
         tiles,
         ended,
+        parts,
         levels: levels.ok_or("the main header has no COD marker")?,
     })
 }

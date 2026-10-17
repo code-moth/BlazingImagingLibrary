@@ -16,3 +16,6 @@ which the tests repeat, so a decoded sample can be checked without a second deco
 To write them again, with OpenJPEG's header and library installed:
 
     cc make_fixtures.c -lopenjp2 -o make_fixtures && ./make_fixtures
+
+`./make_fixtures timing` writes instead two large tiled codestreams, which are not kept here, for
+the timing of tile-by-tile decoding in `../../RESULTS-jpeg2000-tiles.md`.

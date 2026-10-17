@@ -145,13 +145,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 21</p>
+      <p class="eyebrow">Manual · Version 22</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>21</dd></div><div><dt>As of</dt><dd>17 October 2026</dd></div><div><dt>Specification</dt><dd>Version 83</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C++</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built; the C++ interface built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>22</dd></div><div><dt>As of</dt><dd>17 October 2026</dd></div><div><dt>Specification</dt><dd>Version 83</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C++</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built; the C++ interface built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
@@ -2173,7 +2173,7 @@ source.as_geotiff();                                  // the reader itself, for 
 <tr>
 <td><code>set_cache_size</code>, <code>set_cache_bytes</code>, <code>describe_cache</code>, <code>clear_cache</code></td>
 <td>Section 4's Fragment cache</td>
-<td><code>bil::cache</code>. 16 blocks and a quarter of physical memory by default. <code>describe_cache</code> gives a <code>CacheReport</code>: <code>fragment_count</code>, <code>bytes</code>, <code>max_fragments</code>, <code>max_bytes</code>, and in blocks <code>hits</code>, <code>misses</code> and <code>served_from_read_ahead</code> (0 until read-ahead). A block held alone past <code>set_cache_bytes</code> is the warning <code>cache_ceiling_exceeded</code> (M61). GeoTIFF's chunks pass through it, every level, compressed or not; NITF's blocks do not yet, so its cache stays empty. A chunk larger than the ceiling that a read needs only part of is decoded down to the Window's last row and not kept (M67)</td>
+<td><code>bil::cache</code>. 16 blocks and a quarter of physical memory by default. <code>describe_cache</code> gives a <code>CacheReport</code>: <code>fragment_count</code>, <code>bytes</code>, <code>max_fragments</code>, <code>max_bytes</code>, and in blocks <code>hits</code>, <code>misses</code> and <code>served_from_read_ahead</code> (0 until read-ahead). A block held alone past <code>set_cache_bytes</code> is the warning <code>cache_ceiling_exceeded</code> (M61). GeoTIFF's chunks and NITF's blocks pass through it at every level: a NITF unit, its block or for IMODE S one band of it, unpacked to native samples, and a JPEG 2000 tile, decoded alone at its level (M62; tile-by-tile decoding measured in <code>crates/bil/tests/RESULTS-jpeg2000-tiles.md</code>). A chunk larger than the ceiling that a read needs only part of is decoded down to the Window's last row and not kept (M67)</td>
 </tr>
 <tr>
 <td><code>Image::info</code>, <code>ImageInfo { row_count, col_count, frame_count, representation, component_names, pixel_type, component_count, relations, storage, may_have_missing }</code></td>
@@ -2302,7 +2302,7 @@ fragment.validity;                                    // pixels in blocks never 
 <tr>
 <td><code>describe_storage(i)</code></td>
 <td><code>describe_storage</code></td>
-<td>The same <code>Storage</code></td>
+<td>The same <code>Storage</code>. A JPEG 2000 Image's blocks are its codestream's tiles, each tile-part listed where it lies, whatever codecs the build has; a codestream too damaged to walk is listed as its one run, and its reads report the damage (M74)</td>
 </tr>
 <tr>
 <td><code>read_fragment(i, window)</code>, <code>read_level_fragment(i, level, window)</code></td>
@@ -2327,7 +2327,7 @@ fragment.validity;                                    // pixels in blocks never 
 </tbody>
 </table></div>
 <p><strong>What it reads.</strong> Every IMODE (B, P, R and S); unsigned and signed integers of 8, 16, 32 and 64 bits, 12-bit and 1-bit packed samples, float32, float64 and complex float32; more than nine bands; block mask tables, with blocks stored in any order, blocks never recorded, and pad pixels (section 4), all marked in the validity mask; significant bits and justification as <code>significant_bits</code> and <code>bit_shift</code>; several Images in one file; and extensions in the header's own data and, read when first asked for, in TRE_OVERFLOW segments. RPC00A and RPC00B are read field by field, with units; other extensions are listed with their data as bytes, as <code>CEDATA</code>, the standard's name for it. Fields in runs carry their place in the run (section 14.1), ONAME and OPHONE are <code>Identity</code> (section 14.3), and compressed blocks name their codec by what they decode (section 10). A field the definitions name that a file leaves out, such as IGEOLO where ICORDS is blank, is delivered as <code>Missing</code>.</p>
-<p><strong>JPEG 2000 Images</strong> (IC <code>C8</code> and <code>M8</code>). With the <code>openjpeg</code> feature, <code>read_fragment</code> decodes them. An Image's data is one codestream, or a JP2 file, told apart by its first bytes; its NITF blocks describe the codestream's own tiles, and OpenJPEG decodes only the tiles the Window touches (M34). The codec accepts each Image when the Source is opened (section 10, "Chosen once"): it reads the codestream's header and checks it against the subheader, the same columns, rows and bands, no subsampling, and samples of no more than NBPP bits, signed where PVTYPE is <code>SI</code>. A codestream that disagrees or is damaged does not stop the open; every read of that Image is then an error (M35). An accepted Image's resolution levels are its stored levels, from the fewest decomposition levels its main header states, and are read by OpenJPEG at reduced resolution; they are aligned (M48). A read checks the header again before any pixel memory is taken, and a codestream that is damaged or makes OpenJPEG warn is an error (section 3.3). A JP2 file holding a palette, component mapping or channel definitions is refused as unsupported, since they are neither applied nor reported yet (M34). Compressed integers of other widths than 8, 16 and 32 bits take the smallest type that holds them, and are delivered aligned to the right, whatever PJUST says (M33). Behind a mask table, pad pixels are marked as for uncompressed data, and an Image whose only block was never recorded is delivered with every pixel missing.</p>
+<p><strong>JPEG 2000 Images</strong> (IC <code>C8</code> and <code>M8</code>). With the <code>openjpeg</code> feature, <code>read_fragment</code> decodes them. An Image's data is one codestream, or a JP2 file, told apart by its first bytes; its NITF blocks describe the codestream's own tiles, and each tile the Window touches is decoded alone and kept in the Fragment cache at its level (M34, M62). The codec accepts each Image when the Source is opened (section 10, "Chosen once"): it reads the codestream's header and checks it against the subheader, the same columns, rows and bands, no subsampling, and samples of no more than NBPP bits, signed where PVTYPE is <code>SI</code>. A codestream that disagrees or is damaged does not stop the open; every read of that Image is then an error (M35). An accepted Image's resolution levels are its stored levels, from the fewest decomposition levels its main header states, and are read by OpenJPEG at reduced resolution; they are aligned (M48). A read checks the header again before any pixel memory is taken, and a codestream that is damaged or makes OpenJPEG warn is an error (section 3.3). A JP2 file holding a palette, component mapping or channel definitions is refused as unsupported, since they are neither applied nor reported yet (M34). Compressed integers of other widths than 8, 16 and 32 bits take the smallest type that holds them, and are delivered aligned to the right, whatever PJUST says (M33). Behind a mask table, pad pixels are marked as for uncompressed data, and an Image whose only block was never recorded is delivered with every pixel missing.</p>
 <p><strong>The codec</strong> (<code>bil::codec::jpeg2000</code>, behind the <code>openjpeg</code> feature) decodes a codestream or JP2 file where it lies in any <code>ReadAt</code>, through OpenJPEG's stream callbacks, with nothing copied out first; OpenJPEG reads ahead in chunks of up to 1 MiB and skips what it does not need. <code>read_header</code> reads the header alone, as a driver does at open; <code>Format::sniff</code> tells a codestream from a JP2 file. <code>decode</code> takes the place and length, a <code>Request</code> (an area in pixels from the Image's corner, and resolution levels to discard) and a check that sees the header before anything is decoded; it returns the header and a <code>Decoded</code>, whose components are read in OpenJPEG's own buffers, with no copy. Its errors tell corrupt data (<code>Corrupt</code>), a refused header (<code>Refused</code>), an OpenJPEG too old (<code>Unsupported</code>) and a Source that could not be read (<code>Io</code>) apart.</p>
 <pre><code class="language-rust">use bil::codec::jpeg2000::{decode, Format, Request};
 
@@ -2577,7 +2577,7 @@ cargo run --release -- --check                          # needs libjpeg-turbo 2.
 cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
 <p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
-<p><strong>What comes next</strong> in code: NITF's blocks through the cache, its JPEG 2000 Images by codestream tile (M62), measured first; then M31's private copy, which waits for packaging; Readers, read-ahead and the dictionary.</p>
+<p><strong>What comes next</strong> in code: M31's private copy, which waits for packaging; Readers, read-ahead and the dictionary.</p>
 <p><strong>What specification versions 68 to 83 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>, and version 79's (M58) describes what it already did. Version 80's (M59 to M65) brought the Fragment cache, so far for GeoTIFF's chunks. Version 81 brought the warning store, which replaced M66's count, and C++ in place of C; version 82's rulings (M67 to M71) brought <code>badly_packed</code> and the C++ interface itself. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
 <p>Writing this manual against specification versions 68 to 83, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
@@ -2983,7 +2983,23 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> None at present.</p>
+<p><strong>Open, for the author.</strong> M74, from passing NITF's blocks through the cache. It is coded as proposed, so that it can be tested; a ruling otherwise changes it.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Found</th>
+<th>Proposed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M74</td>
+<td><strong>JPEG 2000 tiles as blocks: three points section 4 leaves open.</strong> (a) A <code>Block</code> has one offset and one length, but a tile's parts may lie apart, between other tiles' parts, while section 4 makes one entry of each block <code>describe_storage</code> lists. (b) Where the codestream's tile grid starts before the Image, its first row and column of tiles are narrower than <code>block_size</code>, as the last are by the Image's far edge. (c) M67 speaks of a read that needs "some rows" of a block; a tile is decoded by area, so a read may need only some of its columns.</td>
+<td>(a) <code>describe_storage</code> lists each tile-part as a <code>Block</code> of its own, where it lies, in file order, all of one tile's parts with that tile's block row and column; the cache keys its entry by the tile, so a tile is one entry, decoded once from all its parts. This bends section 4's "one entry for each block it lists" for tiles in several parts; a tile in one part, the usual case, is one <code>Block</code>. The alternative, in the spirit of section 1.6, is to generalize <code>Block</code> to carry a list of byte ranges, so a tile is always one <code>Block</code>. (b) Block rows and columns index the codestream's tiles, and the blocks at either edge are cut by the Image's edge; <code>block_size</code> is the tile size. (c) A tile larger than the ceiling that a read needs only part of, in rows or in columns, is decoded only in that part; section 4's "Larger than the read and the ceiling" would read "needs only part of" for every block.</td>
+</tr>
+</tbody>
+</table></div>
 <p><strong>How this list is kept.</strong> Each new version of this manual rereads the chapters touched by the code or the specification since the last, adds what it finds here, and moves an item to the fixed table when the author rules on it.</p>
 <h2 id="appendix-where-each-call-is-described">Appendix: where each call is described</h2>
 <div class="table-wrap"><table>
@@ -3089,7 +3105,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 21, written beside the code against version 83 of the Blazing Imaging Library (BIL) specification, as of 17 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 22, written beside the code against version 83 of the Blazing Imaging Library (BIL) specification, as of 17 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

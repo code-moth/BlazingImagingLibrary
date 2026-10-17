@@ -37,7 +37,12 @@ static int write(const char *path, int w, int h, int nc, int prec, int sgnd, int
     return 0;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    /* `make_fixtures timing` writes two large tiled codestreams, not kept in the repository,
+       for examples/jpeg2000_tiles.rs (tests/RESULTS-jpeg2000-tiles.md). */
+    if (argc > 1 && strcmp(argv[1], "timing") == 0)
+        return write("big_gray.j2k", 4096, 4096, 1, 8, 0, 512, 0)
+            | write("big_rgb.j2k", 2048, 2048, 3, 8, 0, 256, 0);
     return write("gray8.j2k", 37, 29, 1, 8, 0, 16, 0)
         | write("rgb8.j2k", 23, 19, 3, 8, 0, 0, 0)
         | write("gray16.j2k", 21, 17, 1, 16, 0, 0, 0)

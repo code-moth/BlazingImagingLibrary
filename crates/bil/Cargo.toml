@@ -30,3 +30,7 @@ weezl = { version = "0.2.1", optional = true }
 [dev-dependencies]
 # The GeoTIFF tests write Deflate chunks of their own.
 flate2 = "1.1"
+
+[[example]]
+name = "jpeg2000_tiles"
+required-features = ["openjpeg"]

@@ -1815,3 +1815,144 @@ fn representations_follow_irep() {
         (R::Complex, names(&["complex"]))
     );
 }
+
+/// Uncompressed blocks are kept in the cache, one entry for each block `describe_storage` lists,
+/// in every IMODE and with packed samples; a block larger than the ceiling that a read needs
+/// part of is read partly and warns that the file is badly packed (section 4).
+#[test]
+fn uncompressed_blocks_pass_through_the_cache() {
+    use bil::warning::WarningCode;
+    for (imode, nbpp, pvtype) in [
+        ("B", 8, "INT"),
+        ("P", 16, "INT"),
+        ("R", 12, "INT"),
+        ("S", 1, "B"),
+    ] {
+        let mut img = Img::new(20, 30, 2, pvtype, nbpp);
+        img.imode = imode;
+        img.block = (10, 16);
+        let img = with_data(img);
+        let file = File21 {
+            images: vec![img.clone()],
+            des: vec![],
+            xhd: vec![],
+        }
+        .bytes();
+        let source = NitfSource::open(file.clone()).unwrap();
+        let units = source.describe_storage(0).unwrap().blocks.len() as u64;
+        let all = Window {
+            row_start: 0,
+            col_start: 0,
+            row_count: 20,
+            col_count: 30,
+        };
+        check_window(&source, 0, &img, all);
+        check_window(&source, 0, &img, all);
+        let r = source.describe_cache();
+        assert_eq!(
+            (r.misses, r.hits, r.fragment_count as u64),
+            (units, units, units),
+            "{imode}"
+        );
+        // Inside one block: one unit for each band it holds, all found.
+        let w = Window {
+            row_start: 2,
+            col_start: 3,
+            row_count: 5,
+            col_count: 7,
+        };
+        check_window(&source, 0, &img, w);
+        assert_eq!(source.describe_cache().misses, units, "{imode}");
+        assert!(source.take_warnings().warnings.is_empty());
+        // A ceiling below one block: a read of a block's first rows reads those alone, keeps
+        // nothing, and warns.
+        let small = NitfSource::open(file).unwrap();
+        small.set_cache_bytes(10);
+        let top = Window {
+            row_start: 0,
+            col_start: 0,
+            row_count: 2,
+            col_count: 30,
+        };
+        check_window(&small, 0, &img, top);
+        assert_eq!(small.describe_cache().fragment_count, 0, "{imode}");
+        let w = small.take_warnings().warnings;
+        assert!(
+            !w.is_empty() && w.iter().all(|w| w.code == WarningCode::BadlyPacked),
+            "{imode}"
+        );
+    }
+}
+
+/// A JPEG 2000 Image's blocks are its codestream's tiles: listed by `describe_storage`, decoded
+/// one at a time at each level, and kept in the cache (section 4; M62).
+#[cfg(feature = "openjpeg")]
+#[test]
+fn jpeg2000_tiles_are_blocks_in_the_cache() {
+    let mut img = jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8);
+    img.block = (16, 16);
+    let source = open_one(img);
+    // 37 × 29 in tiles of 16: three across, two down, one part each.
+    let s = source.describe_storage(0).unwrap();
+    assert_eq!((s.block_size, s.blocks.len()), ((16, 16), 6));
+    let places: Vec<(u32, u32)> = s
+        .blocks
+        .iter()
+        .map(|b| (b.block_row, b.block_col))
+        .collect();
+    assert_eq!(places, [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]);
+    assert!(s
+        .blocks
+        .windows(2)
+        .all(|w| w[0].offset + w[0].length == w[1].offset));
+    let all = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 29,
+        col_count: 37,
+    };
+    let whole = source.read_fragment(0, all).unwrap();
+    let r = source.describe_cache();
+    assert_eq!((r.misses, r.hits, r.fragment_count), (6, 0, 6));
+    // A Window across the four tiles of the middle: every one found, and the same samples.
+    let w = Window {
+        row_start: 10,
+        col_start: 12,
+        row_count: 12,
+        col_count: 10,
+    };
+    let part = source.read_fragment(0, w).unwrap();
+    assert_eq!(source.describe_cache().hits, 4);
+    for r in 0..12 {
+        let at = r * part.strides[0];
+        let from = (10 + r) * whole.strides[0] + 12 * whole.strides[1];
+        assert_eq!(part.data[at..at + 10], whole.data[from..from + 10]);
+    }
+    // A reduced level keeps tiles of its own.
+    source.read_level_fragment(0, "stored1", all).unwrap();
+    let r = source.describe_cache();
+    assert_eq!((r.misses, r.fragment_count), (12, 12));
+    assert!(source.take_warnings().warnings.is_empty());
+    // A ceiling below one tile: a Window inside a tile decodes that part alone, keeps nothing,
+    // gives the same samples, and warns that the file is badly packed (M67).
+    let mut img = jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8);
+    img.block = (16, 16);
+    let small = open_one(img);
+    small.set_cache_bytes(10);
+    let w = Window {
+        row_start: 18,
+        col_start: 19,
+        row_count: 5,
+        col_count: 9,
+    };
+    let part = small.read_fragment(0, w).unwrap();
+    assert_eq!(small.describe_cache().fragment_count, 0);
+    for r in 0..5 {
+        let at = r * part.strides[0];
+        let from = (18 + r) * whole.strides[0] + 19 * whole.strides[1];
+        assert_eq!(part.data[at..at + 9], whole.data[from..from + 9]);
+    }
+    let warned = small.take_warnings().warnings;
+    assert_eq!(warned.len(), 1);
+    assert_eq!(warned[0].code, bil::warning::WarningCode::BadlyPacked);
+}

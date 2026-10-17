@@ -31,7 +31,7 @@ use crate::types::{
 };
 use defs::{walk, WalkError, Walked};
 
-use crate::cache::{Cache, CacheReport};
+use crate::cache::{BlockKey, Cache, CacheReport};
 pub use crate::error::{Error, Result};
 use crate::source::OpenOptions;
 use crate::warning::{WarningStore, Warnings};
@@ -310,6 +310,9 @@ struct Image {
     info: ImageInfo,
     header: Header,
     mask: OnceLock<std::result::Result<MaskTable, String>>,
+    /// For a JPEG 2000 Image, the walk of its codestream's tile-parts, made when first needed,
+    /// whatever codecs this build has.
+    tiles: OnceLock<std::result::Result<crate::codec::tiles::Tiles, String>>,
     /// For an Image a codec in this build decodes: what the codec found when the Source was
     /// opened, which decides every read (section 10, "Chosen once").
     codestream: Option<std::result::Result<Codestream, Refusal>>,
@@ -325,6 +328,9 @@ struct Codestream {
     /// Resolution levels below full resolution that every component holds, where the grid
     /// starts at the Image's corner; 0 otherwise.
     levels: u8,
+    /// Where the codestream's tiles lie on its reference grid; each tile is one of the Image's
+    /// blocks (M34, M62).
+    tiling: crate::codec::tiles::Tiling,
 }
 
 /// Why a codec did not accept an Image when the Source was opened.
@@ -346,7 +352,8 @@ pub struct NitfSource<R: ReadAt> {
     segments: Vec<Segment>,
     images: Vec<Image>,
     held: Mutex<HashMap<(Scope, String), Arc<FieldGroup>>>,
-    /// Blocks decoded, kept for the reads that follow (section 4); not yet filled.
+    /// Blocks decoded, kept for the reads that follow (section 4): uncompressed units unpacked to
+    /// native samples, and JPEG 2000 tiles at each level.
     cache: Cache,
     /// Warnings recorded, drained by `take_warnings` (section 3.3).
     warnings: Arc<WarningStore>,
@@ -569,6 +576,7 @@ impl<R: ReadAt> NitfSource<R> {
             images.push(Image {
                 info,
                 header: sub,
+                tiles: OnceLock::new(),
                 mask,
                 codestream,
             });
@@ -800,6 +808,45 @@ impl<R: ReadAt> NitfSource<R> {
             .map_err(|m| corrupt(format!("image {image}'s block mask: {m}")))
     }
 
+    /// A JPEG 2000 Image's codestream tile-parts, walked when first needed; `None` for any other
+    /// Image, one whose mask table leaves the codestream unplaced, or one whose codestream is
+    /// too damaged to walk, whose reads report the damage and whose storage is its one run.
+    fn jpeg2000_tiles(&self, image: usize) -> Result<Option<&crate::codec::tiles::Tiles>> {
+        use crate::codec::tiles;
+        let img = self.image(image)?;
+        let info = &img.info;
+        if info.codec.as_deref() != Some("jpeg2000") {
+            return Ok(None);
+        }
+        let start = match self.mask(image)? {
+            Some(m) if m.offsets.len() != 1 => return Ok(None),
+            Some(m) => match m.offsets[0] {
+                Some(at) => info.data.0 + m.data_start + at,
+                None => return Ok(None),
+            },
+            None => info.data.0,
+        };
+        let end = info.data.0 + info.data.1;
+        Ok(img
+            .tiles
+            .get_or_init(|| {
+                if start >= end {
+                    return Err("no JPEG 2000 data".into());
+                }
+                // A codestream begins with SOC and SIZ; anything else is taken for a JP2 file.
+                let first =
+                    read(&self.reader, start, 4.min(end - start)).map_err(|e| e.to_string())?;
+                let within = if first == [0xFF, 0x4F, 0xFF, 0x51] {
+                    Ok((start, end - start))
+                } else {
+                    tiles::jp2_codestream(&self.reader, start, end - start)
+                };
+                within.and_then(|(at, n)| tiles::read(&self.reader, at, n))
+            })
+            .as_ref()
+            .ok())
+    }
+
     /// Where stored unit `k` of an Image's blocks lies, from the start of the file, or `None`
     /// where it was never recorded. Uncompressed units lie one after another unless a mask
     /// table gives their offsets.
@@ -833,6 +880,30 @@ impl<R: ReadAt> NitfSource<R> {
             order: StorageOrder::Unknown,
             blocks: Vec::new(),
         };
+        if let Some(tiles) = self.jpeg2000_tiles(image)? {
+            // A JPEG 2000 Image's blocks are its codestream's tiles, each tile-part listed where
+            // it lies, in file order, whatever codecs this build has (section 4, "One for each
+            // level"; M74).
+            let t = tiles.tiling;
+            let across = t.counts().0;
+            storage.block_size = (t.tile_height, t.tile_width);
+            storage.blocks = tiles
+                .parts
+                .iter()
+                .map(|&(tile, offset, length)| Block {
+                    image: image as u32,
+                    level: 0,
+                    frame: 0,
+                    block_row: tile / across,
+                    block_col: tile % across,
+                    components: 0..info.bands,
+                    offset,
+                    length,
+                })
+                .collect();
+            storage.order = StorageOrder::Known;
+            return Ok(storage);
+        }
         let mask = self.mask(image)?;
         let data_end = info.data.0 + info.data.1;
         if info.codec.is_some() && mask.is_none_or(|m| m.offsets.is_empty()) {
@@ -922,8 +993,7 @@ impl<R: ReadAt> NitfSource<R> {
         self.cache.set_bytes(byte_count);
     }
 
-    /// What the cache holds and has served (section 4). NITF's blocks do not pass through it
-    /// yet, so it stays empty.
+    /// What the cache holds and has served (section 4).
     pub fn describe_cache(&self) -> CacheReport {
         self.cache.describe()
     }
@@ -1007,14 +1077,7 @@ impl<R: ReadAt> NitfSource<R> {
         let data = if rows == 0 || cols == 0 {
             Vec::new()
         } else {
-            let s = 1u64 << n;
-            let area = (
-                lw.col_start * s,
-                lw.row_start * s,
-                ((lw.col_start + cols) * s).min(info.cols),
-                ((lw.row_start + rows) * s).min(info.rows),
-            );
-            self.decode(image, info, pixel_type, *codestream, area, n as u32)?
+            self.read_tiles(image, info, pixel_type, *codestream, n as u32, lw)?
         };
         // Pad pixels are not marked at a reduced level: its samples are filtered, so one that
         // equals the pad value says nothing of what was recorded (M48).
@@ -1088,13 +1151,7 @@ impl<R: ReadAt> NitfSource<R> {
             let data = if rows == 0 || cols == 0 {
                 Vec::new()
             } else {
-                let area = (
-                    window.col_start,
-                    window.row_start,
-                    window.col_start + cols,
-                    window.row_start + rows,
-                );
-                self.decode(image, info, pixel_type, codestream, area, 0)?
+                self.read_tiles(image, info, pixel_type, codestream, 0, window)?
             };
             return Ok(finish(
                 window,
@@ -1138,16 +1195,54 @@ impl<R: ReadAt> NitfSource<R> {
                             "image {image}: block {block} lies past the end of its data"
                         )));
                     }
-                    let bytes = read(&self.reader, start, g.unit_bytes)?;
-                    for b in bands_in_unit {
-                        for r in r0..r1 {
-                            for c in c0..c1 {
-                                let bit = g.bit_offset(r - brow * bh, c - bcol * bw, b);
-                                let out = ((r - window.row_start) as usize * strides[0])
-                                    + ((c - window.col_start) as usize * strides[1])
-                                    + b as usize * size;
-                                g.copy_sample(&bytes, bit, &mut data[out..out + size]);
+                    // The unit's pixels as native samples, from the cache or unpacked and kept
+                    // (section 4, "One block, one entry"): row by row, each pixel's samples of
+                    // the bands the unit holds in turn.
+                    let nb = (bands_in_unit.end - bands_in_unit.start) as usize;
+                    let needed_rows = bh.min(row_end - brow * bh);
+                    let key = BlockKey {
+                        image: image as u32,
+                        level: 0,
+                        frame: 0,
+                        block_row: brow as u32,
+                        block_col: bcol as u32,
+                        components: (bands_in_unit.start as u32, bands_in_unit.end as u32),
+                    };
+                    let whole_bytes = (bh * bw).saturating_mul((nb * size) as u64);
+                    let native = self
+                        .cache
+                        .read(key, whole_bytes, needed_rows < bh, |whole| {
+                            let rows_in = if whole { bh } else { needed_rows };
+                            // Only the bytes the rows need, where the rest are not.
+                            let last = bands_in_unit
+                                .clone()
+                                .map(|b| g.bit_offset(rows_in - 1, bw - 1, b) + g.nbpp)
+                                .max()
+                                .unwrap_or(0);
+                            let bytes = read(&self.reader, start, last.div_ceil(8))?;
+                            let mut native = vec![0u8; (rows_in * bw) as usize * nb * size];
+                            for r in 0..rows_in {
+                                for c in 0..bw {
+                                    for (bi, b) in bands_in_unit.clone().enumerate() {
+                                        let at = ((r * bw + c) as usize * nb + bi) * size;
+                                        g.copy_sample(
+                                            &bytes,
+                                            g.bit_offset(r, c, b),
+                                            &mut native[at..at + size],
+                                        );
+                                    }
+                                }
                             }
+                            Ok(native)
+                        })?;
+                    for r in r0..r1 {
+                        for c in c0..c1 {
+                            let src = (((r - brow * bh) * bw + c - bcol * bw) as usize) * nb * size;
+                            let out = ((r - window.row_start) as usize * strides[0])
+                                + ((c - window.col_start) as usize * strides[1])
+                                + bands_in_unit.start as usize * size;
+                            data[out..out + nb * size]
+                                .copy_from_slice(&native[src..src + nb * size]);
                         }
                     }
                 }
@@ -1163,9 +1258,100 @@ impl<R: ReadAt> NitfSource<R> {
         ))
     }
 
-    /// The pixels of a Window of an Image a codec decodes, pixel-interleaved in native byte
-    /// order. A JPEG 2000 Image's data is one codestream, whose own tiles the NITF blocks
-    /// describe (M34); only the tiles the Window touches are decoded.
+    /// The pixels of a Window at level `n`, in that level's own rows and columns, of a JPEG 2000
+    /// Image, tile by tile through the Fragment cache: each tile the Window touches is decoded
+    /// whole at that level and kept (M62), or, where it is larger than the cache's ceiling and
+    /// the Window needs part of it, only that part is decoded and nothing kept (M67).
+    fn read_tiles(
+        &self,
+        image: usize,
+        info: &ImageInfo,
+        pixel_type: PixelType,
+        cs: Codestream,
+        n: u32,
+        lw: Window,
+    ) -> Result<Vec<u8>> {
+        let (rows, cols) = (u64::from(lw.row_count), u64::from(lw.col_count));
+        let px = info.bands as usize * pixel_type.sample_type.size();
+        let mut data = vec![0u8; (rows * cols) as usize * px];
+        if rows == 0 || cols == 0 {
+            return Ok(data);
+        }
+        let t = cs.tiling;
+        let s = 1u64 << n;
+        // JPEG 2000 rounds a reduced level's edges up on its reference grid. Levels are listed
+        // only where that grid starts at the Image's corner (M48), so there Image pixels and the
+        // grid agree, and rounding Image pixels up is the same.
+        debug_assert!(n == 0 || (t.x0, t.y0) == (0, 0));
+        let level = |v: u64| v.div_ceil(s);
+        let (gx0, gy0) = (u64::from(t.x0), u64::from(t.y0));
+        let (ox, oy) = (u64::from(t.tile_x0), u64::from(t.tile_y0));
+        let (tw, th) = (u64::from(t.tile_width), u64::from(t.tile_height));
+        let (across, down) = t.counts();
+        // The Window's extent at full resolution, in Image pixels, and the tiles it touches.
+        let (fx0, fx1) = (lw.col_start * s, ((lw.col_start + cols) * s).min(info.cols));
+        let (fy0, fy1) = (lw.row_start * s, ((lw.row_start + rows) * s).min(info.rows));
+        let txs = (fx0 + gx0 - ox) / tw..((fx1 - 1 + gx0 - ox) / tw + 1).min(u64::from(across));
+        let tys = (fy0 + gy0 - oy) / th..((fy1 - 1 + gy0 - oy) / th + 1).min(u64::from(down));
+        for ty in tys {
+            for tx in txs.clone() {
+                // The tile in Image pixels, then at the level.
+                let x0 = (ox + tx * tw).max(gx0) - gx0;
+                let x1 = (ox + (tx + 1) * tw).min(u64::from(t.x1)) - gx0;
+                let y0 = (oy + ty * th).max(gy0) - gy0;
+                let y1 = (oy + (ty + 1) * th).min(u64::from(t.y1)) - gy0;
+                let tile = (level(x0), level(y0), level(x1), level(y1));
+                let part = (
+                    tile.0.max(lw.col_start),
+                    tile.1.max(lw.row_start),
+                    tile.2.min(lw.col_start + cols),
+                    tile.3.min(lw.row_start + rows),
+                );
+                if part.0 >= part.2 || part.1 >= part.3 {
+                    continue;
+                }
+                let key = BlockKey {
+                    image: image as u32,
+                    level: n,
+                    frame: 0,
+                    block_row: ty as u32,
+                    block_col: tx as u32,
+                    components: (0, info.bands),
+                };
+                let whole_bytes = (tile.2 - tile.0) * (tile.3 - tile.1) * px as u64;
+                let mut got = tile;
+                let decoded = self.cache.read(key, whole_bytes, part != tile, |whole| {
+                    // The area decoded, at full resolution: the tile's own edges where they
+                    // bound it, so no neighbor is decoded.
+                    let (r, area) = if whole {
+                        (tile, (x0, y0, x1, y1))
+                    } else {
+                        let a = (
+                            part.0 * s,
+                            part.1 * s,
+                            (part.2 * s).min(x1),
+                            (part.3 * s).min(y1),
+                        );
+                        (part, a)
+                    };
+                    got = r;
+                    self.decode(image, info, pixel_type, cs, area, n)
+                })?;
+                let width = (got.2 - got.0) as usize;
+                let run = (part.2 - part.0) as usize * px;
+                for r in part.1..part.3 {
+                    let src = ((r - got.1) as usize * width + (part.0 - got.0) as usize) * px;
+                    let dst = (((r - lw.row_start) * cols + part.0 - lw.col_start) as usize) * px;
+                    data[dst..dst + run].copy_from_slice(&decoded[src..src + run]);
+                }
+            }
+        }
+        Ok(data)
+    }
+
+    /// The pixels of an area of a JPEG 2000 Image at a level, pixel-interleaved in native byte
+    /// order. The Image's data is one codestream, whose own tiles the NITF blocks describe
+    /// (M34); OpenJPEG decodes only what lies in the area.
     #[cfg(feature = "openjpeg")]
     fn decode(
         &self,
@@ -1377,9 +1563,10 @@ fn accept_jpeg2000<R: ReadAt>(
     } else {
         Ok((start, end - start))
     };
-    let levels = match within.and_then(|(at, n)| crate::codec::tiles::read(reader, at, n)) {
-        Ok(t) if header.x0 == 0 && header.y0 == 0 => t.levels,
-        Ok(_) => 0,
+    let (levels, tiling) = match within.and_then(|(at, n)| crate::codec::tiles::read(reader, at, n))
+    {
+        Ok(t) if header.x0 == 0 && header.y0 == 0 => (t.levels, t.tiling),
+        Ok(t) => (0, t.tiling),
         Err(m) => return Ok(Err(Refusal::Corrupt(m))),
     };
     Ok(Ok(Codestream {
@@ -1387,6 +1574,7 @@ fn accept_jpeg2000<R: ReadAt>(
         length: end - start,
         jp2: format == Format::Jp2,
         levels,
+        tiling,
     }))
 }
 
