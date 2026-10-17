@@ -698,11 +698,11 @@ fn storage_lists_chunks_in_file_order() {
     assert!(s
         .blocks
         .windows(2)
-        .all(|w| w[0].offset + w[0].length == w[1].offset));
+        .all(|w| w[0].offset() + w[0].length() == w[1].offset()));
     assert_eq!(s.blocks[0].components, 0..1);
     assert_eq!(s.blocks[4].components, 1..2);
     assert_eq!((s.blocks[3].block_row, s.blocks[3].block_col), (1, 1));
-    assert!(s.blocks.iter().all(|b| b.length == 16 * 16 * 2));
+    assert!(s.blocks.iter().all(|b| b.length() == 16 * 16 * 2));
 }
 
 #[test]
@@ -1159,7 +1159,7 @@ fn nodata_rounds_to_float16() {
     let source = GeoTiffSource::open(bytes.clone()).unwrap();
     let blocks = source.describe_storage(0).unwrap().blocks;
     for b in &blocks {
-        for k in (b.offset..b.offset + b.length).step_by(2) {
+        for k in (b.offset()..b.offset() + b.length()).step_by(2) {
             bytes[k as usize..k as usize + 2].copy_from_slice(&0x2E66u16.to_le_bytes());
         }
     }

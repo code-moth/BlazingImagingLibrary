@@ -110,7 +110,7 @@ struct bil_abi_block {
     std::uint64_t frame;
     std::uint32_t block_row, block_col;
     std::uint32_t components[2];
-    std::uint64_t offset, length;
+    std::size_t range_count;
 };
 struct bil_abi_window {
     std::uint64_t row_start, col_start;
@@ -163,6 +163,7 @@ bil_abi_error* bil_abi_describe_storage(const bil_abi_source*, std::size_t, cons
                                         std::size_t, bil_abi_storage**);
 void bil_abi_storage_head_get(const bil_abi_storage*, bil_abi_storage_head*);
 void bil_abi_storage_block(const bil_abi_storage*, std::size_t, bil_abi_block*);
+void bil_abi_storage_block_range(const bil_abi_storage*, std::size_t, std::size_t, std::uint64_t*);
 void bil_abi_storage_free(bil_abi_storage*);
 bil_abi_error* bil_abi_read_fragment(const bil_abi_source*, std::size_t, const bil_abi_window*,
                                      const char*, std::size_t, bil_abi_fragment**);
@@ -282,7 +283,14 @@ struct Window {
 enum class Interleave { Pixel, Line, Band };
 enum class StorageOrder { Known, Unknown };
 
-/// One block, as `describe_storage` lists it (section 4).
+/// One run of a block's bytes in the file.
+struct ByteRange {
+    std::uint64_t offset = 0;
+    std::uint64_t length = 0;
+};
+
+/// One block, as `describe_storage` lists it (section 4): one byte range, or several where its
+/// data lies in parts, as a JPEG 2000 tile's tile-parts may (M74).
 struct Block {
     std::uint32_t image = 0;
     std::uint32_t level = 0;
@@ -291,8 +299,17 @@ struct Block {
     std::uint32_t block_col = 0;
     /// The components it holds: the first, and one past the last.
     std::pair<std::uint32_t, std::uint32_t> components;
-    std::uint64_t offset = 0;
-    std::uint64_t length = 0;
+    /// Its byte ranges, in the order the block's data is read.
+    std::vector<ByteRange> ranges;
+
+    /// Where its first byte range starts, by which blocks are listed in file order.
+    std::uint64_t offset() const { return ranges.empty() ? 0 : ranges.front().offset; }
+    /// Its bytes in the file over all its ranges.
+    std::uint64_t length() const {
+        std::uint64_t n = 0;
+        for (const ByteRange& r : ranges) n += r.length;
+        return n;
+    }
 };
 
 /// How a level's blocks lie in the file (section 4).
@@ -702,8 +719,14 @@ inline Storage Image::describe_storage(std::string_view level) const {
     for (std::size_t k = 0; k < head.block_count; ++k) {
         bil_abi_block b{};
         bil_abi_storage_block(raw, k, &b);
-        s.blocks.push_back({b.image, b.level, b.frame, b.block_row, b.block_col,
-                            {b.components[0], b.components[1]}, b.offset, b.length});
+        Block block{b.image, b.level, b.frame, b.block_row, b.block_col,
+                    {b.components[0], b.components[1]}, {}};
+        for (std::size_t j = 0; j < b.range_count; ++j) {
+            std::uint64_t r[2] = {0, 0};
+            bil_abi_storage_block_range(raw, k, j, r);
+            block.ranges.push_back({r[0], r[1]});
+        }
+        s.blocks.push_back(std::move(block));
     }
     return s;
 }

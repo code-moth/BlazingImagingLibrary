@@ -13,7 +13,7 @@ BIL is written in Rust, with a C++ interface over it delivered as one shared lib
 
 The two-page flyer is [`flyer.pdf`](flyer.pdf), with its source in [`flyer.html`](flyer.html).
 
-> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 83, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
+> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 84, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
 
 ## Why BIL is needed
 
@@ -121,7 +121,7 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 
 | Document | What it is |
 | --- | --- |
-| [Specification](docs/specification/specification.md), version 83 | The source of truth for the design |
+| [Specification](docs/specification/specification.md), version 84 | The source of truth for the design |
 | [User Manual](docs/manual/user-manual.md), version 22 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
 | [BIL by Example](docs/assessments/bil-by-example.md), version 11 | Calls for every use case, in Python, Rust and C++ |
 | [Implementability](docs/assessments/implementability.md), version 13 | Whether BIL can be built, where it may go wrong, what to try first, what each change means for the code, and what is built |

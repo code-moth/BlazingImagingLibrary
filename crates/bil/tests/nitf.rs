@@ -625,17 +625,17 @@ fn storage_lists_blocks_in_file_order() {
             assert!(s
                 .blocks
                 .iter()
-                .all(|b| b.components == (0..2) && b.length == 320));
+                .all(|b| b.components == (0..2) && b.length() == 320));
         } else {
             assert_eq!(s.blocks.len(), 8);
             assert_eq!(s.blocks[4].components, 1..2);
-            assert!(s.blocks.iter().all(|b| b.length == 160));
+            assert!(s.blocks.iter().all(|b| b.length() == 160));
         }
-        assert_eq!(s.blocks[0].offset, data.0);
+        assert_eq!(s.blocks[0].offset(), data.0);
         assert!(s
             .blocks
             .windows(2)
-            .all(|w| w[0].offset + w[0].length == w[1].offset));
+            .all(|w| w[0].offset() + w[0].length() == w[1].offset()));
         assert_eq!((s.blocks[1].block_row, s.blocks[1].block_col), (0, 1));
     }
 }
@@ -1129,7 +1129,7 @@ fn compressed_blocks_are_left_to_a_codec() {
     assert_eq!(info.codec.as_deref(), Some("jpeg2000"));
     let s = source.describe_storage(0).unwrap();
     assert_eq!(s.blocks.len(), 1);
-    assert_eq!((s.blocks[0].offset, s.blocks[0].length), info.data);
+    assert_eq!((s.blocks[0].offset(), s.blocks[0].length()), info.data);
     let read = source.read_fragment(
         0,
         Window {
@@ -1658,8 +1658,8 @@ fn jpeg2000_resolution_levels_are_stored_levels() {
             assert_eq!(storage.blocks.len(), level0.blocks.len());
             for (a, b) in storage.blocks.iter().zip(&level0.blocks) {
                 assert_eq!(
-                    (a.level, a.offset, a.length),
-                    (k as u32 + 1, b.offset, b.length)
+                    (a.level, a.offset(), a.length()),
+                    (k as u32 + 1, b.offset(), b.length())
                 );
             }
             let whole = source.read_level_fragment(0, &level.name, all).unwrap();
@@ -1884,6 +1884,50 @@ fn uncompressed_blocks_pass_through_the_cache() {
     }
 }
 
+/// A JPEG 2000 tile in several tile-parts, lying between other tiles' parts, is one Block with a
+/// byte range for each part, listed in file order by its first part (section 4; M74).
+#[test]
+fn a_tile_in_several_parts_is_one_block() {
+    // Markers only, 8 × 4 pixels in two tiles of 4 × 4, each in two tile-parts, interleaved:
+    // tile 0 part 0, tile 1 part 0, tile 0 part 1, tile 1 part 1. The walk never reads the data.
+    let mut c = vec![0xFF, 0x4F, 0xFF, 0x51];
+    c.extend(41u16.to_be_bytes());
+    c.extend(0u16.to_be_bytes());
+    for v in [8u32, 4, 0, 0, 4, 4, 0, 0] {
+        c.extend(v.to_be_bytes());
+    }
+    c.extend(1u16.to_be_bytes());
+    c.extend([7, 1, 1]);
+    c.extend([0xFF, 0x52, 0, 12, 0, 0, 0, 1, 0, 0, 4, 4, 0, 0]);
+    let mut starts = Vec::new();
+    for part in 0..2u8 {
+        for tile in 0..2u16 {
+            starts.push(c.len() as u64);
+            c.extend([0xFF, 0x90, 0, 10]);
+            c.extend(tile.to_be_bytes());
+            c.extend(18u32.to_be_bytes());
+            c.extend([part, 2, 0xFF, 0x93, 1, 2, 3, 4]);
+        }
+    }
+    c.extend([0xFF, 0xD9]);
+    let mut img = Img::new(4, 8, 1, "INT", 8);
+    img.ic = "C8";
+    img.imode = "B";
+    img.block = (4, 4);
+    img.data = c;
+    let source = open_one(img);
+    let s = source.describe_storage(0).unwrap();
+    assert_eq!((s.block_size, s.blocks.len()), ((4, 4), 2));
+    let base = s.blocks[0].offset() - starts[0];
+    for (col, b) in s.blocks.iter().enumerate() {
+        assert_eq!((b.block_row, b.block_col), (0, col as u32));
+        let at: Vec<u64> = b.ranges.iter().map(|r| r.offset - base).collect();
+        assert_eq!(at, [starts[col], starts[col + 2]]);
+        assert!(b.ranges.iter().all(|r| r.length == 18));
+        assert_eq!(b.length(), 36);
+    }
+}
+
 /// A JPEG 2000 Image's blocks are its codestream's tiles: listed by `describe_storage`, decoded
 /// one at a time at each level, and kept in the cache (section 4; M62).
 #[cfg(feature = "openjpeg")]
@@ -1904,7 +1948,7 @@ fn jpeg2000_tiles_are_blocks_in_the_cache() {
     assert!(s
         .blocks
         .windows(2)
-        .all(|w| w[0].offset + w[0].length == w[1].offset));
+        .all(|w| w[0].offset() + w[0].length() == w[1].offset()));
     let all = Window {
         row_start: 0,
         col_start: 0,

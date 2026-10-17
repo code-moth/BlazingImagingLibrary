@@ -711,8 +711,7 @@ pub struct AbiBlock {
     pub block_row: u32,
     pub block_col: u32,
     pub components: [u32; 2],
-    pub offset: u64,
-    pub length: u64,
+    pub range_count: usize,
 }
 
 #[no_mangle]
@@ -756,9 +755,21 @@ pub unsafe extern "C" fn bil_abi_storage_block(s: *const AbiStorage, k: usize, o
             block_row: b.block_row,
             block_col: b.block_col,
             components: [b.components.start, b.components.end],
-            offset: b.offset,
-            length: b.length,
+            range_count: b.ranges.len(),
         };
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn bil_abi_storage_block_range(
+    s: *const AbiStorage,
+    k: usize,
+    j: usize,
+    out: *mut [u64; 2],
+) {
+    quiet(|| {
+        let r = (&*s).0.blocks[k].ranges[j];
+        *out = [r.offset, r.length];
     });
 }
 

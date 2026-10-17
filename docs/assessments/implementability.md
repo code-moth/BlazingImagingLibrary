@@ -58,7 +58,7 @@ Several decisions already taken reduce the work and the risk.
 
 The difficulty ratings are judgments: Low is routine work, Medium needs care, High needs specialist knowledge or design work still to be done, and Very high is a project in its own right.
 
-| Component | Difficulty | Why | Main risk | Done, as of version 83 |
+| Component | Difficulty | Why | Main risk | Done, as of version 84 |
 | --- | --- | --- | --- | --- |
 | Window, Fragment, Slice types | Low | Plain data structures | None of note | Built: Window and owned Fragment in `bil::types`; Slice prototyped in experiment 1b |
 | Strided Fragments and zero-copy | Medium | Lifetimes of borrowed memory across Rust, C++ and Python | A borrowed array outliving its mapping | Prototyped: borrowed arrays in experiment 5; the readers' Fragments are owned until mapping is built |
@@ -285,7 +285,7 @@ These are the backing libraries whose health matters most to the early tiers. He
 
 ## 7. What the specification must settle before coding
 
-These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 70, every one is settled. Versions 71 to 83 settled what writing the code raised; open now is M74, how JPEG 2000 tiles are listed as blocks, which is coded as proposed and blocks nothing. Version 68 opened one point that blocked nothing, the details of access patterns, and version 69 settles it.
+These are the points where code cannot be written, or would have to be rewritten, until a decision is made. As of specification version 70, every one is settled. Versions 71 to 84 settled what writing the code raised; none is open. Version 68 opened one point that blocked nothing, the details of access patterns, and version 69 settles it.
 
 **Before Tier 1**
 
@@ -358,7 +358,7 @@ The code written so far is experiment 1 and 1b and the `bil` crate's vector laye
 - **Measuring.** Section 12 rule 11 asks for benchmarks of both patterns on strips, tiles and band-sequential files. They need real large files, so they wait for the Tier 1 readers and for files from the author.
 
 
-## 11. What has been built, as of version 83
+## 11. What has been built, as of version 84
 
 Tier 1's reading side is largely built. Everything below is in `crates/bil` and `crates/bil-sys`, tested in CI on Linux on x86 and ARM, macOS and Windows on every change, and on the latest stable Rust.
 
@@ -378,7 +378,7 @@ Tier 1's reading side is largely built. Everything below is in `crates/bil` and 
 
 **Not yet built.** Slices from the readers, requests and the pass over real Images; mapping and borrowed Fragments; Readers and read-ahead; the metadata dictionary and profiles; geocoding; writers; the Python package's reading; the C++ interface beyond what the Rust code reads, and external plugins through it; and everything of Tiers 2 and 3.
 
-**What writing it found.** Seventy-three points the specification left open or stated twice, M2 to M74 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M73 are ruled, M72 otherwise than proposed: a sixth error kind, `Internal`, for BIL's own failures. M74 is open. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.
+**What writing it found.** Seventy-three points the specification left open or stated twice, M2 to M74 in the user manual's chapter 24 (M1 and M10 became F6 and F7), each proposed to the author; M2 to M74 are ruled, M72 otherwise than proposed: a sixth error kind, `Internal`, for BIL's own failures; M74 by its alternative, a `Block` carrying a list of byte ranges. None changed the verdict. The largest were in the readers' details: what fails an open, how a stored level is placed, and what a cache entry is.
 
 ## Sources
 

@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::fields::{Field, FieldGroup, FieldName, Origin};
 use crate::io::ReadAt;
 use crate::types::{
-    stored_level_number, Block, ColorModel, Fragment, Interleave, PixelType, Representation,
-    SampleType, Status, Storage, StorageOrder, Window,
+    stored_level_number, Block, ByteRange, ColorModel, Fragment, Interleave, PixelType,
+    Representation, SampleType, Status, Storage, StorageOrder, Window,
 };
 use defs::{walk, WalkError, Walked};
 
@@ -881,24 +881,31 @@ impl<R: ReadAt> NitfSource<R> {
             blocks: Vec::new(),
         };
         if let Some(tiles) = self.jpeg2000_tiles(image)? {
-            // A JPEG 2000 Image's blocks are its codestream's tiles, each tile-part listed where
-            // it lies, in file order, whatever codecs this build has (section 4, "One for each
-            // level"; M74).
+            // A JPEG 2000 Image's blocks are its codestream's tiles, each one Block with the
+            // byte ranges of its tile-parts in codestream order, listed in file order by its
+            // first part, whatever codecs this build has (section 4, "One for each level"; M74).
             let t = tiles.tiling;
             let across = t.counts().0;
             storage.block_size = (t.tile_height, t.tile_width);
-            storage.blocks = tiles
-                .parts
-                .iter()
-                .map(|&(tile, offset, length)| Block {
+            let mut by_tile: Vec<(u32, Vec<ByteRange>)> = Vec::new();
+            let mut index: HashMap<u32, usize> = HashMap::new();
+            for &(tile, offset, length) in &tiles.parts {
+                let n = *index.entry(tile).or_insert_with(|| {
+                    by_tile.push((tile, Vec::new()));
+                    by_tile.len() - 1
+                });
+                by_tile[n].1.push(ByteRange { offset, length });
+            }
+            storage.blocks = by_tile
+                .into_iter()
+                .map(|(tile, ranges)| Block {
                     image: image as u32,
                     level: 0,
                     frame: 0,
                     block_row: tile / across,
                     block_col: tile % across,
                     components: 0..info.bands,
-                    offset,
-                    length,
+                    ranges,
                 })
                 .collect();
             storage.order = StorageOrder::Known;
@@ -919,8 +926,10 @@ impl<R: ReadAt> NitfSource<R> {
                     block_row: 0,
                     block_col: 0,
                     components: 0..info.bands,
-                    offset,
-                    length: data_end - offset,
+                    ranges: vec![ByteRange {
+                        offset,
+                        length: data_end - offset,
+                    }],
                 });
                 storage.order = StorageOrder::Known;
             }
@@ -945,8 +954,7 @@ impl<R: ReadAt> NitfSource<R> {
                 block_row: (block / u64::from(info.blocks_per_row)) as u32,
                 block_col: (block % u64::from(info.blocks_per_row)) as u32,
                 components,
-                offset,
-                length,
+                ranges: vec![ByteRange { offset, length }],
             });
         }
         storage.order = StorageOrder::Known;

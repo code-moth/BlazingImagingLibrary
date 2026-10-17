@@ -149,7 +149,8 @@ int main() {
     // Storage and Fragments.
     const auto storage = image.describe_storage();
     CHECK(storage.order == bil::StorageOrder::Known && storage.blocks.size() == 3);
-    CHECK(storage.blocks[1].block_row == 1 && storage.blocks[1].length == 10);
+    CHECK(storage.blocks[1].block_row == 1 && storage.blocks[1].length() == 10 &&
+          storage.blocks[1].ranges.size() == 1 && storage.blocks[1].ranges[0].length == 10);
     const auto whole = image.read_fragment({0, 0, rows, cols});
     CHECK(whole.data().size() == rows * cols && whole.validity().empty());
     CHECK(holds(whole, cols));

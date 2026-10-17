@@ -285,7 +285,15 @@ pub enum StorageOrder {
     Unknown,
 }
 
-/// One block of stored pixels and where it lies.
+/// One run of a block's bytes in the file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ByteRange {
+    pub offset: u64,
+    pub length: u64,
+}
+
+/// One block of stored pixels and where it lies: one byte range, or several where its data lies
+/// in parts, as a JPEG 2000 tile's tile-parts may (section 4, M74).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Block {
     pub image: u32,
@@ -295,8 +303,20 @@ pub struct Block {
     pub block_col: u32,
     /// The components it holds, as a range.
     pub components: std::ops::Range<u32>,
-    pub offset: u64,
-    pub length: u64,
+    /// Its byte ranges, in the order the block's data is read.
+    pub ranges: Vec<ByteRange>,
+}
+
+impl Block {
+    /// Where its first byte range starts, by which blocks are listed in file order.
+    pub fn offset(&self) -> u64 {
+        self.ranges.first().map_or(0, |r| r.offset)
+    }
+
+    /// Its bytes in the file over all its ranges.
+    pub fn length(&self) -> u64 {
+        self.ranges.iter().map(|r| r.length).sum()
+    }
 }
 
 /// How an Image's pixels lie in the file (section 4, "Access patterns").

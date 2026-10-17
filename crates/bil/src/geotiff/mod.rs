@@ -39,8 +39,8 @@ use self::chunks::{Coding, Samples};
 use crate::fields::{Field, FieldGroup, FieldName, Origin, Value};
 use crate::io::ReadAt;
 use crate::types::{
-    stored_level_number, Block, ColorModel, Fragment, Interleave, LabEncoding, PixelType,
-    Representation, SampleType, Status, Storage, StorageOrder, Window,
+    stored_level_number, Block, ByteRange, ColorModel, Fragment, Interleave, LabEncoding,
+    PixelType, Representation, SampleType, Status, Storage, StorageOrder, Window,
 };
 pub use crate::types::{Scope, StoredLevel};
 
@@ -988,12 +988,11 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     block_row: (within / across) as u32,
                     block_col: (within % across) as u32,
                     components,
-                    offset,
-                    length,
+                    ranges: vec![ByteRange { offset, length }],
                 }
             })
             .collect();
-        blocks.sort_by_key(|b| b.offset);
+        blocks.sort_by_key(Block::offset);
         Ok(Storage {
             block_size: l.chunk,
             interleave: if l.planar {
