@@ -1032,19 +1032,28 @@ impl<R: ReadAt> GeoTiffSource<R> {
             return self.read_fragment(image, window);
         }
         check_window(image, img.info.rows, img.info.cols, window)?;
+        self.read_stored_window(image, level, img.info.stored_levels[n - 1].covered(window))
+    }
+
+    /// As `read_level_fragment` for a stored level, with the Window in the level's own rows and
+    /// columns, as `read_slice`'s pass reads it (M77).
+    pub(crate) fn read_stored_window(
+        &self,
+        image: usize,
+        level: &str,
+        window: Window,
+    ) -> Result<Fragment> {
+        let img = self.image(image)?;
+        let n = stored_level_number(level)
+            .filter(|&n| n >= 1 && n <= img.levels.len())
+            .ok_or_else(|| Error::NotFound(format!("level {level} of image {image}")))?;
         let coded = &img.levels[n - 1];
         let nodata = coded
             .layout
             .nodata
             .as_deref()
             .or(img.info.nodata.as_deref());
-        self.read_coded(
-            image,
-            n as u32,
-            coded,
-            nodata,
-            img.info.stored_levels[n - 1].covered(window),
-        )
+        self.read_coded(image, n as u32, coded, nodata, window)
     }
 
     /// One chunk's rows, `rows` of them from its first, decompressed and turned into native

@@ -21,7 +21,7 @@ use crate::geotiff::GeoTiffSource;
 use crate::io::ReadAt;
 #[cfg(feature = "nitf")]
 use crate::nitf::NitfSource;
-use crate::types::{Fragment, ImageInfo, Scope, Storage, StoredLevel, Window};
+use crate::types::{Fragment, ImageInfo, Scope, Slice, Storage, StoredLevel, Window};
 use crate::warning::Warnings;
 
 /// What `open_source` is given (section 3.4). This preview holds the options the readers act
@@ -246,5 +246,17 @@ impl<'a> Image<'a> {
     /// The native pixels of a Window, at `level0` or a stored level (section 4).
     pub fn read_fragment(&self, window: Window, level: &str) -> Result<Fragment> {
         each!(self.source.0, s => s.read_level_fragment(self.index, level, window))
+    }
+
+    /// One Slice at one Level (section 5): `pixel.raw` for now, by its full name, such as
+    /// `pixel.raw.intensity`, for a full-resolution Window, at `level0`, `leveln`, a stored level
+    /// or `storedk.leveln`, with the default options (M75).
+    pub fn read_slice(&self, slice_name: &str, window: Window, level: &str) -> Result<Slice> {
+        crate::slice::read(self, slice_name, window, level)
+    }
+
+    /// A stored level's pixels for a Window in its own rows and columns (M77).
+    pub(crate) fn read_stored(&self, window: Window, level: &str) -> Result<Fragment> {
+        each!(self.source.0, s => s.read_stored_window(self.index, level, window))
     }
 }

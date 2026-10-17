@@ -472,3 +472,28 @@ pub struct Fragment {
     /// `None` when every pixel was.
     pub validity: Option<Vec<bool>>,
 }
+
+/// Float32 values of one Slice at one Level (section 5): at grid point (i, j), the value at
+/// `data[i × col_count + j]`, for the Image position `origin` + (i, j) × `scale` (M76).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Slice {
+    /// The Slice's own name, such as `intensity`.
+    pub name: String,
+    /// The name as the Image gives it, until the readers keep the file's own text (M76).
+    pub label: String,
+    /// `Partial` where some values are missing, and so NaN (section 3.3).
+    pub status: Status,
+    /// The Level as asked: `level0`, `level3`, `stored2`, `stored2.level1`.
+    pub level_name: String,
+    /// The Image position of the first value, in full-resolution pixels: row, column.
+    pub origin: [f64; 2],
+    /// Full-resolution pixels between values: rows, columns.
+    pub scale: [f64; 2],
+    /// The Window asked for, at full resolution.
+    pub window: Window,
+    pub row_count: u32,
+    pub col_count: u32,
+    pub data: Vec<f32>,
+    /// Bytes from one row and one column to the next.
+    pub strides: [isize; 2],
+}

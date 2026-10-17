@@ -167,6 +167,23 @@ int main() {
     source.clear_cache();
     CHECK(source.describe_cache().bytes == 0);
 
+    // Slices: pixel.raw at Level 0 holds the samples; Level 1 halves the grid (M75, M76).
+    const auto slice = image.read_slice("pixel.raw.intensity", {1, 2, 3, 2});
+    CHECK(slice.name() == "intensity" && slice.label() == "intensity");
+    CHECK(slice.level_name() == "level0" && slice.status() == bil::Status::Complete);
+    CHECK(slice.row_count() == 3 && slice.col_count() == 2 && slice.data().size() == 6);
+    CHECK(slice.data()[0] == 7.0f && slice.data()[5] == 18.0f);
+    CHECK(slice.origin() == (std::array<double, 2>{1.0, 2.0}) && slice.strides()[0] == 8);
+    CHECK(slice.window().row_start == 1 && slice.window().col_count == 2);
+    const auto level1 = image.read_slice("pixel.raw.intensity", {0, 0, rows, cols}, "level1");
+    CHECK(level1.row_count() == 3 && level1.col_count() == 3 && level1.scale()[1] == 2.0);
+    try {
+        image.read_slice("pixel.raw.red", {0, 0, 1, 1});
+        CHECK(false);
+    } catch (const bil::Error& e) {
+        CHECK(e.kind() == bil::ErrorKind::NotFound);
+    }
+
     // Warnings: the two SubIFDs past the file were skipped.
     auto warnings = source.take_warnings();
     CHECK(warnings.dropped == 0 && warnings.warnings.size() == 2);

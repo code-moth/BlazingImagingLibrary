@@ -2000,3 +2000,95 @@ fn jpeg2000_tiles_are_blocks_in_the_cache() {
     assert_eq!(warned.len(), 1);
     assert_eq!(warned[0].code, bil::warning::WarningCode::BadlyPacked);
 }
+
+/// `pixel.raw` Slices from NITF blocks: Level 0 holds each band's samples exactly, and a coarser
+/// Level is the same at every grid point whatever Window it is read for (section 5; M75 to M77).
+#[test]
+fn raw_slices_from_nitf_blocks() {
+    let mut img = Img::new(13, 11, 3, "INT", 8);
+    img.irep = Some("RGB");
+    img.irepband = vec!["R", "G", "B"];
+    img.block = (4, 4);
+    let file = File21 {
+        images: vec![with_data(img)],
+        des: vec![],
+        xhd: vec![],
+    }
+    .bytes();
+    let source = bil::OpenOptions::default().open_from(file).unwrap();
+    let image = source.image(0).unwrap();
+    let all = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 13,
+        col_count: 11,
+    };
+    let f = image.read_fragment(all, "level0").unwrap();
+    let s = image.read_slice("pixel.raw.green", all, "level0").unwrap();
+    assert_eq!(
+        (s.name.as_str(), s.row_count, s.col_count),
+        ("green", 13, 11)
+    );
+    assert_eq!(s.status, Status::Complete);
+    for r in 0..13 {
+        for c in 0..11 {
+            let at = r * f.strides[0] + c * f.strides[1] + f.strides[2];
+            assert_eq!(s.data[r * 11 + c], f32::from(f.data[at]));
+        }
+    }
+    let whole = image.read_slice("pixel.raw.blue", all, "level1").unwrap();
+    assert_eq!((whole.row_count, whole.col_count), (7, 6));
+    let part = Window {
+        row_start: 3,
+        col_start: 5,
+        row_count: 9,
+        col_count: 6,
+    };
+    let s = image.read_slice("pixel.raw.blue", part, "level1").unwrap();
+    // Grid rows 2 to 5 and columns 3 to 5 of Level 1.
+    assert_eq!((s.origin, s.row_count, s.col_count), ([4.0, 6.0], 4, 3));
+    for r in 0..4 {
+        for c in 0..3 {
+            assert_eq!(
+                s.data[r * 3 + c].to_bits(),
+                whole.data[(r + 2) * 6 + c + 3].to_bits()
+            );
+        }
+    }
+}
+
+/// A JPEG 2000 resolution level is a stored level, and its Slice holds its samples (M48, M75).
+#[cfg(feature = "openjpeg")]
+#[test]
+fn raw_slices_from_jpeg2000_resolution_levels() {
+    let mut img = jpeg2000_image("gray8.j2k", 29, 37, 1, "INT", 8);
+    img.block = (16, 16);
+    let file = File21 {
+        images: vec![img],
+        des: vec![],
+        xhd: vec![],
+    }
+    .bytes();
+    let source = bil::OpenOptions::default().open_from(file).unwrap();
+    let image = source.image(0).unwrap();
+    let all = Window {
+        row_start: 0,
+        col_start: 0,
+        row_count: 29,
+        col_count: 37,
+    };
+    let f = image.read_fragment(all, "stored1").unwrap();
+    let s = image
+        .read_slice("pixel.raw.intensity", all, "stored1")
+        .unwrap();
+    assert_eq!((s.row_count, s.col_count, s.scale), (15, 19, [2.0, 2.0]));
+    let values: Vec<f32> = f.data.iter().map(|&v| f32::from(v)).collect();
+    assert_eq!(s.data, values);
+    let coarser = image
+        .read_slice("pixel.raw.intensity", all, "stored1.level1")
+        .unwrap();
+    assert_eq!(
+        (coarser.row_count, coarser.col_count, coarser.scale),
+        (8, 10, [4.0, 4.0])
+    );
+}

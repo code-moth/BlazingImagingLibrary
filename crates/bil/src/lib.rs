@@ -25,7 +25,9 @@ pub mod io;
 pub mod kernels;
 #[cfg(feature = "nitf")]
 pub mod nitf;
+pub mod pass;
 pub mod simd;
+mod slice;
 pub mod source;
 pub mod types;
 pub mod warning;

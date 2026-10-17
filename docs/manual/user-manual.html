@@ -638,7 +638,7 @@ info  = image.info()
 <p><strong>Relations.</strong> A Source declares how its Images relate. "Same grid" Images line up pixel for pixel, such as float range beside 16-bit intensity. A "scaled grid" Image covers the same scene at a whole-number reduction, such as video chroma at half size. A slice function that reads several Images, such as <code>video.rgb</code>, is called on the first, and is offered only when the others are present.</p>
 <h2 id="7-reading-slices">7. Reading Slices</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. The arithmetic of <code>pixel.raw</code>, <code>complex.polar</code> and <code>color.hsv</code>, and the requests for several Slices and Levels, are prototyped (chapter 23).</p>
+<p><strong>Status:</strong> Specified. <code>read_slice</code> for <code>pixel.raw</code> is built, in Rust and C++, from NITF and GeoTIFF Images through the cache, at computed and stored Levels (chapter 23). The arithmetic of <code>complex.polar</code> and <code>color.hsv</code>, and the requests for several Slices and Levels, are prototyped (chapter 23).</p>
 </blockquote>
 <p><strong>One Slice</strong></p>
 <pre><code class="language-python">window    = bil.Window(0, 0, 2048, 2048)
@@ -2038,7 +2038,7 @@ report.dropped                           # distinct warnings past max_held_warni
 </table></div>
 <h2 id="22-python-rust-and-c">22. Python, Rust and C++</h2>
 <blockquote>
-<p><strong>Status:</strong> Specified. The C++ interface is built for what the Rust code reads today: opening, Images, stored levels, storage, Fragments, the cache and warnings (chapter 23). Borrowed NumPy arrays and the release of the interpreter lock are prototyped in experiment 5 (chapter 23).</p>
+<p><strong>Status:</strong> Specified. The C++ interface is built for what the Rust code reads today: opening, Images, stored levels, storage, Fragments, <code>pixel.raw</code> Slices, the cache and warnings (chapter 23). Borrowed NumPy arrays and the release of the interpreter lock are prototyped in experiment 5 (chapter 23).</p>
 </blockquote>
 <p>The same calls exist in every language, with each language's own conventions.</p>
 <p><strong>Python</strong></p>
@@ -2119,15 +2119,18 @@ try {
 <p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C++ interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
 <h2 id="23-what-runs-today">23. What runs today</h2>
 <blockquote>
-<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer, kernels, Source interface, NITF container reader, GeoTIFF reader and JPEG 2000 codec, and <code>bil-sys</code>'s OpenJPEG bindings) and Prototyped (experiments 1, 1b, 3 and 5).</p>
+<p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer, kernels, pass, Source interface with <code>read_slice</code> for <code>pixel.raw</code>, NITF container reader, GeoTIFF reader and JPEG 2000 codec, and <code>bil-sys</code>'s OpenJPEG bindings) and Prototyped (experiments 1, 1b, 3 and 5).</p>
 </blockquote>
-<p>Seven pieces of code exist. The <code>bil</code> crate and experiments 1 and 1b work on Images already in memory, which is the part of BIL whose speed and correctness decide whether the rest of the design holds. The crate also holds Tier 1's two readers, NITF and GeoTIFF, and its first codec, JPEG 2000 through OpenJPEG, over BIL's own bindings in <code>bil-sys</code>. Experiment 5 maps files and hands their bytes to NumPy without a copy. Experiment 3 puts three C libraries behind a C layer and feeds them corrupt files.</p>
-<p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer, the kernels, the Source interface, the NITF and GeoTIFF readers and the JPEG 2000 codec.</p>
+<p>Seven pieces of code exist. The <code>bil</code> crate's pass, from experiment 1b, makes Slices, and decides with experiments 1 and 1b whether the rest of the design holds; <code>read_slice</code> now runs it on Images read through the cache. The crate also holds Tier 1's two readers, NITF and GeoTIFF, and its first codec, JPEG 2000 through OpenJPEG, over BIL's own bindings in <code>bil-sys</code>. Experiment 5 maps files and hands their bytes to NumPy without a copy. Experiment 3 puts three C libraries behind a C layer and feeds them corrupt files.</p>
+<p><strong>The <code>bil</code> crate</strong> (<code>crates/bil</code>, version 0.0.1) holds the vector layer, the kernels, the pass, the Source interface with <code>read_slice</code>, the NITF and GeoTIFF readers and the JPEG 2000 codec.</p>
 <ul>
 <li><strong><code>simd</code>:</strong> a <code>Vf</code> trait over vectors of float32, with <code>Scalar</code>, <code>Avx2</code>, <code>Avx512</code> and <code>Neon</code> back ends, and <code>Isa</code>, which finds the instruction sets the processor offers. NEON is tested only in CI, on Linux and macOS on ARM, where it agrees bitwise with scalar code; its speed has not yet been measured.</li>
 <li><strong><code>kernels</code>:</strong> the arithmetic of the pass. <code>halve</code> and <code>halve_row</code> make each <code>bilinear</code> halving, and <code>blur5</code> and <code>blur5_row</code> each <code>binomial5</code> halving; <code>halve_weighted</code>, <code>halve_row_weighted</code>, <code>halve_over</code> and their <code>blur5</code> counterparts the halvings with missing data; <code>min3_present</code> and <code>min3_row</code> the range reduction; <code>polar0</code>, <code>phase_from</code>, <code>hsv0</code> and <code>hue_from</code> the slice functions; and <code>atan2</code> and <code>cos_sin_turns</code> the transcendental functions, BIL's own, built only from correctly rounded operations.</li>
 </ul>
 <p>The kernels are <code>unsafe</code> and work on raw rows. They are BIL's internals, not its interface, and callers will never use them directly.</p>
+<ul>
+<li><strong><code>pass</code>:</strong> experiment 1b's pass, moved here from the experiment: <code>Pass</code> plans a read once and runs it on a ring of a few rows a Level, <code>BandedPass</code> splits it into bands on a <code>Pool</code>'s threads. It reads its rows through the <code>Rows</code> trait, which the experiment's in-memory <code>Image</code> and <code>read_slice</code>'s row source over Fragments both implement (M77). Like the kernels, it is an internal; experiment 1 keeps its full-plane reference and its checks, and uses it from here.</li>
+</ul>
 <p><strong>The Source interface</strong> (<code>bil::source</code>, its types also at the crate's top) opens a file through whichever reader recognizes it, and gives the calls both readers share. It is a preview of sections 3 and 10: the drivers are the two compiled in, chosen by the bytes they recognize, and reached through one <code>Source</code> rather than section 10's <code>Driver</code> trait, which comes with plugins.</p>
 <pre><code class="language-rust">use bil::{open_source, OpenOptions};
 use bil::types::Window;
@@ -2139,6 +2142,7 @@ let info = image.info()?;                             // section 3's ImageInfo: 
 image.list_stored_levels()?;                          // stored1 onward, each with size, scale, position, alignment
 let storage = image.describe_storage(&quot;stored1&quot;)?;     // that level's blocks, in file order
 let fragment = image.read_fragment(window, &quot;level0&quot;)?;
+let slice = image.read_slice(&quot;pixel.raw.intensity&quot;, window, &quot;level2&quot;)?;  // float32 values at Level 2
 source.as_geotiff();                                  // the reader itself, for what only TIFF has
 </code></pre>
 <div class="table-wrap"><table>
@@ -2196,6 +2200,11 @@ source.as_geotiff();                                  // the reader itself, for 
 <td><code>level</code> is always given, since Rust has no default arguments</td>
 </tr>
 <tr>
+<td><code>Image::read_slice(slice_name, window, level)</code>, <code>Slice { name, label, status, level_name, origin, scale, window, row_count, col_count, data, strides }</code></td>
+<td><code>read_slice</code>, the short form of <code>read(request)</code>; section 5's <code>Slice</code></td>
+<td><code>pixel.raw</code> alone, by its full name, at <code>level0</code>, <code>leveln</code>, a stored level or <code>storedk.leveln</code>, with the default options: <code>bilinear</code>, missing values NaN and the Slice <code>Partial</code> (M75). <code>data</code> is a <code>Vec&lt;f32&gt;</code>, since nothing borrows yet; <code>label</code> is the component's name (M76). Complex samples are refused (M78); every other type is converted once (M79). The pass runs on one thread, reading a band of rows at a time through the cache (M77); against a copy and the arithmetic, <code>crates/bil/tests/RESULTS-read-slice.md</code></td>
+</tr>
+<tr>
 <td><code>Source::take_warnings</code>, <code>bil::warning</code>: <code>Warnings { warnings, dropped }</code>, <code>Warning { code, scope, detail, count, blocks }</code>, <code>WarningCode</code></td>
 <td>Section 3.3's warnings</td>
 <td>As specified, with M68's details. Recorded today: <code>cache_ceiling_exceeded</code>, <code>badly_packed</code> (M67) and, in GeoTIFF, <code>subdirectory_skipped</code>; <code>corrupt_block_missing</code> comes with <code>corrupt_as_missing</code>. A <code>Warning</code>'s message is its <code>Display</code>, built when asked for. <code>OpenOptions</code> has <code>max_held_warnings</code></td>
@@ -2208,13 +2217,15 @@ source.as_geotiff();                                  // the reader itself, for 
 </tbody>
 </table></div>
 <p>Sources are <code>Send</code> and <code>Sync</code>. Each reader still has its own <code>open</code> and <code>open_with(reader, options)</code>, <code>info(i)</code>, <code>list_stored_levels(i)</code> and <code>describe_level_storage(i, level)</code> beside <code>describe_storage(i)</code>.</p>
-<p><strong>The C++ interface</strong> (<code>crates/bil-cpp</code>, the shared library <code>bil</code>, and the header <code>crates/bil-cpp/include/bil/bil.hpp</code>) gives C++ what the Rust code reads today, with Rust's names. The crate exports the binary layer, 36 plain functions named <code>bil_abi_</code>, versioned as the plugin interface will be and checked when the header first opens a Source; the header wraps it.</p>
+<p><strong>The C++ interface</strong> (<code>crates/bil-cpp</code>, the shared library <code>bil</code>, and the header <code>crates/bil-cpp/include/bil/bil.hpp</code>) gives C++ what the Rust code reads today, with Rust's names. The crate exports the binary layer, 39 plain functions named <code>bil_abi_</code>, versioned as the plugin interface will be and checked when the header first opens a Source; the header wraps it.</p>
 <pre><code class="language-cpp">#include &lt;bil/bil.hpp&gt;
 
 auto source = bil::open_source(&quot;scene.tif&quot;);              // or bil::OpenOptions o; o.max_held_warnings = 64; o.open(path)
 auto image  = source.image(0);
 auto info   = image.info();                                // row_count, representation, component_names, ...
 auto frag   = image.read_fragment({0, 0, 512, 512});       // level &quot;level0&quot; unless named
+auto slice  = image.read_slice(&quot;pixel.raw.intensity&quot;, {0, 0, 512, 512}, &quot;level1&quot;);
+std::span&lt;const float&gt; values = slice.data();
 std::span&lt;const std::byte&gt; bytes = frag.data();
 for (const auto&amp; w : source.take_warnings().warnings) std::clog &lt;&lt; w &lt;&lt; '\n';
 </code></pre>
@@ -2238,7 +2249,7 @@ for (const auto&amp; w : source.take_warnings().warnings) std::clog &lt;&lt; w &
 <td>Copies share one Source, as Rust's <code>Arc</code> does; <code>close()</code> closes it for every copy, and a later call throws <code>std::logic_error</code>, C++'s misuse error, not a <code>bil::Error</code> (M72); Fragments already read stay valid</td>
 </tr>
 <tr>
-<td><code>bil::Image</code>: <code>index</code>, <code>info</code>, <code>list_stored_levels</code>, <code>describe_storage(level)</code>, <code>read_fragment(window, level)</code></td>
+<td><code>bil::Image</code>: <code>index</code>, <code>info</code>, <code>list_stored_levels</code>, <code>describe_storage(level)</code>, <code>read_fragment(window, level)</code>, <code>read_slice(slice_name, window, level)</code></td>
 <td>The same</td>
 <td><code>level</code> defaults to <code>"level0"</code>, the specification's default, which Rust cannot express. An Image holds its Source, so it may outlive the object it came from</td>
 </tr>
@@ -2246,6 +2257,11 @@ for (const auto&amp; w : source.take_warnings().warnings) std::clog &lt;&lt; w &
 <td><code>bil::Fragment</code>: <code>window</code>, <code>pixel_type</code>, <code>strides</code>, <code>data</code>, <code>validity</code></td>
 <td><code>Fragment</code>'s fields</td>
 <td>Methods returning <code>std::span</code>, valid while any copy of the Fragment lives</td>
+</tr>
+<tr>
+<td><code>bil::Slice</code>: <code>name</code>, <code>label</code>, <code>status</code>, <code>level_name</code>, <code>origin</code>, <code>scale</code>, <code>window</code>, <code>row_count</code>, <code>col_count</code>, <code>data</code>, <code>strides</code>; <code>bil::Status</code></td>
+<td><code>Slice</code>'s fields, <code>Status</code></td>
+<td><code>data</code> a <code>std::span&lt;const float&gt;</code>, valid while any copy of the Slice lives (M76)</td>
 </tr>
 <tr>
 <td><code>bil::ImageInfo</code>, <code>Representation</code>, <code>ColorModel</code>, <code>FrameCount</code>, <code>Relation</code>, <code>StoredLevel</code>, <code>Storage</code>, <code>Block</code>, <code>ByteRange</code>, <code>CacheReport</code>, <code>Warnings</code>, <code>Warning</code>, <code>BlockKey</code>, <code>Scope</code></td>
@@ -2414,6 +2430,7 @@ fragment.validity;                              // pixels holding the no-data va
 <p><strong>How it is tested</strong></p>
 <ul>
 <li><strong>Synthetic files</strong> (<code>crates/bil/tests/geotiff.rs</code>), written by a small TIFF writer independent of the reader: 660 layouts, every sample type read with every combination of strips or tiles, chunky or planar, classic or BigTIFF, either byte order, and uncompressed, Deflate and LZW with and without predictors, and PackBits, with one to four bands in turn, each read whole and through random Windows across chunk edges, sample for sample; overviews and masks; storage in file order; no-data in every sample and in one; tags and keys as fields, in both byte orders, and a key listed twice; an unsupported compression; claims past the file; a loop in the chain; layouts whose chunks cannot be counted, and sample formats and bit counts that are out of range or missing; chunks never written; WhiteIsZero, integer and float, as stored; an extra sample of unspecified meaning, kept; a first IFD of CIELab or of an interpretation the crate does not know, read, and one with an undefined predictor, listed and refused; integers of 1, 4, 7, 12, 24, 31, 40 and 63 bits and complex samples; a 24-bit float, listed and refused; Latin-1 text of several strings; and no-data rounded to float16. Unit tests in <code>geotiff/chunks.rs</code> check PackBits on TIFF 6.0's own example, LZW against <code>weezl</code>'s encoder, the widening of odd widths and the predictors' limits.</li>
+<li><strong>Slices</strong> (the last tests of <code>geotiff.rs</code> and <code>nitf.rs</code>): <code>pixel.raw</code> from strips, tiles and Deflate, through the cache a band of rows at a time, against the pass on the whole Image held in memory, bit for bit, for both components, random Windows and Levels 0 to 3; no-data pixels NaN and the Slice <code>Partial</code>; a TIFF overview at <code>stored1</code> and <code>stored1.level1</code> to <code>.level2</code>, origin and scale from the level's; a JPEG 2000 resolution level; NITF blocks, window independence across Windows; and what <code>read_slice</code> refuses.</li>
 <li><strong>Corrupt files.</strong> 20,000 seeded corruptions in every CI run, without optimization: every one opens or is refused, and every read delivers or fails, without a panic. The checking agent found three panics they had missed, from counts that overflow and a tag with no values; each is fixed and is now a test.</li>
 <li><strong>Against GDAL</strong> (<code>testdata/compare_geotiff.py</code>). BIL's <code>geotiff_dump</code> example and a GDAL program (<code>testdata/geotiff_reference.c</code>) print the Images, their sizes and sample types, their overviews and a hash of their pixels, band after band. CI compares them on the 232 TIFF files of GDAL 3.8.4's own tests (<code>autotest/gcore/data</code> and <code>autotest/gdrivers/data/gtiff</code>). The last run: 155 agree, 160 Images and 9 stored levels, read whole, pixel for pixel; 16 both refuse, as damaged; 45 hold what BIL does not yet read, each refused with its reason; 6 BIL refuses as corrupt where GDAL reads them (M42); 7 GDAL refuses where BIL opens them; 3 hold CMYK, CIELab or YCbCr, which GDAL converts to RGB and BIL returns as stored; none differ. Float16 is compared widened to float32, and signed integers of a width of their own unsigned, as GDAL 3.8 reads them. <code>crates/bil/tests/RESULTS-geotiff.md</code> has the details.</li>
 </ul>
@@ -2985,6 +3002,43 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td>M74</td>
 <td><strong>JPEG 2000 tiles as blocks: three points section 4 leaves open.</strong> (a) A <code>Block</code> had one offset and one length, but a tile's parts may lie apart, between other tiles' parts, while section 4 makes one entry of each block <code>describe_storage</code> lists. (b) Where the codestream's tile grid starts before the Image, its first row and column of tiles are narrower than <code>block_size</code>. (c) M67 speaks of a read that needs "some rows" of a block; a tile is decoded by area.</td>
 <td>Ruled (version 84): (a) otherwise than first proposed, its alternative: <code>Block</code> generalized to carry a list of byte ranges, so a tile is always one <code>Block</code>; (b) and (c) accepted as proposed. Section 4, <code>Storage</code> and "Larger than the read and the ceiling"</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Open, for the author.</strong> M75 to M79, from building <code>read_slice</code> for <code>pixel.raw</code>. Each is coded as proposed, so that it can be tested; a ruling otherwise changes it.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Found</th>
+<th>Proposed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M75</td>
+<td><strong><code>read_slice</code> in Rust, before <code>SliceRequest</code>.</strong> Section 5 makes every read one <code>SliceRequest</code> made with <code>read(request)</code>, with <code>read_slice(slice_name, window)</code> its short form, and the short forms taking <code>level</code> "by name or number". Rust has no keyword or default arguments, and only <code>pixel.raw</code> at one Level is built.</td>
+<td><code>Image::read_slice(slice_name, window, level) -&gt; Result&lt;Slice&gt;</code>, <code>level</code> as text, as <code>read_fragment</code> takes it: <code>level0</code>, <code>level3</code>, <code>stored2</code>, <code>stored2.level1</code>; a number stands for <code>leveln</code> in Python only. The Slice name is given in full, <code>pixel.raw.intensity</code>. A Slice name the Image does not yield, or a level it does not offer (<code>leveln</code> up to <code>level_count</code>, the stored levels by name), is <code>NotFound</code>; a slice function not yet built is <code>Unsupported</code>. The default options apply: <code>bilinear</code>, missing values NaN. <code>SliceRequest</code>, <code>read(request)</code> and <code>SliceOptions</code> come with the next delivery, Level list or option, and <code>read_slice</code> stays as it is, their short form. In C++, <code>bil::Image::read_slice(slice_name, window, level = "level0")</code>.</td>
+</tr>
+<tr>
+<td>M76</td>
+<td><strong>What a <code>Slice</code> holds, in Rust and C++.</strong> Section 5's <code>Slice</code> is marked illustrative: <code>name</code>, <code>label</code>, <code>status</code>, <code>level_name</code>, <code>origin</code>, <code>scale</code>, <code>window</code>, <code>row_count</code>, <code>col_count</code>, <code>data</code> as <code>Cow&lt;[f32]&gt;</code>, <code>strides</code> in bytes. Nothing yet borrows (section 6's <code>Borrowed</code>), and <code>label</code> needs the name as the file wrote it, which the readers do not keep.</td>
+<td>Section 5's fields, with <code>data: Vec&lt;f32&gt;</code> until borrowing is built, when it becomes <code>Cow&lt;'a, [f32]&gt;</code>; <code>name</code> the Slice's own name (<code>intensity</code>); <code>label</code> the component's name as <code>ImageInfo</code> gives it, until the readers keep the file's own text; <code>window</code> the Window asked; <code>origin</code> the Image position of the first value and <code>scale</code> the Image pixels between values, 2^n at <code>leveln</code>, and a stored level's scale times 2^n at <code>storedk.leveln</code>; rows contiguous, <code>strides</code> [4 × <code>col_count</code>, 4]. A Window holding no grid point of the Level gives a Slice of no values, its status <code>Complete</code>. In C++, <code>bil::Slice</code>, a value as <code>bil::Fragment</code> is, the same fields, and <code>data</code> a <code>std::span&lt;const float&gt;</code>.</td>
+</tr>
+<tr>
+<td>M77</td>
+<td><strong>How the pass reads rows from Fragments.</strong> Experiment 1b's pass read whole Images held in memory. Section 4 decodes by block through the cache, and section 6 wants the float32 form of a large Image never to occupy main memory.</td>
+<td>The pass, moved into the <code>bil</code> crate as <code>bil::pass</code>, reads its rows through a row source. The source reads one band of rows at a time with <code>read_fragment</code>, through the cache: the rows of one block row of the level's storage (a strip, or a row of tiles), at most 512, by the columns the pass needs, the Window and its margins inside the Image; it converts each row to float32 as the pass asks for it. Beside the cache it holds one band of native samples, and the pass its rings. Margins beyond the Image's edges are mirrored by the pass, not read. One pass runs on the calling thread; reads split into bands on threads (<code>BandedPass</code>) come when the Source keeps a <code>Pool</code>.</td>
+</tr>
+<tr>
+<td>M78</td>
+<td><strong><code>pixel.raw</code> on complex samples.</strong> Section 9.1 gives <code>pixel.raw</code> one Slice for each component, the stored values unchanged, but a complex sample is two numbers and a Slice holds one number at each point.</td>
+<td><code>pixel.raw</code> refuses complex samples as <code>Unsupported</code>, naming the <code>complex</code> family, which reads them. The alternative is two Slices for each component, <code>real</code> and <code>imaginary</code>, named after it.</td>
+</tr>
+<tr>
+<td>M79</td>
+<td><strong>Where the sample types meet <code>pixel.raw</code>.</strong> Section 5 makes <code>U32</code> to <code>I64</code> exact up to 2^24 and rounded above, <code>F64</code> rounded, and the arithmetic of the wide types float64; section 6 shifts integers right by <code>bit_shift</code>. It does not say how <code>F16</code> and <code>I8</code> reach the pass, or whether <code>bit_shift</code> applies to signed samples.</td>
+<td>Every sample is converted once, to float32, by one correctly rounded conversion: integers after <code>bit_shift</code>, signed ones by an arithmetic shift; <code>F16</code> exactly, by BIL's own conversion; <code>F64</code> and the 32 and 64-bit integers rounded to nearest, ties to even. <code>pixel.raw</code> makes nothing in float64 before that, since it has no arithmetic of its own, and its Levels average the float32 values, as for every other type.</td>
 </tr>
 </tbody>
 </table></div>

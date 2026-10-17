@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 
 use bil_core::types::{
     ColorModel, FrameCount, Interleave, LabEncoding, RelationKind, Representation, SampleType,
-    Scope, StorageOrder, Window,
+    Scope, Status, StorageOrder, Window,
 };
 use bil_core::{Error, OpenOptions, Source};
 
@@ -863,5 +863,99 @@ pub unsafe extern "C" fn bil_abi_fragment_view_get(
 pub unsafe extern "C" fn bil_abi_fragment_free(f: *mut AbiFragment) {
     if !f.is_null() {
         drop(Box::from_raw(f));
+    }
+}
+
+// ------------------------------------------------------------------ Slices
+
+pub struct AbiSlice(bil_core::types::Slice);
+
+/// A Slice's fields, its text and values as pointers valid while the handle lives.
+#[repr(C)]
+pub struct AbiSliceView {
+    pub name: *const u8,
+    pub name_len: usize,
+    pub label: *const u8,
+    pub label_len: usize,
+    pub level_name: *const u8,
+    pub level_name_len: usize,
+    pub status: u32,
+    pub origin: [f64; 2],
+    pub scale: [f64; 2],
+    pub window: AbiWindow,
+    pub row_count: u32,
+    pub col_count: u32,
+    pub data: *const f32,
+    pub data_len: usize,
+    pub strides: [isize; 2],
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn bil_abi_read_slice(
+    h: *const AbiSource,
+    i: usize,
+    name: *const u8,
+    name_len: usize,
+    w: *const AbiWindow,
+    level: *const u8,
+    len: usize,
+    out: *mut *mut AbiSlice,
+) -> *mut AbiError {
+    guard(|| {
+        let window = Window {
+            row_start: (*w).row_start,
+            col_start: (*w).col_start,
+            row_count: (*w).row_count,
+            col_count: (*w).col_count,
+        };
+        let s = source(h)?.image(i)?.read_slice(
+            text(name, name_len, "a Slice name")?,
+            window,
+            text(level, len, "a level name")?,
+        )?;
+        *out = Box::into_raw(Box::new(AbiSlice(s)));
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn bil_abi_slice_view_get(s: *const AbiSlice, out: *mut AbiSliceView) {
+    quiet(|| {
+        let s = &(&*s).0;
+        *out = AbiSliceView {
+            name: s.name.as_ptr(),
+            name_len: s.name.len(),
+            label: s.label.as_ptr(),
+            label_len: s.label.len(),
+            level_name: s.level_name.as_ptr(),
+            level_name_len: s.level_name.len(),
+            status: match s.status {
+                Status::Complete => 0,
+                Status::Partial => 1,
+                Status::Missing => 2,
+                Status::NotConverged => 3,
+                Status::Ambiguous => 4,
+            },
+            origin: s.origin,
+            scale: s.scale,
+            window: AbiWindow {
+                row_start: s.window.row_start,
+                col_start: s.window.col_start,
+                row_count: s.window.row_count,
+                col_count: s.window.col_count,
+            },
+            row_count: s.row_count,
+            col_count: s.col_count,
+            data: s.data.as_ptr(),
+            data_len: s.data.len(),
+            strides: s.strides,
+        };
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn bil_abi_slice_free(s: *mut AbiSlice) {
+    if !s.is_null() {
+        drop(Box::from_raw(s));
     }
 }

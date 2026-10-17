@@ -29,14 +29,13 @@
 //! - **`valid` follows the averaged mask** whatever kind of Slice it is read beside, so beside
 //!   labels or range it can differ from where a reduced value exists.
 
+use super::pool::Pool;
 use super::{
-    axis_plan_radius, blur5, blur5_over, blur5_row, blur5_row_weighted, blur5_weighted,
-    convert_row_step, grid_len, halve, halve_over, halve_row, halve_row_weighted, halve_weighted,
-    hsv0, hue_from, keep_present, mask_planes1, mask_planes4, mask_planes5, min3_present, min3_row,
-    phase_from, polar0, present_one, reflect, weight_present, Func, Image, Reduce, Samples, Slice,
-    Window,
+    axis_plan_radius, blur5, blur5_over, blur5_row, blur5_row_weighted, blur5_weighted, grid_len,
+    halve, halve_over, halve_row, halve_row_weighted, halve_weighted, hsv0, hue_from, keep_present,
+    mask_planes1, mask_planes4, mask_planes5, min3_present, min3_row, phase_from, polar0,
+    present_one, reflect, weight_present, Func, Image, Reduce, Rows, Slice, Window,
 };
-use crate::pool::Pool;
 use crate::simd::Isa;
 
 /// The grid of a request: for each Level that makes anything, the rows and columns it outputs
@@ -49,20 +48,20 @@ struct Plan {
 }
 
 impl Plan {
-    fn new(img: &Image, window: Window, top: u32, radius: i64) -> Plan {
+    fn new<R: Rows + ?Sized>(img: &R, window: Window, top: u32, radius: i64) -> Plan {
         assert!(
             (top as usize) < MAX_LEVELS,
             "at most {MAX_LEVELS} Levels, Level 0 included"
         );
         let (row_out, row_need) = axis_plan_radius(
-            img.rows,
+            img.row_count(),
             window.row_start,
             window.row_start + window.row_count - 1,
             top,
             radius,
         );
         let (col_out, col_need) = axis_plan_radius(
-            img.cols,
+            img.col_count(),
             window.col_start,
             window.col_start + window.col_count - 1,
             top,
@@ -194,7 +193,7 @@ impl LevelMethod {
     /// Taps of each halving this method makes for `func`: five for `binomial5` where the Slices
     /// are averaged, the three of the 3 × 3 block for `bilinear` and for range, and one where a
     /// value is kept, for `decimate` and for labels, which read nothing but the grid point.
-    pub(crate) fn taps(self, func: Func) -> usize {
+    pub fn taps(self, func: Func) -> usize {
         match (self, func.reduce()) {
             (LevelMethod::Decimate, _) | (_, Reduce::Keep) => 1,
             (LevelMethod::Binomial5, Reduce::Average) => 5,
@@ -207,15 +206,15 @@ impl Pass {
     /// Plans a read of `func` for `window` at Levels 0 to `top`, as `read_levels` makes it, for
     /// Images of `img`'s shape, with or without a validity mask as `img` has, for `bilinear`, or
     /// any level method with the same taps for `func`.
-    pub fn new(img: &Image, func: Func, window: Window, top: u32) -> Pass {
+    pub fn new<R: Rows + ?Sized>(img: &R, func: Func, window: Window, top: u32) -> Pass {
         Pass::for_method(img, func, window, top, LevelMethod::Bilinear)
     }
 
     /// As `new`, for a level method. `binomial5` reaches two grid points to each side, so its
     /// margins are wider and each Level holds five rows; a read is planned for its method, as
     /// `plan` is given the whole request.
-    pub fn for_method(
-        img: &Image,
+    pub fn for_method<R: Rows + ?Sized>(
+        img: &R,
         func: Func,
         window: Window,
         top: u32,
@@ -228,8 +227,8 @@ impl Pass {
     /// Where values are kept, for `decimate` and for labels, Level `first` is read straight from
     /// the Image at its grid points, a spacing of 2^first, and no other pixel is read, as section
     /// 5 asks of `decimate`. Every other method still reads every pixel under the Window.
-    pub fn for_levels(
-        img: &Image,
+    pub fn for_levels<R: Rows + ?Sized>(
+        img: &R,
         func: Func,
         window: Window,
         first: u32,
@@ -253,7 +252,7 @@ impl Pass {
         } else {
             0
         };
-        let masked = img.valid.is_some();
+        let masked = img.masked();
         let (carried, extra) = func.level0_planes();
         let levels: Vec<LevelState> = (0..plan.levels())
             .map(|k| {
@@ -262,7 +261,7 @@ impl Pass {
                 let gather = if k == 0 {
                     vec![Vec::new(); taps]
                 } else {
-                    let jc = grid_len(img.cols, k as u32 - 1);
+                    let jc = grid_len(img.col_count(), k as u32 - 1);
                     let first = plan.col_need[k - 1].0;
                     // The center source is always on the grid; the others are mirrored at the
                     // Image edge.
@@ -290,7 +289,7 @@ impl Pass {
                     prev_rows: if k == 0 {
                         0
                     } else {
-                        grid_len(img.rows, k as u32 - 1)
+                        grid_len(img.row_count(), k as u32 - 1)
                     },
                     gather,
                     ring: vec![vec![0f32; taps * w]; ring_planes],
@@ -308,13 +307,13 @@ impl Pass {
             base,
             idle,
             read: 0,
-            rows: img.rows,
-            cols: img.cols,
+            rows: img.row_count(),
+            cols: img.col_count(),
             masked,
             plan,
             levels,
             edge: vec![vec![0f32; widest]; taps],
-            inputs: vec![vec![0f32; widest]; func.inputs().max(components(img))],
+            inputs: vec![vec![0f32; widest]; func.inputs().max(img.components())],
             edge_count: vec![vec![0f32; widest]; taps],
         }
     }
@@ -346,7 +345,13 @@ impl Pass {
 
     /// Runs the read into `out`, which must have the shape `outputs` gives. Missing positions
     /// are NaN, or the `missing_value` of `options` where the caller gives one.
-    pub fn run(&mut self, img: &Image, isa: Isa, options: ReadOptions, out: &mut [Vec<Slice>]) {
+    pub fn run<R: Rows>(
+        &mut self,
+        mut img: R,
+        isa: Isa,
+        options: ReadOptions,
+        out: &mut [Vec<Slice>],
+    ) {
         self.check_shape(out);
         let mut views = empty_views();
         for (v, level) in views.iter_mut().zip(out.iter_mut()) {
@@ -354,19 +359,27 @@ impl Pass {
                 *d = &mut s.data[..];
             }
         }
-        self.run_views(img, isa, options, &mut views);
+        self.run_views(&mut img, isa, options, &mut views);
     }
 
     /// `run`, into the rows of each Slice that this read's Window owns, given as views: for each
     /// Level, one view for each Slice, holding the rows of `row_out` and the columns of `col_out`.
-    fn run_views(&mut self, img: &Image, isa: Isa, options: ReadOptions, views: &mut Views) {
+    fn run_views<R: Rows + ?Sized>(
+        &mut self,
+        img: &mut R,
+        isa: Isa,
+        options: ReadOptions,
+        views: &mut Views,
+    ) {
         assert!(
             self.plan.levels() <= MAX_LEVELS,
             "more Levels than a read can hold"
         );
         assert!(isa.is_available(), "{isa:?} is not available");
         assert!(
-            img.rows == self.rows && img.cols == self.cols && img.valid.is_some() == self.masked,
+            img.row_count() == self.rows
+                && img.col_count() == self.cols
+                && img.masked() == self.masked,
             "the Image differs from the one planned for"
         );
         assert_eq!(
@@ -401,28 +414,21 @@ impl Pass {
             match func {
                 // Converted straight into the Level 0 row.
                 Func::Raw | Func::Labels | Func::Range => {
-                    convert_row_step(img, ir, i0, i1, step, &mut row[..1])
+                    img.convert(ir, i0, i1, step, &mut row[..1])
                 }
                 // The mask, 1.0 where present and 0.0 where missing, averaged as it is. A sample
                 // that is not a number counts as missing, as on the weighted path.
                 Func::Mask => {
-                    match &img.valid {
-                        Some(mask) => {
-                            let at = ir * img.cols;
-                            let bytes = mask[at + i0..=at + i1].iter().step_by(step);
-                            for (v, &b) in row[0].iter_mut().zip(bytes) {
-                                *v = f32::from(u8::from(b != 0));
-                            }
-                        }
-                        None => row[0].fill(1.0),
+                    if img.masked() {
+                        img.valid(ir, i0, i1, step, &mut row[0][..n]);
+                    } else {
+                        row[0].fill(1.0);
                     }
                     // As on the weighted path, NaN is looked for only where the Image can have
                     // missing pixels, and only float samples can hold one.
-                    if img.valid.is_some()
-                        && matches!(img.samples, Samples::F32(_) | Samples::ComplexF32(_))
-                    {
-                        let k = components(img);
-                        convert_row_step(img, ir, i0, i1, step, &mut self.inputs[..k]);
+                    if img.masked() && img.float() {
+                        let k = img.components();
+                        img.convert(ir, i0, i1, step, &mut self.inputs[..k]);
                         let w = row[0].as_mut_ptr();
                         for x in &self.inputs[..k] {
                             // The sample rows and the mask row hold n values; the mask row is
@@ -432,7 +438,7 @@ impl Pass {
                     }
                 }
                 Func::Polar => {
-                    convert_row_step(img, ir, i0, i1, step, &mut self.inputs);
+                    img.convert(ir, i0, i1, step, &mut self.inputs);
                     let i = &self.inputs;
                     // Every input and output row holds n values.
                     unsafe {
@@ -451,7 +457,7 @@ impl Pass {
                     }
                 }
                 Func::Hsv => {
-                    convert_row_step(img, ir, i0, i1, step, &mut self.inputs);
+                    img.convert(ir, i0, i1, step, &mut self.inputs);
                     let i = &self.inputs;
                     // Every input and output row holds n values.
                     unsafe {
@@ -472,15 +478,11 @@ impl Pass {
                     }
                 }
             }
-            if let (Some(mask), true) = (&img.valid, self.weighted()) {
+            if img.masked() && self.weighted() {
                 // Each pixel's weight is 1 where present and 0 where missing, and every plane of
                 // a missing pixel is NaN, whatever its kernel made of the samples.
                 let level0 = &mut self.levels[base];
-                let at = ir * img.cols;
-                let bytes = mask[at + i0..=at + i1].iter().step_by(step);
-                for (v, &b) in level0.count.iter_mut().zip(bytes) {
-                    *v = if b == 0 { 0.0 } else { 1.0 };
-                }
+                img.valid(ir, i0, i1, step, &mut level0.count[..n]);
                 // A value that is not a number is missing too, in every plane of its pixel. One
                 // pass reads every plane once, sets the weight and makes the pixel NaN.
                 let c = level0.count.as_mut_ptr();
@@ -940,7 +942,7 @@ impl BandedPass {
         self.pool.run(count, &|i| {
             assert!(i < count);
             // Band i and its views are reached by this part alone, and both outlive the round.
-            unsafe { (*bands.0.add(i)).run_views(img, isa, options, &mut *views.0.add(i)) }
+            unsafe { (*bands.0.add(i)).run_views(&mut { img }, isa, options, &mut *views.0.add(i)) }
         });
         // The pixels read, over every band.
         self.whole.read = self.bands.iter().map(|b| b.read).sum();
@@ -966,14 +968,6 @@ pub fn read_levels_into(
     out: &mut [Vec<Slice>],
 ) {
     Pass::for_method(img, func, window, top, options.level_method).run(img, isa, options, out);
-}
-
-/// The components each pixel's samples hold: two for complex samples, else the Image's count.
-fn components(img: &Image) -> usize {
-    match img.samples {
-        Samples::ComplexI16(_) | Samples::ComplexF32(_) => 2,
-        _ => img.comps,
-    }
 }
 
 /// Finds the run of output columns whose sources are consecutive columns, unmirrored, and the

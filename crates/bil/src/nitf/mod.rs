@@ -1070,11 +1070,34 @@ impl<R: ReadAt> NitfSource<R> {
                 info.rows, info.cols
             )));
         }
+        self.read_stored_window(image, level, info.stored_levels[n - 1].covered(window))
+    }
+
+    /// As `read_level_fragment` for a stored level, with the Window in the level's own rows and
+    /// columns, as `read_slice`'s pass reads it (M77).
+    pub(crate) fn read_stored_window(
+        &self,
+        image: usize,
+        level: &str,
+        lw: Window,
+    ) -> Result<Fragment> {
+        let img = self.image(image)?;
+        let info = &img.info;
+        let n = stored_level_number(level)
+            .filter(|&n| n >= 1 && n <= info.stored_levels.len())
+            .ok_or_else(|| Error::NotFound(format!("level {level} of image {image}")))?;
+        let l = &info.stored_levels[n - 1];
+        if lw.row_start + u64::from(lw.row_count) > l.rows
+            || lw.col_start + u64::from(lw.col_count) > l.cols
+        {
+            return Err(Error::NotFound(format!(
+                "a Window outside level {level} of image {image}"
+            )));
+        }
         // Levels are listed only for an Image the codec accepted.
         let (Some(pixel_type), Some(Ok(codestream))) = (info.pixel_type, &img.codestream) else {
             return Err(Error::NotFound(format!("level {level} of image {image}")));
         };
-        let lw = info.stored_levels[n - 1].covered(window);
         let (rows, cols) = (u64::from(lw.row_count), u64::from(lw.col_count));
         let (bands, size) = (info.bands as usize, pixel_type.sample_type.size());
         rows.checked_mul(cols)

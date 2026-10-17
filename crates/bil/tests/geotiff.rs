@@ -1552,3 +1552,319 @@ fn a_skipped_subifd_is_a_warning() {
         .take_warnings();
     assert_eq!((w.warnings.len(), w.dropped), (1, 1));
 }
+
+// ---------------------------------------------------------------- Slices (section 5)
+
+/// One component of a whole Fragment as an Image the pass reads from memory, its samples as
+/// float32 and its validity as a mask: the reference `read_slice` must match bit for bit.
+fn in_memory(f: &bil::types::Fragment, component: usize) -> bil::pass::Image {
+    let (rows, cols) = (f.window.row_count as usize, f.window.col_count as usize);
+    let t = f.pixel_type.sample_type;
+    let mut values = Vec::with_capacity(rows * cols);
+    for r in 0..rows {
+        for c in 0..cols {
+            let at = r * f.strides[0] + c * f.strides[1] + component * f.strides[2];
+            let b = &f.data[at..at + t.size()];
+            values.push(match t {
+                SampleType::U8 => f32::from(b[0]),
+                SampleType::U16 => f32::from(u16::from_ne_bytes([b[0], b[1]])),
+                SampleType::F32 => f32::from_ne_bytes([b[0], b[1], b[2], b[3]]),
+                _ => unreachable!("the types these tests write"),
+            });
+        }
+    }
+    bil::pass::Image {
+        rows,
+        cols,
+        comps: 1,
+        samples: bil::pass::Samples::F32(values),
+        valid: f
+            .validity
+            .as_ref()
+            .map(|v| v.iter().map(|&p| u8::from(p)).collect()),
+    }
+}
+
+/// What the pass makes of `img` for a Window on its grid at Level `n` alone: the values, and
+/// the first grid row and column, or `None` where the Window holds no grid point of it.
+fn reference(img: &bil::pass::Image, w: Window, n: u32) -> Option<(Vec<f32>, i64, i64)> {
+    use bil::pass::{Func, LevelMethod, Pass, ReadOptions};
+    if w.row_count == 0 || w.col_count == 0 {
+        return None;
+    }
+    let w = bil::pass::Window {
+        row_start: w.row_start as usize,
+        col_start: w.col_start as usize,
+        row_count: w.row_count as usize,
+        col_count: w.col_count as usize,
+    };
+    let mut pass = Pass::for_levels(img, Func::Raw, w, n, n, LevelMethod::Bilinear);
+    let mut out = pass.outputs();
+    out.get(n as usize)?.first()?;
+    pass.run(
+        img,
+        bil::simd::Isa::best(),
+        ReadOptions::default(),
+        &mut out,
+    );
+    let s = out.swap_remove(n as usize).swap_remove(0);
+    Some((s.data, s.rows.0, s.cols.0))
+}
+
+/// `read_slice` against the reference, for one Window and Level.
+#[allow(clippy::too_many_arguments)]
+fn check_slice(
+    image: &bil::Image<'_>,
+    name: &str,
+    whole: &bil::pass::Image,
+    w: Window,
+    on_grid: Window,
+    level: &str,
+    n: u32,
+    (position, scale): ((f64, f64), (f64, f64)),
+) {
+    let s = image.read_slice(name, w, level).unwrap();
+    assert_eq!((s.level_name.as_str(), s.window), (level, w));
+    let k = f64::from(1u32 << n);
+    assert_eq!(s.scale, [scale.0 * k, scale.1 * k]);
+    match reference(whole, on_grid, n) {
+        None => assert_eq!((s.row_count, s.col_count, s.data.len()), (0, 0, 0)),
+        Some((data, r0, c0)) => {
+            let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+            assert_eq!(bits(&s.data), bits(&data), "{name} {level} {w:?}");
+            assert_eq!(s.data.len(), s.row_count as usize * s.col_count as usize);
+            assert_eq!(s.strides, [4 * s.col_count as isize, 4]);
+            assert_eq!(
+                s.origin,
+                [
+                    position.0 + scale.0 * r0 as f64 * k,
+                    position.1 + scale.1 * c0 as f64 * k
+                ]
+            );
+            let missing = s.data.iter().any(|v| v.is_nan());
+            let want = if missing {
+                bil::types::Status::Partial
+            } else {
+                bil::types::Status::Complete
+            };
+            assert_eq!(s.status, want);
+        }
+    }
+}
+
+/// `pixel.raw` Slices from strips and tiles, through the cache a band of rows at a time, are the
+/// pass's values on the whole Image held in memory, bit for bit, at every Level asked (M75 to
+/// M77).
+#[test]
+fn raw_slices_are_the_pass_on_the_whole_image() {
+    let mut tiled = Img::new(40, 60, 2, SampleType::U16);
+    tiled.tile = Some((16, 16));
+    let mut deflated = Img::new(37, 29, 1, SampleType::U8);
+    deflated.compression = 8;
+    deflated.strip_rows = 5;
+    for img in [Img::new(40, 60, 2, SampleType::U16), tiled, deflated] {
+        let source = bil::OpenOptions::default()
+            .open_from(write(std::slice::from_ref(&img), false, false))
+            .unwrap();
+        let image = source.image(0).unwrap();
+        let info = image.info().unwrap();
+        let all = image.read_fragment(whole(&img), "level0").unwrap();
+        let mut rng = Rng(img.rows * 31 + img.cols);
+        for (component, name) in info.component_names.iter().enumerate() {
+            let memory = in_memory(&all, component);
+            let name = format!("pixel.raw.{name}");
+            for n in 0..4 {
+                let level = format!("level{n}");
+                let mut windows = vec![whole(&img)];
+                for _ in 0..12 {
+                    let r = rng.below(img.rows);
+                    let c = rng.below(img.cols);
+                    windows.push(Window {
+                        row_start: r,
+                        col_start: c,
+                        row_count: 1 + rng.below(img.rows - r) as u32,
+                        col_count: 1 + rng.below(img.cols - c) as u32,
+                    });
+                }
+                for w in windows {
+                    check_slice(
+                        &image,
+                        &name,
+                        &memory,
+                        w,
+                        w,
+                        &level,
+                        n,
+                        ((0.0, 0.0), (1.0, 1.0)),
+                    );
+                }
+            }
+        }
+        assert!(source.describe_cache().hits > 0, "the bands share blocks");
+        assert!(source.take_warnings().warnings.is_empty());
+    }
+}
+
+/// A pixel holding the no-data value is NaN in every Level that averages only missing pixels,
+/// left out of the averages elsewhere, and the Slice is `Partial` (section 5, "Missing data").
+#[test]
+fn missing_pixels_are_nan_and_left_out() {
+    let mut img = Img::new(23, 19, 1, SampleType::U8);
+    img.strip_rows = 4;
+    let nodata = expected(&img, 2, 3, 0).to_string();
+    let mut v = nodata.into_bytes();
+    v.push(0);
+    img.tags.push((42113, 2, v.len() as u64, v));
+    let source = bil::OpenOptions::default()
+        .open_from(write(&[img.clone()], false, false))
+        .unwrap();
+    let image = source.image(0).unwrap();
+    let all = image.read_fragment(whole(&img), "level0").unwrap();
+    assert!(all.validity.as_ref().is_some_and(|v| v.contains(&false)));
+    let memory = in_memory(&all, 0);
+    for n in 0..3 {
+        for w in [
+            whole(&img),
+            Window {
+                row_start: 1,
+                col_start: 2,
+                row_count: 3,
+                col_count: 3,
+            },
+        ] {
+            check_slice(
+                &image,
+                "pixel.raw.intensity",
+                &memory,
+                w,
+                w,
+                &format!("level{n}"),
+                n,
+                ((0.0, 0.0), (1.0, 1.0)),
+            );
+        }
+    }
+    let s = image
+        .read_slice("pixel.raw.intensity", whole(&img), "level0")
+        .unwrap();
+    assert_eq!(s.status, bil::types::Status::Partial);
+}
+
+/// A stored level is read on its own grid, at `stored1` and `stored1.level1`, its origin and
+/// scale from the level's position and scale (section 5, "Read directly").
+#[test]
+fn stored_levels_give_slices_on_their_own_grid() {
+    let full = Img::new(40, 60, 2, SampleType::U16);
+    let mut o1 = Img::new(20, 30, 2, SampleType::U16);
+    o1.subfile = 1;
+    o1.tile = Some((16, 16));
+    let source = bil::OpenOptions::default()
+        .open_from(write(&[full.clone(), o1.clone()], false, false))
+        .unwrap();
+    let image = source.image(0).unwrap();
+    let stored = image.list_stored_levels().unwrap()[0].clone();
+    let all = image.read_fragment(whole(&full), "stored1").unwrap();
+    let memory = in_memory(&all, 1);
+    let name = format!("pixel.raw.{}", image.info().unwrap().component_names[1]);
+    for w in [
+        whole(&full),
+        Window {
+            row_start: 3,
+            col_start: 5,
+            row_count: 8,
+            col_count: 2,
+        },
+        Window {
+            row_start: 7,
+            col_start: 11,
+            row_count: 30,
+            col_count: 41,
+        },
+    ] {
+        for (level, n) in [("stored1", 0), ("stored1.level1", 1), ("stored1.level2", 2)] {
+            check_slice(
+                &image,
+                &name,
+                &memory,
+                w,
+                stored.covered(w),
+                level,
+                n,
+                (stored.position, stored.scale),
+            );
+        }
+    }
+}
+
+/// What `read_slice` refuses, and how (M75, M78).
+#[test]
+fn read_slice_refuses_what_it_cannot_make() {
+    let img = Img::new(9, 5, 1, SampleType::U8);
+    let source = bil::OpenOptions::default()
+        .open_from(write(std::slice::from_ref(&img), false, false))
+        .unwrap();
+    let image = source.image(0).unwrap();
+    let all = whole(&img);
+    let err = |name: &str, w: Window, level: &str| image.read_slice(name, w, level).unwrap_err();
+    assert!(matches!(
+        err("pixel.raw.red", all, "level0"),
+        bil::Error::NotFound(_)
+    ));
+    assert!(matches!(
+        err("intensity", all, "level0"),
+        bil::Error::NotFound(_)
+    ));
+    assert!(matches!(
+        err("color.hsv.hue", all, "level0"),
+        bil::Error::Unsupported(_)
+    ));
+    // 5 columns halve to 3, 2 and 1: Levels 0 to 3.
+    assert!(image
+        .read_slice("pixel.raw.intensity", all, "level3")
+        .is_ok());
+    assert!(matches!(
+        err("pixel.raw.intensity", all, "level4"),
+        bil::Error::NotFound(_)
+    ));
+    assert!(matches!(
+        err("pixel.raw.intensity", all, "stored1"),
+        bil::Error::NotFound(_)
+    ));
+    let outside = Window {
+        row_start: 5,
+        col_start: 0,
+        row_count: 5,
+        col_count: 1,
+    };
+    assert!(matches!(
+        err("pixel.raw.intensity", outside, "level0"),
+        bil::Error::NotFound(_)
+    ));
+    // A Window holding no point of Level 2's grid gives a Slice of no values (M76).
+    let between = Window {
+        row_start: 1,
+        col_start: 1,
+        row_count: 2,
+        col_count: 2,
+    };
+    let s = image
+        .read_slice("pixel.raw.intensity", between, "level2")
+        .unwrap();
+    assert_eq!(
+        (s.row_count, s.col_count, s.data.len(), s.status),
+        (0, 0, 0, bil::types::Status::Complete)
+    );
+    let mut complex = Img::new(4, 4, 1, SampleType::ComplexI16);
+    complex.strip_rows = 4;
+    let source = bil::OpenOptions::default()
+        .open_from(write(&[complex.clone()], false, false))
+        .unwrap();
+    let image = source.image(0).unwrap();
+    let name = format!("pixel.raw.{}", image.info().unwrap().component_names[0]);
+    assert!(matches!(
+        image
+            .read_slice(&name, whole(&complex), "level0")
+            .unwrap_err(),
+        bil::Error::Unsupported(_)
+    ));
+}

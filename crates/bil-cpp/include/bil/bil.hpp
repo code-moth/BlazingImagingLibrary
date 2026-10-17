@@ -44,6 +44,7 @@ struct bil_abi_source;
 struct bil_abi_warnings;
 struct bil_abi_storage;
 struct bil_abi_fragment;
+struct bil_abi_slice;
 typedef void (*bil_abi_sink)(void* ctx, const unsigned char* text, std::size_t len);
 
 struct bil_abi_open_options {
@@ -116,6 +117,22 @@ struct bil_abi_window {
     std::uint64_t row_start, col_start;
     std::uint32_t row_count, col_count;
 };
+struct bil_abi_slice_view {
+    const char* name;
+    std::size_t name_len;
+    const char* label;
+    std::size_t label_len;
+    const char* level_name;
+    std::size_t level_name_len;
+    std::uint32_t status;
+    double origin[2];
+    double scale[2];
+    bil_abi_window window;
+    std::uint32_t row_count, col_count;
+    const float* data;
+    std::size_t data_len;
+    std::ptrdiff_t strides[2];
+};
 struct bil_abi_fragment_view {
     bil_abi_window window;
     bil_abi_pixel_type pixel_type;
@@ -169,6 +186,11 @@ bil_abi_error* bil_abi_read_fragment(const bil_abi_source*, std::size_t, const b
                                      const char*, std::size_t, bil_abi_fragment**);
 void bil_abi_fragment_view_get(const bil_abi_fragment*, bil_abi_fragment_view*);
 void bil_abi_fragment_free(bil_abi_fragment*);
+bil_abi_error* bil_abi_read_slice(const bil_abi_source*, std::size_t, const char*, std::size_t,
+                                  const bil_abi_window*, const char*, std::size_t,
+                                  bil_abi_slice**);
+void bil_abi_slice_view_get(const bil_abi_slice*, bil_abi_slice_view*);
+void bil_abi_slice_free(bil_abi_slice*);
 
 // Appends to the `bil::detail::Text` at `ctx`.
 inline void bil_abi_cpp_append(void* ctx, const unsigned char* text, std::size_t len) noexcept {
@@ -499,6 +521,62 @@ private:
     std::span<const bool> validity_;
 };
 
+// ------------------------------------------------------------------ Slices
+
+/// How much of what a read asked for it delivers (section 3.3).
+enum class Status { Complete, Partial, Missing, NotConverged, Ambiguous };
+
+/// Float32 values of one Slice at one Level (section 5): at grid point (i, j), `data()[i ×
+/// col_count() + j]`, for the Image position `origin()` + (i, j) × `scale()`. Copies share the
+/// values, which stay valid while any copy lives.
+class Slice {
+public:
+    /// The Slice's own name, such as `intensity`.
+    const std::string& name() const noexcept { return name_; }
+    const std::string& label() const noexcept { return label_; }
+    Status status() const noexcept { return status_; }
+    /// The Level as asked: `level0`, `level3`, `stored2`, `stored2.level1`.
+    const std::string& level_name() const noexcept { return level_name_; }
+    /// The Image position of the first value, in full-resolution pixels: row, column.
+    const std::array<double, 2>& origin() const noexcept { return origin_; }
+    /// Full-resolution pixels between values: rows, columns.
+    const std::array<double, 2>& scale() const noexcept { return scale_; }
+    /// The Window asked for, at full resolution.
+    const Window& window() const noexcept { return window_; }
+    std::uint32_t row_count() const noexcept { return row_count_; }
+    std::uint32_t col_count() const noexcept { return col_count_; }
+    std::span<const float> data() const noexcept { return data_; }
+    /// Bytes from one row and one column to the next.
+    const std::array<std::ptrdiff_t, 2>& strides() const noexcept { return strides_; }
+
+private:
+    friend class Image;
+    explicit Slice(bil_abi_slice* s)
+        : handle_(s, detail::Deleter<bil_abi_slice, bil_abi_slice_free>{}) {
+        bil_abi_slice_view v{};
+        bil_abi_slice_view_get(s, &v);
+        name_.assign(v.name, v.name_len);
+        label_.assign(v.label, v.label_len);
+        level_name_.assign(v.level_name, v.level_name_len);
+        status_ = static_cast<Status>(v.status);
+        origin_ = {v.origin[0], v.origin[1]};
+        scale_ = {v.scale[0], v.scale[1]};
+        window_ = {v.window.row_start, v.window.col_start, v.window.row_count, v.window.col_count};
+        row_count_ = v.row_count;
+        col_count_ = v.col_count;
+        data_ = {v.data, v.data_len};
+        strides_ = {v.strides[0], v.strides[1]};
+    }
+    std::shared_ptr<bil_abi_slice> handle_;
+    std::string name_, label_, level_name_;
+    Status status_ = Status::Complete;
+    std::array<double, 2> origin_{}, scale_{};
+    Window window_;
+    std::uint32_t row_count_ = 0, col_count_ = 0;
+    std::span<const float> data_;
+    std::array<std::ptrdiff_t, 2> strides_{};
+};
+
 // ------------------------------------------------------------------ Sources and Images
 
 class Source;
@@ -512,6 +590,9 @@ public:
     std::vector<StoredLevel> list_stored_levels() const;
     Storage describe_storage(std::string_view level = "level0") const;
     Fragment read_fragment(const Window& window, std::string_view level = "level0") const;
+    /// One Slice at one Level: `pixel.raw` for now, by its full name (M75).
+    Slice read_slice(std::string_view slice_name, const Window& window,
+                     std::string_view level = "level0") const;
 
 private:
     friend class Source;
@@ -737,6 +818,15 @@ inline Fragment Image::read_fragment(const Window& window, std::string_view leve
     detail::check(
         bil_abi_read_fragment(source_.get(), index_, &w, level.data(), level.size(), &raw));
     return Fragment(raw);
+}
+
+inline Slice Image::read_slice(std::string_view slice_name, const Window& window,
+                               std::string_view level) const {
+    const bil_abi_window w{window.row_start, window.col_start, window.row_count, window.col_count};
+    bil_abi_slice* raw = nullptr;
+    detail::check(bil_abi_read_slice(source_.get(), index_, slice_name.data(), slice_name.size(),
+                                     &w, level.data(), level.size(), &raw));
+    return Slice(raw);
 }
 
 }  // namespace bil
