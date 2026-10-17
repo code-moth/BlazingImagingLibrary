@@ -1,6 +1,6 @@
 # Blazing Imaging Library (BIL) Specification
 
-Oct 16, 2026 · @Master
+Oct 17, 2026 · @Master
 
 ## 1. Purpose and scope
 
@@ -64,7 +64,7 @@ BIL is a unifying layer. It calls the best open source library for each format a
 | Aspect | Decision |
 | --- | --- |
 | Core language | Rust |
-| Other interfaces | A C-callable interface over the whole Rust library, delivered with it as one shared library; Python; and a C interface for drivers. Drivers can also be scripted in Python. |
+| Other interfaces | A C++ interface over the whole Rust library, delivered with it as one shared library; Python; and the same C++ interface for drivers. Drivers can also be scripted in Python. |
 | Backing libraries | Existing open source C and C++ readers, wrapped as drivers |
 | Package names | `bil` on crates.io and PyPI; `bil-sys` for the native bindings |
 | In scope | Reading pixels and metadata; preparing pixels as float32 Slices in the form analysis starts from (section 9); locating pixels in the world; writing a small set of simple formats |
@@ -124,7 +124,7 @@ BIL is built in tiers. Each tier is finished before the next is started, so the 
 | Geocoding | `image_window`, `affine` and `rational_polynomial`, with a constant-height `surface` |
 | Metadata | Fields on demand for TIFF tags and for NITF headers and extensions; markings and companion files |
 | Writing | TIFF and GeoTIFF, which the round-trip test needs |
-| Interfaces | Rust, Python, and the C-callable interface of the shared library |
+| Interfaces | Rust, Python, and the C++ interface of the shared library |
 | Safeguards | Containment, resource limits and fuzz testing |
 
 **What Tier 1 leaves out.** Video with its Readers and deferred Fragments, scripted drivers and their interpreter, external decoding with the mapped format and isolation, terrain files, and every other format.
@@ -135,7 +135,7 @@ BIL is built in tiers. Each tier is finished before the next is started, so the 
 
 | Tier | Adds |
 | --- | --- |
-| Tier 2 | ENVI; video with KLV; SICD and SIDD. With them come Readers, scripted drivers and the C interface for external plugins. |
+| Tier 2 | ENVI; video with KLV; SICD and SIDD. With them come Readers, scripted drivers and the C++ interface for external plugins. |
 | Tier 3 | The remaining formats of section 8 and the remaining libraries of Appendix A, each assessed case by case. Its order is not yet set. |
 
 ### 1.5 Foundations
@@ -167,6 +167,7 @@ BIL is a unifying interface, so its design is symmetric: each thing is done one 
 | Naming a Slice | Three parts: family, function and name |
 | Missing pixels | A validity mask on a Fragment, and NaN in a Slice, or the caller's `missing_value` |
 | How a request turned out | One status, carried by every result |
+| What happened along the way | Warnings, held on the Source and drained when the caller chooses |
 | Values along an index | A field attached to that index, of which a coordinate is one view |
 | Essential metadata in every format | The dictionary: each item provided, derived or taken from a companion file |
 | Locating pixels | A chain of steps |
@@ -176,6 +177,8 @@ BIL is a unifying interface, so its design is symmetric: each thing is done one 
 
 - **For a caller.** Code that uses BIL holds no branch on format or sensor type.
 - **For the design.** A new case must fit an existing mechanism, or the mechanism is generalized. An exception is not added.
+
+**A clean, symmetric interface, not one driven by edge cases.** The interface is kept as clean and as symmetric as it can be: the same calls, names and shapes for every Source, every Image, every level and every language. An edge case is never the reason for a new call, a new argument or a new kind of result. It is accommodated by extending a mechanism and a definition that already exist: a new value of an existing type, a new code in an existing list, a new field of an existing record, a new option in `OpenOptions`. Where an edge case seems to need more, the existing definition is generalized until it covers the case, and the case then follows the general rule. Warnings (section 3.3) are the example: one store on the Source, which every unusual event uses, instead of a result or argument for each.
 
 **Differences are reported.** Sources do differ: one can be borrowed and another must be decoded, and one decodes at once while another is deferred. Each difference is a property the caller can read, such as `is_borrowed` and `is_deferred`, and `plan_slice` reports them before a read.
 
@@ -207,7 +210,7 @@ Existing projects were surveyed on 12 October 2026, and Appendix A.15 lists them
 2. **Faithful and processable at once.** A Fragment keeps the native samples. Named Slices give float32 views such as magnitude, hue, demosaiced color or a polarimetric term, made in one fused pass and independent of the Window. Other projects give stored bands or channels and leave the conversion to every algorithm.
 3. **Video as imagery.** Frames, deferred decoding, chroma, KLV metadata and per-frame pose are handled through the same calls as stills. Video libraries do not geocode, and geospatial libraries do not read video.
 4. **One geocoding chain for every format.** Map grids, RPC, camera, SAR and per-frame video models are all chains of the same steps, each tested against an established implementation (section 13.8).
-5. **One compiled core for every language.** A Rust core with a C interface, delivered as one shared library, and a Python interface over it, all with the same behavior. GRDL and SarPy are Python only, OxiGeo has no C interface, and GDAL's interface is built around map rasters.
+5. **One compiled core for every language.** A Rust core with a C++ interface, delivered as one shared library, and a Python interface over it, all with the same names and behavior. GRDL and SarPy are Python only, OxiGeo has no C or C++ interface, and GDAL's interface is built around map rasters.
 6. **Built for untrusted files.** Limits, configured plugin locations, and drivers that can be run in a separate process (section 10.3).
 
 **The gap.** Today, a developer whose algorithm must take imagery from several kinds of sensor assembles several libraries. A typical set is GDAL for map rasters, SarPy or SIX for SAR, FFmpeg with a KLV parser for video, and ITK for medical volumes. The developer then writes code for each format to cut subsets, convert samples and locate pixels. BIL is the single fast layer beneath such algorithms that stays faithful to the sensor: one read request and one geocoding chain, callable from Rust, C, C++ and Python.
@@ -241,20 +244,20 @@ BIL has one naming rule, the same in every language: types are UpperCamelCase, a
 
 **Acronyms and abbreviations** are written as words: `hh`, `db`, `ndvi`, `rcs`.
 
-**In C.** C has no namespaces, so every name carries a prefix: `bil_` on functions, `Bil` on types, and `BIL_` on enum values, which are in upper case. Examples are `bil_read_slice`, `BilSource` and `BIL_COMPLEX_F32`.
+**In C++.** The C++ interface uses the Rust names unchanged, in the namespace `bil`: `bil::open_source`, `bil::Source`, `bil::SampleType::ComplexF32`, `read_slice`. Code in one language reads as the other does, and a name learned in one is the name in every other.
 
-**The C interface follows five conventions,** so that every call has the same shape.
+**The C++ interface follows the Rust one,** so that every call has the same shape in both. The conventions below are proposed (M70), with how the header reaches the library (M69) and the license of its code (M71).
 
 | Convention | Rule | Examples |
 | --- | --- | --- |
-| Handles | Every object is an opaque handle. Its fields are read through accessors. | `BilSource *`, `BilImage *`, `BilSlice *`, `BilFragment *` |
-| Status | Every function returns a `BilStatus`. Results come back through the last arguments. | `BIL_OK`, `BIL_ERROR`, `BIL_PARTIAL` |
-| Ownership | What a call creates, the caller frees with the matching `bil_free_` call. A handle obtained from another, such as an Image from its Source, is valid while its parent is. A Fragment or Slice is created by its read, and lives until it is freed (section 4). | `bil_free_slice`, `bil_free_fragment`, `bil_close_source` |
-| Data | Array data is reached through an accessor that gives a pointer, the size and the strides. The pointer is valid until the object is freed. | `bil_slice_data(slice, &values, &rows, &cols, &row_stride)` |
-| Errors | The message for the last failed call on this thread is read with `bil_last_error`. | `bil_last_error(buffer, buffer_size)` |
+| Objects | Each Rust type is a C++ class of the same name, with the same methods. A Source, an Image and a delivered Fragment or Slice are values that may be copied and shared between threads, as in Rust; a Reader may be moved, not copied. | `bil::Source`, `bil::Image`, `bil::Fragment`, `bil::Slice`, `bil::Reader` |
+| Lifetime | Ownership is held by the objects themselves (RAII). A Source closes when the last copy of it goes, or at `close()`; nothing is freed by hand. | `source.close()` |
+| Results and failures | A call returns its value. A failure throws `bil::Error`, which carries the same kinds as Rust's `Error` and its message. | `catch (const bil::Error& e) { e.kind(); }` |
+| Data | Array data is a view of the memory it borrows or owns, with its size and strides, valid for as long as the Fragment or Slice that holds it. | `slice.data()`, `fragment.strides()` |
+| Options | `OpenOptions` and every other options record is a struct with the Rust fields and defaults, set by name. | `bil::OpenOptions options; options.max_directories = 10;` |
 
-- **Text and options.** Strings are UTF-8 and end with a zero byte. Options are passed as a struct whose first field is its size, so that new options can be added without breaking callers.
-- **Callbacks.** A callback receives a context pointer the caller supplied. It must not let an exception or a `longjmp` cross into BIL, and BIL catches its own failures before they reach the caller.
+- **Text.** Strings are UTF-8, as `std::string` and `std::string_view`.
+- **Callbacks.** A callback is any C++ callable. An exception it throws is caught at the boundary and returned to the caller as a `bil::Error` from the call that made the callback; BIL's own failures are caught before they reach the caller.
 
 **Spelling.** Every identifier, and this document, uses American spelling: `color`, `normalization`, `center`.
 
@@ -272,15 +275,12 @@ source = bil.open_source("scene.ntf")
 slice  = source.image(0).read_slice("complex.polar.magnitude", window)
 ```
 
-```c
-BilSource *source;
-BilImage  *image;
-BilStatus status = bil_open_source("scene.ntf", &source);
-if (status == BIL_OK) status = bil_image(source, 0, &image);
-if (status == BIL_OK) status = bil_read_slice(image, "complex.polar.magnitude", &window, &slice);
+```cpp
+auto source = bil::open_source("scene.ntf");
+auto slice  = source.image(0).read_slice("complex.polar.magnitude", window);
 ```
 
-**Stability.** The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version (section 10). The Python package is built against Python's stable interface, so one build serves several Python versions. It is built on PyO3, the better tested route to that interface.
+**Stability.** The crate and the shared library follow semantic versioning. The C++ interface changes incompatibly only at a major version, and the plugin interface carries its own version (section 10). The Python package is built against Python's stable interface, so one build serves several Python versions. It is built on PyO3, the better tested route to that interface.
 
 **The acronym.** BIL also names the Band Interleaved by Line raster layout, which BIL reads. The same letters are also used for burst illumination LIDAR, a sensor type BIL reads. Documentation spells out Blazing Imaging Library on first use.
 
@@ -440,11 +440,26 @@ Every call returns a result, and everything that is delivered carries a status. 
 - **An unknown name is an error, and a known one with no value is `Missing`.** A field name that is not defined for this Source is an error. A defined field or a dictionary item that has no value here is delivered with status `Missing` and no value. The same holds along an index.
 - **Corrupt data is an error by default.** A caller may ask for a corrupt block to be delivered as missing data instead, and the result is then `Partial`.
     - **What stops an open.** Opening fails where the structure that locates the Images cannot be trusted: a header or segment that runs past the end of the file, block counts that do not cover the Image, or uncompressed data larger than its segment holds. Damage within an extension area does not stop it: the extensions read before the damage are listed, their header's group is `Partial`, and the pixels can still be read.
-    - **In TIFF,** the structure that locates the Images is the chain of IFDs and the chunk tables. Opening fails for a chain that loops or leaves the file, a missing chunk table, a table whose count disagrees with its Image, and a chunk past the end of the file. What a damaged table leaves out is not inferred. An IFD whose layout is sound but whose coding BIL cannot decode, such as an unknown predictor, does not stop the open: it is listed, and its reads fail (section 10, "When no codec accepts an Image"). A SubIFD that cannot be read is skipped, not a failure of the open: it is not in the chain that locates the Images, and holds at most an overview.
+    - **In TIFF,** the structure that locates the Images is the chain of IFDs and the chunk tables. Opening fails for a chain that loops or leaves the file, a missing chunk table, a table whose count disagrees with its Image, and a chunk past the end of the file. What a damaged table leaves out is not inferred. An IFD whose layout is sound but whose coding BIL cannot decode, such as an unknown predictor, does not stop the open: it is listed, and its reads fail (section 10, "When no codec accepts an Image"). A SubIFD that cannot be read is skipped, not a failure of the open: it is not in the chain that locates the Images, and holds at most an overview. The skip is recorded as a warning.
     - **Recovered data is corrupt data.** A library that decodes a damaged block by filling in what it lost, and warns, as libjpeg does, has met corrupt data. The warning is an error by default.
-    - **The whole block is missing.** Under `corrupt_as_missing`, a block a library recovered is marked missing as a whole, since a library does not say which of its pixels it filled in.
+    - **The whole block is missing.** Under `corrupt_as_missing`, a block a library recovered is marked missing as a whole, since a library does not say which of its pixels it filled in, and a warning records it.
 - **A failure never becomes a crash.** A failure inside BIL is caught at the interface and returned as an error.
-- **In C.** Every function returns a status code, and the value comes back through an argument.
+- **In C++.** A call returns its value, and a failure throws `bil::Error` (section 2).
+
+**Warnings are held on the Source.** Some events do not change what a call delivers, but a caller may want to know of them: a skipped directory, a cache ceiling below the file's blocks, a corrupt block delivered as missing. BIL records each in the Source's warning store, and the caller drains the store when it chooses: after the whole Image, every so many blocks, or never. A read's result, its signature and its status are the same whether or not a warning was recorded. The names below, the place a warning is kept by, the four blocks, the bound's default and the codes are proposed (M68).
+
+- **Drained by the caller.** `take_warnings()` returns the warnings held, with the count of those dropped, and empties the store. Every Reader and Image of the Source records into the one store.
+- **Nothing on the read path.** Recording touches the store only when a warning occurs, under a lock taken only then. When nothing goes wrong, a read costs nothing more.
+- **Recorded, not written.** A warning is recorded as a code and small structured context: where it occurred and a number that tells its cases apart. Its message is built only when the caller asks for it.
+- **One entry for a repeated warning.** Warnings are kept by code, place (the Source or an Image) and detail. A warning met on many blocks is one entry, with its count and the first few blocks where it occurred.
+- **Bounded.** The store holds at most `max_held_warnings` distinct entries. Further distinct warnings are not kept, and are counted as dropped.
+- **Warnings are not errors.** What the specification makes an error stays an error: a library's warning while decoding is corrupt data (above), and is an error by default. A warning is something a call has delivered past, such as a corrupt block delivered as missing under `corrupt_as_missing`.
+
+| Warning | When | Detail |
+| --- | --- | --- |
+| `cache_ceiling_exceeded` | A block larger than `set_cache_bytes` is held alone (section 4, "At least one block") | The block's bytes |
+| `subdirectory_skipped` | A SubIFD or other subdirectory that cannot be read is skipped (above) | Its offset in the file |
+| `corrupt_block_missing` | Under `corrupt_as_missing`, a corrupt block is delivered as missing | None |
 
 ### 3.4 Options and held data
 
@@ -466,6 +481,7 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | `frame_index` | None | A saved frame index to use instead of scanning (section 3.2) |
 | `max_held_positions` | 1,000 | Index positions for which metadata is held (section 14.3) |
 | `max_held_group_bytes` | None | Bytes of extracted metadata groups held |
+| `max_held_warnings` | 256 | Distinct warnings held before more are dropped (section 3.3) |
 | `corrupt_as_missing` | False | Deliver a corrupt block as missing data, with status `Partial` (section 3.3) |
 | `remote_timeout` | 30 seconds | The longest one request to a remote Source may take (section 10.3) |
 | `remote_retries` | 3 | How many times a failed remote request is tried again |
@@ -502,6 +518,7 @@ Every option is listed here, with its default, and every kind of data BIL holds 
 | Blocks read ahead | `read_ahead_bytes`, and they sit in the Fragment cache, within its limits (section 4) | `describe_held` and `describe_cache` |
 | Metadata attached to an index | `max_held_positions` | `describe_held` |
 | Extracted metadata groups | `max_held_group_bytes` | `describe_held` |
+| Warnings | `max_held_warnings` distinct entries, each with its count and its first four blocks | `describe_held`, and `take_warnings`, which empties the store |
 | Terrain tiles | None of their own: terrain is read through BIL's drivers, so its tiles sit in the Fragment cache of the terrain Sources | `describe_held` on those Sources |
 | The frame index | None: it holds one entry for each frame | `describe_held` |
 
@@ -563,7 +580,7 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 - **Read-only under `Shared` mapping.** Borrowed pixels cannot be changed, and in Python they appear as a read-only NumPy array. Under `Private` mapping they can be changed, and the changes stay in the caller's memory.
 - **Shared within one Source under `Private`.** Every array borrowed from one Source shares its copy-on-write pages, so a change through one is seen through the others. A change while another thread reads the same pages is a data race in the caller's code, as for any memory the caller shares; BIL itself never writes them.
 - **It keeps its memory.** A borrowed Fragment, and in Python its array, holds a reference to the mapped or read memory it borrows from for as long as it lives.
-- **Closing a Source.** A Source closes when the last reference to it goes, which in Rust is when it is dropped. `close()` in Python, and `bil_close_source` in C, close it at a chosen moment: it frees what the Source holds, its cache, read-ahead, metadata and Readers, and in Python every later read from it is an error. Arrays borrowed from it stay valid, and keep only the memory they borrow, which goes with the last of them. In C, `bil_close_source` also frees the Source's handle, which must not be used again; Fragments and Slices already read from it stay valid until each is freed with its own `bil_free_` call.
+- **Closing a Source.** A Source closes when the last reference to it goes, which in Rust is when it is dropped. `close()` in Python, and in C++ as proposed (M70), closes it at a chosen moment: it frees what the Source holds, its cache, read-ahead, metadata and Readers, and in Python every later read from it is an error. Arrays borrowed from it stay valid, and keep only the memory they borrow, which goes with the last of them. In C++, as proposed (M70), copies of a closed Source remain objects, and every later read through them is an error, as in Python; Fragments and Slices already read stay valid while they are held.
 - **A choice of mapping.** `mapping` in `OpenOptions` is `Shared` by default. `Private` maps the file copy-on-write, so a caller can change the array without touching the file. `Off` reads into owned buffers, for network file systems where mapping is unreliable.
 - **Files that change are not supported.** Mapping a file while another process changes or shortens it is not supported, and on most systems it can end the reading process.
 
@@ -598,7 +615,7 @@ Otherwise the Fragment owns a buffer that was decoded once. The type is the same
 | Reader | No. It belongs to one thread at a time, and may be handed to another. |
 | Fragment and Slice | Yes, once delivered. A borrowed one keeps the memory it borrows wherever it goes. |
 
-In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and Python the same rules are stated in the documentation.
+In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C++ and Python the same rules are stated in the documentation.
 
 **How far reads run in parallel** depends on the library underneath, and each driver declares it (section 10). `plan_slice` reports the declaration for a read.
 
@@ -608,7 +625,7 @@ In Rust these are the `Send` and `Sync` rules, checked by the compiler. In C and
 - **One block, one entry.** An entry is one block as `describe_storage` lists it, keyed by its Image, level, frame, block row and column and the components it holds, and held whole, every pixel decoded, so any Window that touches it is cut from it.
 - **Every block that is not borrowed.** Uncompressed blocks that are copied, for want of mapping or because their samples are unpacked or regrouped, are cached like decoded ones, so margins, terrain tiles and remote reads keep what they read.
 - **Sized by count, with a ceiling in bytes.** The caller sets how many Fragments are kept. Zero turns the cache off, and the default is 16. A second limit, `set_cache_bytes`, caps the bytes held, by default a quarter of physical memory, or 1 GiB where BIL cannot find how much the machine has. Whichever limit is reached first applies, so very large blocks, such as wide-area motion imagery frames, cannot exhaust memory.
-- **At least one block.** A block a read decodes that is larger than `set_cache_bytes` is held alone, past the ceiling, rather than decoded again by the next read that needs it: the ceiling gives way for one block, never more, and the next block that fits displaces it. It holds the block's memory until then. The caller is warned each time this happens, so it learns that the ceiling is below the blocks the file holds. A block read ahead never passes the ceiling.
+- **At least one block.** A block a read decodes that is larger than `set_cache_bytes` is held alone, past the ceiling, rather than decoded again by the next read that needs it: the ceiling gives way for one block, never more, and the next block that fits displaces it. It holds the block's memory until then. Each time this happens, and when `set_cache_bytes` is lowered below the one block held, it is recorded as the warning `cache_ceiling_exceeded` (section 3.3), so the caller learns that the ceiling is below the blocks the file holds. A block read ahead never passes the ceiling.
 - **Decoded once among threads.** Where several Readers need one block at once, the first decodes it and the others wait for it. A decode that fails is not cached, and a waiting read then decodes the block in turn, so every error arrives with a read of its own.
 - **One cache for each Source.** Every Reader of the Source shares it, and it is freed when the Source is closed.
 - **Least recently used goes first.** When the cache is full, the Fragment that has gone longest without use is dropped. Under `Sequential`, blocks the reading has passed go before that (below).
@@ -1405,12 +1422,12 @@ A driver teaches BIL one format family by describing the Images in a Source, pro
 | Kind | Built as | Purpose |
 | --- | --- | --- |
 | Built-in | Rust, compiled into `bil`, each behind a build feature | Wrapping the chosen open source libraries |
-| External | Shared library that calls `bil_register_driver` through the C interface | Special drivers in C, C++ or Rust, added without rebuilding BIL |
+| External | Shared library that calls `bil::register_driver` through the C++ interface | Special drivers in C++ or Rust, added without rebuilding BIL |
 | Optional | A separate package that BIL finds at run time, through its configured locations (section 10.3) | Plugins under a license stricter than the LGPL, such as Grok, and `bil-extras`, the analysis functions of section 9.6 |
 | Scripted | Python code registered at run time and run in CPython (section 10.1) | Esoteric and evolving formats, and additional data the compiled drivers do not read |
 | External decoding | A separate decoder process that fills BIL's mapped format (section 10.2) | Any supported format, when configured |
 
-External drivers use the C interface because Rust has no stable binary interface between separately compiled libraries.
+External drivers use the C++ interface. Rust has no stable binary interface between separately compiled libraries, and C++ has none between compilers; how the C++ interface keeps one is proposed (M69).
 
 **Concurrency.** Each driver and codec declares how far its library allows parallel reads.
 
@@ -1446,7 +1463,7 @@ External drivers use the C interface because Rust has no stable binary interface
 
 **How a registered kernel runs.** BIL calls a registered kernel once for each block of rows. It receives each input component already converted to float32, with the margin rows and columns its radius needs, and the values of its parameters, and it writes one row block for each Slice. BIL does everything else: reading, conversion, Levels, delivery and threads. The core's own functions are compiled into the fused loop of section 12; a registered kernel runs as a call for each row block, which is slower but keeps every other guarantee.
 
-**Plugin interface version.** `bil_register_driver` carries the version of the plugin interface the plugin was built against.
+**Plugin interface version.** `register_driver` carries the version of the plugin interface the plugin was built against.
 
 - **Same major version.** The plugin is loaded. A plugin built against an older minor version still works, because minor versions only add.
 - **Different major version.** The plugin is refused at registration and never called. `list_drivers` shows it as not loaded, with the reason.
@@ -1606,13 +1623,13 @@ class VendorDriver(bil.ScriptedDriver):
 bil.register_driver(VendorDriver)
 ```
 
-**The interpreter.** Scripted drivers run in CPython, so they work for Rust, C and C++ callers as well as from Python.
+**The interpreter.** Scripted drivers run in CPython, so they work for Rust and C++ callers as well as from Python.
 
 - **CPython.** The interpreter is CPython, the standard Python, because scripted drivers call existing Python libraries, and many of those, such as NumPy, are built for it alone. Smaller interpreters run only a subset of Python and none of its compiled libraries.
 - **Taken from the machine, not shipped.** BIL uses the Python installed on the machine, as it uses any library a package manager supplies (section 10.5). BIL's packages contain no interpreter. Where no Python is installed, a scripted driver fails with an error that says so, and everything else works.
 - **Started on first use.** The interpreter starts only when a scripted driver is first needed. Callers that never use one pay nothing.
 - **One interpreter.** When BIL is itself running inside Python, it uses that interpreter and does not start a second.
-- **A helper process for other callers.** For Rust, C and C++ callers, CPython runs in a separate BIL helper process, started on first use. A failing script, or a clash between the caller's libraries and Python's, stays out of the caller's process, and whichever Python 3 is installed can be used.
+- **A helper process for other callers.** For Rust and C++ callers, CPython runs in a separate BIL helper process, started on first use. A failing script, or a clash between the caller's libraries and Python's, stays out of the caller's process, and whichever Python 3 is installed can be used.
 - **The round trip is watched.** Each call into a scripted driver from a helper process is a round trip between processes. It is made when a Source is opened and when additional data is read, never for pixels a `PixelLayout` describes. A script that returns pixels as an array pays it for every read, as `plan_slice` reports. Its cost is benchmarked (section 12), and the choice is reviewed if it becomes prohibitive.
 - **Only from configured locations.** The helper program is found only where the configuration says, as plugins are (section 10.3).
 - **Kept off the pixel path.** The interpreter runs when a Source is opened and when additional data is read. Pixel reads from a `PixelLayout` never enter it, so they run in parallel as for any other driver.
@@ -1830,9 +1847,9 @@ Installing BIL is enough to read its formats. BIL does not duplicate libraries t
 
 BIL is licensed under the LGPL, version 2.1 or later, with a static-linking exception. The aim is to leave users free to make their own decisions and installations, while BIL itself stays a shared library that anyone can use.
 
-**How BIL is delivered.** BIL is written in Rust. A C-callable interface is laid over the Rust library and covers all of it, and the two are delivered together as one shared library.
+**How BIL is delivered.** BIL is written in Rust. A C++ interface is laid over the Rust library and covers all of it, and the two are delivered together as one shared library; how the C++ interface reaches the library's binary form is M69, proposed.
 
-- **Any language can call it.** Whatever can call C can use the whole of BIL.
+- **Rust, Python and C++ call it.** These are the languages BIL serves. Whether another language has a route is proposed with the C++ interface's binary form (M69).
 - **It can be replaced.** A user can put a modified build of the shared library in place without rebuilding their own program, which is what the LGPL asks for.
 - **Rust callers have a choice.** A Rust program may use the shared library, or compile the `bil` crate into itself.
 - **A static-linking exception.** BIL's license adds an exception to the LGPL: a program may link BIL statically, as Rust programs normally do, without the LGPL's duty to let its users relink it with a modified BIL. Changes to BIL itself remain under the LGPL. Its wording is in `LINKING-EXCEPTION.md`.
@@ -2592,7 +2609,7 @@ Four things inside BIL do read neighboring pixels: demosaicing, chroma upsamplin
 
 ## 16. Open decisions
 
-Two points are not yet settled, and ninety-three have been decided. Each lists the current proposal.
+Two points are not yet settled, and ninety-six have been decided. Each lists the current proposal.
 
 - [x] **Naming.** Decided: types and enum values are UpperCamelCase, as Rust and Python require, and every other name is snake\_case. That includes the names passed as text: slice functions, Slice names, level names, geocoding steps and normalization functions. An earlier decision to use UpperCamelCase everywhere was reversed so that Rust developers would accept the library (section 2).
 - [x] **Spelling.** Decided: American spelling in every identifier and throughout this document.
@@ -2613,7 +2630,7 @@ Two points are not yet settled, and ninety-three have been decided. Each lists t
 - [x] **Missing data and coarse Levels, from experiment 1b.** Decided: a Level averages the present values over the whole 2D filter at once; a stored NaN at a valid pixel is missing; `pixel.mask.valid` follows the mask averaged by the level method, beside any kind of Slice, and `valid_fraction` is that average; labels at coarse Levels alone read only their grid points under any method (section 5).
 - [x] **Borrowed data and the Python interface, from experiment 5.** Decided: under `Private` mapping, arrays from one Source share their pages, and concurrent writes are the caller's data race; borrowed arrays are read-only under `Shared` mapping only; the Python interface is built on PyO3 (sections 2, 4 and 12).
 - [x] **Libraries' corrupt data and limits, from experiment 3.** Decided: data a library recovers with warnings is corrupt data, an error by default, and its whole block is missing under `corrupt_as_missing`; `max_scans` is a fourth limit, 500 for untrusted Sources; a library's working memory is capped at twice `max_decoded_bytes` where it allows; a refusal is an error; a codec does not expand JPEG 2000 palettes, and the driver applies or reports `cmap` and `cdef` (sections 3.3, 3.4 and 10.3).
-- [x] **Stored NaN and closing in C.** Decided: a stored NaN in float data is always missing, mask or not, and float drivers set `may_have_missing` unless the format rules NaN out; in C, `bil_close_source` frees the Source's handle, which must not be used again, while Fragments and Slices already read stay valid until each is freed, and in Rust dropping the Source closes it (sections 4 and 5).
+- [x] **Stored NaN and closing.** Decided: a stored NaN in float data is always missing, mask or not, and float drivers set `may_have_missing` unless the format rules NaN out; in Rust dropping the Source closes it, and `close()` in Python closes it at a chosen moment, Fragments and Slices already read staying valid (sections 4 and 5).
 - [x] **Codes in locators.** Decided: a locator's code matches the stored code with its padding removed, up to a length each driver states for its formats, and a definition that breaks it is refused when added; a code may hold a wildcard, `*`, for a family of codes, and a field's name keeps the code matched (section 14.1).
 - [x] **Ordered layouts and runs.** Decided: a locator may give a field's place in an ordered layout, with lengths, presence and counts taken from earlier fields; a field in a counted run always carries its place, one number for each run, outermost first (section 14.1).
 - [x] **Wildcards.** Decided: `*` stands for any run of characters, including none, and a code needs at least one other character; an exact code is preferred, then the most characters fixed, and a tie is refused when added; no literal `*` (section 14.1).
@@ -2634,7 +2651,7 @@ Two points are not yet settled, and ninety-three have been decided. Each lists t
 - [x] **Lazy metadata decoding.** Decided: each value is decoded only when it is read or when a function needs it (section 14.3).
 - [x] **Companion files.** Decided: a plain text file beside a Source supplies metadata the format lacks, and carries markings for outputs that cannot hold them. It replaces the separate markings side file (sections 11 and 14.2).
 - [x] **Borrowed data.** Decided: zero-copy also needs aligned samples. Borrowed data is read-only under `Shared` mapping, and mapping is `Shared`, `Private` or `Off` (section 4).
-- [x] **Threads and plugins.** Decided: a Source and an Image may be shared between threads, and a Reader belongs to one thread at a time. Each driver declares its concurrency as `Parallel`, `OneHandlePerThread` or `Serial`. `bil_register_driver` carries an interface version (sections 4 and 10).
+- [x] **Threads and plugins.** Decided: a Source and an Image may be shared between threads, and a Reader belongs to one thread at a time. Each driver declares its concurrency as `Parallel`, `OneHandlePerThread` or `Serial`. `register_driver` carries an interface version (sections 4 and 10).
 - [x] **Codec choice and probing.** Decided: the driver and codec are chosen when a Source is opened and never switched. Both are reported and recorded in what BIL writes. Probing looks at the container, then its content, and ties follow a configured order (section 10).
 - [x] **Field names and time.** Decided: a field name is a list of parts, with escaped dots and numbered repeats. Text is Unicode, and a date and time states whether its zone is known. Local times take their zone from a stated offset, then, where an optional time-zone lookup is installed, the sensor location or the footprint. Otherwise they are taken as local time (section 14).
 - [x] **Performance claims.** Decided: specialized loops cover the six common sample types and the rest convert through a float32 row buffer. Copy counts exclude the decoder's own buffer. Benchmarks run on dedicated machines with thresholds, outside the build. Each function aims to be as fast as its arithmetic allows, measured against a copy and against that arithmetic alone (sections 6 and 12).
@@ -2648,6 +2665,9 @@ Two points are not yet settled, and ninety-three have been decided. Each lists t
 - [x] **The Source interface in Rust.** Decided: `OpenOptions` is a struct opened like `std::fs::OpenOptions`, an unrecognized file names the drivers tried, `describe_storage` takes the level, and a container with one driver is chosen by its leading bytes alone (sections 3.3, 3.4, 4 and 10).
 - [x] **Representations from NITF and TIFF.** Decided: representations and component names follow IREP, IREPBAND and Photometric by one table, which covers every band count and ExtraSamples; `pixel_type` may be none beside `component_count`; `storage` is a `Storage` without blocks; a relation's reduction is per axis (section 3).
 - [x] **The Fragment cache's entries.** Decided: one entry for each block `describe_storage` lists, JPEG 2000 tiles among them; every block not borrowed is cached; the ceiling in bytes gives way for one block a read decodes, with a warning; a block several Readers need is decoded once; `describe_cache` counts blocks (section 4).
+- [x] **A clean, symmetric interface.** Decided: the interface is not driven by edge cases; each is accommodated by extending an existing mechanism and definition (section 1.6).
+- [x] **Warnings.** Decided: warnings are recorded as codes with small structured context in one store on the Source, kept once for each code and detail with a count and the first few locations, messages built only when retrieved, bounded with a count of those dropped, and drained when the caller chooses; the read path is untouched, and the store's lock is taken only when a warning occurs (section 3.3; details proposed, M68).
+- [x] **C++ in place of C.** Decided: BIL's interface for callers and external plugins is C++, akin to Rust's, in place of a C interface (sections 2 and 10; details proposed, M69 to M71).
 - [x] **Grid alignment.** Decided: Level n holds the grid points at multiples of 2ⁿ inside the Window. Every Slice carries its origin and scale. `step` and a Level are not combined. Range is reduced over a centered 3×3 block, so it shares the grid (section 5).
 - [ ] **Dictionary contents.** Which items the metadata dictionary holds, the formula for each derived one, and the items of each domain profile. The first entries and first profiles are in section 14.2, and both are settled as drivers are built.
 - [x] **Domain profiles.** Decided: the dictionary knows the metadata each problem domain needs, independent of sensor and format, as named profiles of dictionary items, each required or recommended. Profiles name one another in those lists, and a profile that names itself, directly or through others, is refused. They are checked against a Source by `check_profile`, never enforced, and can be added by layers above BIL (section 14.2).
@@ -2666,16 +2686,16 @@ Two points are not yet settled, and ninety-three have been decided. Each lists t
 - [x] **Containment.** Decided: BIL reaches the network only for a location the caller gave it, and writes data only where the caller named a place. Mapped data is private to its owner and removed after use (sections 1.3 and 10.2).
 - [x] **Untrusted files.** Decided: caller-set resource limits, plugins loaded only from configured locations, and fuzz testing of BIL's own readers. Isolation of C and C++ drivers in a separate process is offered as a setting and is off by default (section 10.3).
 - [x] **Build order.** Decided: BIL is built in tiers, and Tier 1 is GeoTIFF and NITF. Every driver must pass one conformance suite before its tier is finished (sections 1.4 and 10.4).
-- [x] **Tier 2.** Decided: ENVI, video with KLV, and SICD and SIDD, with Readers, scripted drivers and the C interface for external plugins (section 1.4).
+- [x] **Tier 2.** Decided: ENVI, video with KLV, and SICD and SIDD, with Readers, scripted drivers and the C++ interface for external plugins (section 1.4).
 - [x] **Sample types.** Decided: a Fragment can hold fifteen sample types and delivers samples as stored, recording any unused low bits. A Slice is always float32 and works from the sample value (sections 4 and 5).
 - [x] **Packaging.** Decided: BIL works on installation and does not duplicate what standard package management supplies. Each library comes from an existing crate or from the installing package manager where that loses nothing, and BIL carries a private copy only as a last resort (section 10.5).
 - [x] **Pixel positions.** Decided: whole-number positions refer to pixel centers (section 13.3).
 - [x] **Terrain access.** Decided: BIL reads external terrain through its own `Terrain` interface, using its own drivers for the pixels and PROJ for the geoid (section 13.6).
 - [x] **Backing libraries and licenses.** Decided: Tier 1 reads GeoTIFF and NITF with Rust readers, and keeps GDAL and NITRO as test references, so Tier 1 needs no LGPL 3.0 library and no C++ build. Each library of a later tier is assessed when its tier starts, for license, maintenance, availability from package managers and conformance (section 10). Every library in Appendix A stays in the plugin design until then.
 - [x] **Python-authored drivers.** Decided: allowed, as the scripted drivers of section 10.1.
-- [x] **Scripted drivers outside Python.** Decided: Rust, C and C++ callers can use scripted drivers, through CPython in a helper process (section 10.1).
+- [x] **Scripted drivers outside Python.** Decided: Rust and C++ callers can use scripted drivers, through CPython in a helper process (section 10.1).
 - [x] **Interpreter packaging.** Decided: the interpreter is CPython, taken from the Python installed on the machine, and BIL's packages contain none. Inside Python, BIL uses that interpreter. Without an installed Python, only scripted drivers are unavailable (section 10.1).
-- [x] **Interpreter process.** Decided: for Rust, C and C++ callers, CPython runs in a helper process. The cost of the round trip is benchmarked and watched, and the choice is reviewed if it becomes prohibitive (section 10.1).
+- [x] **Interpreter process.** Decided: for Rust and C++ callers, CPython runs in a helper process. The cost of the round trip is benchmarked and watched, and the choice is reviewed if it becomes prohibitive (section 10.1).
 - [x] **NaN for missing data.** Decided: a Slice value with no data behind it is NaN by default. `missing_value` in `SliceOptions` fills such positions with a number the caller chooses. `missing_weights` chooses whether a Level weights the values below it equally, the default, or by the present full-resolution pixels behind each (section 5).
 - [x] **Registry names.** Decided: hold the names with genuine first releases rather than empty placeholders. `bil` 0.0.1 on crates.io holds the vector layer and kernels from experiment 1, `bil-sys` 0.0.1 holds the name for native bindings, and `bil` 0.0.1 on PyPI holds the Python name. The project's owner publishes them through the repository's Publish workflow. If `bil` is taken on PyPI, the package is `blazing-imaging` and still imports as `bil`.
 - [x] **Default demosaicing method.** Decided: `bilinear`, the same method used for the resolution levels, so both come from a single pass. `malvar_he_cutler` remains available.
@@ -2683,7 +2703,7 @@ Two points are not yet settled, and ninety-three have been decided. Each lists t
 - [x] **Reduced resolution at lower cost.** Decided: a computed Level reads all the data under its Window. `decimate` is built in as a level method that strides, and a file's own reduced-resolution data is read as named stored levels, used only when the caller asks (section 5).
 - [x] **JPEG 2000 codecs.** Decided: OpenJPEG is the fallback, and decodes every file until a Rust codec is proven. j2k-native is on trial as the Rust fallback. emuella-j2k is preferred for its declared profiles once it passes BIL's tests. hayro-jpeg2000 is a test reference. Grok stays an optional plugin (section 10).
 - [x] **LGPL version.** Decided: BIL is licensed under LGPL 2.1 or later.
-- [x] **License and responsibility.** Decided: BIL is a Rust library with a C-callable interface over it, delivered as one shared library. BIL answers for what its own packages contain, which is only LGPL-compatible builds. Users answer for what they install and pass on. `list_drivers` reports each library's license as built (section 10.6).
+- [x] **License and responsibility.** Decided: BIL is a Rust library with a C++ interface over it, delivered as one shared library. BIL answers for what its own packages contain, which is only LGPL-compatible builds. Users answer for what they install and pass on. `list_drivers` reports each library's license as built (section 10.6).
 - [x] **License review.** Closed by the author, with no legal review planned. The static-linking exception stands as worded in `LINKING-EXCEPTION.md`. What ships stays compatible with LGPL 2.1, with Apache-2.0 accepted, and LGPL 3 code is used only in tests or as an optional plugin packaged separately. Licenses are checked in the build by cargo-deny (section 10.6).
 - [x] **Writable formats.** Decided: ENVI, TIFF and GeoTIFF (uncompressed or Deflate), and NumPy `.npy`, each through BIL's own writer (section 11).
 - [x] **Wrapper crates.** Decided: an existing wrapper is considered first for every C or C++ library, and used when it passes the four tests of maintenance, performance, capability and packaging. Otherwise an existing bindings crate is used where one passes, and BIL's own bindings only where none does (section 10).

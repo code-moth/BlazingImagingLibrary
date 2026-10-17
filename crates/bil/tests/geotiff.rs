@@ -13,6 +13,7 @@ use std::io::Write;
 use bil::fields::Value;
 use bil::geotiff::{Error, GeoTiffSource, Scope};
 use bil::types::{Interleave, SampleType, StorageOrder, Window};
+use bil::warning::WarningCode;
 
 // ---------------------------------------------------------------- values known by construction
 
@@ -1440,12 +1441,22 @@ fn the_cache_decodes_a_chunk_once() {
     check(&source, 0, &img, whole(&img));
     assert_eq!(source.describe_cache().fragment_count, 9);
     source.set_cache_bytes(16 * 16 * 4);
-    let r = source.describe_cache();
-    assert_eq!((r.fragment_count, r.held_past_ceiling), (1, 0));
-    // A ceiling below one tile: the tile is held alone, and that is reported.
-    source.set_cache_bytes(100);
+    assert_eq!(source.describe_cache().fragment_count, 1);
+    assert!(source.take_warnings().warnings.is_empty());
+    // The ceiling's giving way is a warning, kept once for its code, Image and bytes.
+    let ceiling = |source: &GeoTiffSource<Vec<u8>>| {
+        let w = source.take_warnings();
+        assert_eq!(w.dropped, 0);
+        w.warnings
+            .iter()
+            .filter(|w| w.code == WarningCode::CacheCeilingExceeded)
+            .map(|w| (w.detail, w.count, w.blocks.len()))
+            .collect::<Vec<_>>()
+    };
     // Lowering the ceiling below the one block held keeps it, and warns.
-    assert_eq!(source.describe_cache().held_past_ceiling, 1);
+    source.set_cache_bytes(100);
+    assert_eq!(ceiling(&source), [(Some(16 * 16 * 4), 1, 1)]);
+    // A tile decoded past the ceiling is held alone, and warns.
     let tile = Window {
         row_start: 0,
         col_start: 0,
@@ -1453,18 +1464,18 @@ fn the_cache_decodes_a_chunk_once() {
         col_count: 16,
     };
     check(&source, 0, &img, tile);
-    let r = source.describe_cache();
-    assert_eq!((r.fragment_count, r.held_past_ceiling), (1, 2));
+    assert_eq!(source.describe_cache().fragment_count, 1);
+    assert_eq!(ceiling(&source), [(Some(16 * 16 * 4), 1, 1)]);
     // The tile held past the ceiling serves a read of part of it.
     let before = source.describe_cache();
     check(&source, 0, &img, w(4, 4));
     let after = source.describe_cache();
     assert_eq!((after.hits, after.misses), (before.hits + 1, before.misses));
     // A Window needing fewer rows than such a tile holds decodes only those, keeps nothing,
-    // and leaves what the cache holds as it was (M67).
+    // leaves what the cache holds as it was, and warns of nothing (M67).
     check(&source, 0, &img, w(16, 0));
-    let r = source.describe_cache();
-    assert_eq!((r.fragment_count, r.held_past_ceiling), (1, 2));
+    assert_eq!(source.describe_cache().fragment_count, 1);
+    assert!(ceiling(&source).is_empty());
     source.clear_cache();
     assert_eq!(source.describe_cache().bytes, 0);
     // Off: the same pixels, nothing kept, every chunk a miss.
@@ -1487,4 +1498,46 @@ fn the_cache_decodes_a_chunk_once() {
     check_fragment(&f, &img, whole(&img));
     let r = source.describe_cache();
     assert_eq!((r.fragment_count, r.max_fragments, r.misses), (3, 3, 9));
+}
+
+/// A SubIFD that cannot be read is skipped, and the skip is a warning (section 3.3).
+#[test]
+fn a_skipped_subifd_is_a_warning() {
+    let mut img = Img::new(4, 5, 1, SampleType::U8);
+    img.tags.push((
+        330,
+        4,
+        2,
+        [9_000_000u32, 9_000_004]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect(),
+    ));
+    let source = bil::OpenOptions::default()
+        .open_from(write(std::slice::from_ref(&img), false, false))
+        .unwrap();
+    let w = source.take_warnings();
+    assert_eq!(w.warnings.len(), 2);
+    assert!(w
+        .warnings
+        .iter()
+        .all(|w| w.code == WarningCode::SubdirectorySkipped
+            && w.scope == Scope::Image(0)
+            && w.count == 1));
+    assert_eq!(w.warnings[0].detail, Some(9_000_000));
+    assert_eq!(
+        w.warnings[0].to_string(),
+        "image 0: the subdirectory at offset 9000000 could not be read and was skipped"
+    );
+    assert!(source.take_warnings().warnings.is_empty());
+    // A bound of one keeps the first and counts the second as dropped.
+    let one = bil::OpenOptions {
+        max_held_warnings: 1,
+        ..Default::default()
+    };
+    let w = one
+        .open_from(write(std::slice::from_ref(&img), false, false))
+        .unwrap()
+        .take_warnings();
+    assert_eq!((w.warnings.len(), w.dropped), (1, 1));
 }

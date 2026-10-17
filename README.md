@@ -4,7 +4,7 @@
 
 BIL is one interface to imaging sensor data in any format. It extracts the subset an algorithm needs, as native pixels or as 2D float32 arrays, leaves the rest unread, and locates every pixel in the world.
 
-BIL is written in Rust, with a C-callable interface over it delivered as one shared library, and a Python interface on the same core. It is licensed under the LGPL, version 2.1 or later, with a static-linking exception.
+BIL is written in Rust, with a C++ interface over it delivered as one shared library, and a Python interface on the same core. It is licensed under the LGPL, version 2.1 or later, with a static-linking exception.
 
 <p>
 <a href="flyer.pdf"><img src="docs/flyer/flyer-1.png" alt="BIL flyer, page 1: Read the part you need" width="49%"></a>
@@ -13,7 +13,7 @@ BIL is written in Rust, with a C-callable interface over it delivered as one sha
 
 The two-page flyer is [`flyer.pdf`](flyer.pdf), with its source in [`flyer.html`](flyer.html).
 
-> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 80, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
+> **Status: designed, not yet usable.** The [specification](docs/specification/specification.md) is at version 81, with two decisions left open: the libraries for the medical, security screening and sonar cases, and the full contents of the metadata dictionary and its domain profiles. The first experiments on BIL's core have passed. There is no usable library yet, and the code shown below is the specification's, not yet working. The first release, Tier 1, will read GeoTIFF and NITF.
 
 ## Why BIL is needed
 
@@ -56,7 +56,7 @@ The sizes are plain arithmetic at 4 bytes a value. The ARGUS-IS figures are as r
 
 ## A taste of the interface
 
-The calls below are the specification's, in Python, with one assumption from BIL by Example: how a `Window` is built. Rust and C have the same calls. None of this runs yet.
+The calls below are the specification's, in Python, with one assumption from BIL by Example: how a `Window` is built. Rust and C++ have the same calls, by the same names. None of this runs yet.
 
 ```python
 import bil
@@ -81,7 +81,7 @@ photo = bil.open_source("photo.tif").image(0)          # another sensor, the sam
 rgb   = photo.read_slices("color.rgb", ["red", "green", "blue"], window)
 ```
 
-[BIL by Example](docs/assessments/bil-by-example.md) has calls for every part of the specification and every kind of sensor, in Python, Rust and C.
+[BIL by Example](docs/assessments/bil-by-example.md) has calls for every part of the specification and every kind of sensor, in Python, Rust and C, written before the C++ interface replaced C.
 
 ## What BIL reads
 
@@ -89,8 +89,8 @@ The design covers every format below. They are built in tiers, each finished bef
 
 | Tier | Formats | With them |
 | --- | --- | --- |
-| Tier 1 | GeoTIFF, uncompressed, Deflate, LZW or PackBits; NITF, uncompressed or JPEG 2000 | Fragments, Slices, Levels, stored levels, the Fragment cache; affine and RPC geocoding; metadata on demand; markings; TIFF and GeoTIFF writing; Rust, Python and C |
-| Tier 2 | ENVI; video with KLV metadata; SICD and SIDD | Readers for threads, scripted drivers in Python, and plugins in C, C++ or Rust |
+| Tier 1 | GeoTIFF, uncompressed, Deflate, LZW or PackBits; NITF, uncompressed or JPEG 2000 | Fragments, Slices, Levels, stored levels, the Fragment cache; affine and RPC geocoding; metadata on demand; markings; TIFF and GeoTIFF writing; Rust, Python and C++ |
+| Tier 2 | ENVI; video with KLV metadata; SICD and SIDD | Readers for threads, scripted drivers in Python, and plugins in C++ or Rust |
 | Tier 3 | The rest: HDF5, NetCDF, raw camera files, wide area motion imagery, LIDAR and depth cameras, medical volumes and whole-slide pathology, security screening, ultrasound and sonar | Each assessed case by case |
 
 BIL reads medical data for research and processing. It is not for diagnostic use.
@@ -113,7 +113,7 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 - **Metadata on demand.** Fields under their native names, decoded only when read, and a dictionary of essential items that every format offers as far as it can. Domain profiles name the items each kind of work needs, such as SAR calibration or optical reflectance, whatever the sensor or format, and check a file against them before a pixel is read.
 - **Built for untrusted files.** Resource limits, plugins only from configured places, fuzz testing of BIL's own readers, and drivers that can run in a separate process.
 - **Markings travel.** Security markings are carried into everything BIL writes.
-- **Extensible.** Drivers in Rust, C or C++, or scripted in Python while the compiled core reads the pixels.
+- **Extensible.** Drivers in Rust or C++, or scripted in Python while the compiled core reads the pixels.
 
 **Not in BIL.** Registration, orthorectification and analysis are layers above it. BIL prepares the data they start from.
 
@@ -121,10 +121,10 @@ BIL reads medical data for research and processing. It is not for diagnostic use
 
 | Document | What it is |
 | --- | --- |
-| [Specification](docs/specification/specification.md), version 80 | The source of truth for the design |
-| [User Manual](docs/manual/user-manual.md), version 18 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
-| [BIL by Example](docs/assessments/bil-by-example.md), version 10 | Calls for every use case, in Python, Rust and C |
-| [Implementability](docs/assessments/implementability.md), version 11 | Whether BIL can be built, where it may go wrong, what to try first, and what each change means for the code |
+| [Specification](docs/specification/specification.md), version 81 | The source of truth for the design |
+| [User Manual](docs/manual/user-manual.md), version 19 | How to use BIL, chapter by chapter, with what runs today and the gaps found while writing it |
+| [BIL by Example](docs/assessments/bil-by-example.md), version 10 | Calls for every use case, in Python, Rust and C (written before C++ replaced C) |
+| [Implementability](docs/assessments/implementability.md), version 12 | Whether BIL can be built, where it may go wrong, what to try first, what each change means for the code, and what is built |
 | [Red team, pass 1](docs/reviews/red-team-pass-1.md) and [pass 2](docs/reviews/red-team-pass-2.md) | Two adversarial reviews of the specification, every finding resolved |
 | [Experiment 1](experiments/exp1-fused-loop/RESULTS.md), [1b](experiments/exp1-fused-loop/RESULTS-1b.md), [3](experiments/exp3-c-errors/RESULTS.md) and [5](experiments/exp5-borrowed-arrays/RESULTS.md) | The fused loop, the rolling buffer, containing C errors, and borrowed NumPy arrays |
 

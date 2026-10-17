@@ -47,6 +47,7 @@ pub use crate::types::{Scope, StoredLevel};
 use crate::cache::{BlockKey, Cache, CacheReport};
 pub use crate::error::{Error, Result};
 use crate::source::OpenOptions;
+use crate::warning::{WarningCode, WarningStore, Warnings};
 
 /// The driver's name, as an `Error::Unrecognized` lists it (M51).
 pub const DRIVER: &str = "geotiff";
@@ -286,6 +287,8 @@ pub struct GeoTiffSource<R: ReadAt> {
     held: Mutex<HashMap<(Scope, String), Arc<FieldGroup>>>,
     /// Chunks decoded, kept for the reads that follow (section 4).
     cache: Cache,
+    /// Warnings recorded, drained by `take_warnings` (section 3.3).
+    warnings: Arc<WarningStore>,
 }
 
 /// The most bytes of text one tag may hold, as the `tiff` crate's limit on a tag's values (M41).
@@ -616,7 +619,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
             return Err(corrupt("no full-resolution image"));
         }
         // Overviews in an Image's SubIFDs are stored levels too, as GDAL reads them.
-        for image in &mut images {
+        let warnings = Arc::new(WarningStore::new(options.max_held_warnings));
+        for (index, image) in images.iter_mut().enumerate() {
             let pointers = ifds[image.info.ifd]
                 .layout
                 .as_ref()
@@ -628,19 +632,34 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     image.info.ifd, options.max_subdirectories
                 )));
             }
-            // A SubIFD that cannot be read is skipped: it is not in the chain that locates the
-            // Images, and holds at most an overview (M42).
+            // A SubIFD that cannot be read is skipped, with a warning: it is not in the chain
+            // that locates the Images, and holds at most an overview (M42, section 3.3).
+            let skipped = |p: u64| {
+                warnings.record(
+                    WarningCode::SubdirectorySkipped,
+                    Scope::Image(index),
+                    Some(p),
+                    None,
+                )
+            };
             for p in pointers {
-                if p == 0 || p >= size || !seen.insert(p) {
+                if !seen.insert(p) {
+                    continue;
+                }
+                if p == 0 || p >= size {
+                    skipped(p);
                     continue;
                 }
                 let Ok(dir) = decoder.read_directory(tiff::tags::IfdPointer(p)) else {
+                    skipped(p);
                     continue;
                 };
                 let Ok(text) = text_entries(&*reader, size, big_endian, bigtiff, p) else {
+                    skipped(p);
                     continue;
                 };
                 let Ok(layout) = read_layout(&mut decoder, &dir, &text, &*reader, size) else {
+                    skipped(p);
                     continue;
                 };
                 if layout.subfile & 1 != 0
@@ -676,7 +695,8 @@ impl<R: ReadAt> GeoTiffSource<R> {
             images,
             decoder: Mutex::new(decoder),
             held: Mutex::new(HashMap::new()),
-            cache: Cache::default(),
+            cache: Cache::for_source(warnings.clone()),
+            warnings,
         })
     }
 
@@ -895,6 +915,12 @@ impl<R: ReadAt> GeoTiffSource<R> {
                     .pixel_type
                     .is_some_and(|p| p.sample_type.is_float()),
         })
+    }
+
+    /// The warnings recorded since the last call, and how many were dropped past
+    /// `max_held_warnings`; empties the store (section 3.3).
+    pub fn take_warnings(&self) -> Warnings {
+        self.warnings.take()
     }
 
     /// Sets how many decoded chunks this Source keeps; 0 turns the cache off (section 4).

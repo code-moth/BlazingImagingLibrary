@@ -145,28 +145,28 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <div class="shell">
   <header class="masthead">
     <div class="masthead-text">
-      <p class="eyebrow">Manual · Version 18</p>
+      <p class="eyebrow">Manual · Version 19</p>
       <h1>BIL User Manual</h1>
       <p class="lede">How to use the Blazing Imaging Library: what to call, what comes back, what it costs, and what runs today.</p>
     </div>
     <svg class="motif" viewBox="0 0 147 52" role="img" aria-label="24 chapters, the last two on what runs today and what is missing"><rect class="px" x="0" y="0" width="14" height="14" rx="2"/><rect class="px" x="19" y="0" width="14" height="14" rx="2"/><rect class="px" x="38" y="0" width="14" height="14" rx="2"/><rect class="px" x="57" y="0" width="14" height="14" rx="2"/><rect class="px" x="76" y="0" width="14" height="14" rx="2"/><rect class="px" x="95" y="0" width="14" height="14" rx="2"/><rect class="px" x="114" y="0" width="14" height="14" rx="2"/><rect class="px" x="133" y="0" width="14" height="14" rx="2"/><rect class="px" x="0" y="19" width="14" height="14" rx="2"/><rect class="px" x="19" y="19" width="14" height="14" rx="2"/><rect class="px" x="38" y="19" width="14" height="14" rx="2"/><rect class="px" x="57" y="19" width="14" height="14" rx="2"/><rect class="px" x="76" y="19" width="14" height="14" rx="2"/><rect class="px" x="95" y="19" width="14" height="14" rx="2"/><rect class="px" x="114" y="19" width="14" height="14" rx="2"/><rect class="px" x="133" y="19" width="14" height="14" rx="2"/><rect class="px" x="0" y="38" width="14" height="14" rx="2"/><rect class="px" x="19" y="38" width="14" height="14" rx="2"/><rect class="px" x="38" y="38" width="14" height="14" rx="2"/><rect class="px" x="57" y="38" width="14" height="14" rx="2"/><rect class="px" x="76" y="38" width="14" height="14" rx="2"/><rect class="px" x="95" y="38" width="14" height="14" rx="2"/><rect class="px in" x="114" y="38" width="14" height="14" rx="2"/><rect class="px in" x="133" y="38" width="14" height="14" rx="2"/></svg>
   </header>
-  <dl class="control"><div><dt>Document version</dt><dd>18</dd></div><div><dt>As of</dt><dd>16 October 2026</dd></div><div><dt>Specification</dt><dd>Version 80</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
+  <dl class="control"><div><dt>Document version</dt><dd>19</dd></div><div><dt>As of</dt><dd>17 October 2026</dd></div><div><dt>Specification</dt><dd>Version 81</dd></div><div><dt>Chapters</dt><dd>24, and an index of calls</dd></div><div><dt>Languages</dt><dd>Python, Rust and C++</dd></div><div><dt>Status</dt><dd>Mostly specified; the core pass prototyped; the NITF and GeoTIFF readers and JPEG 2000 codec built</dd></div></dl>
 
   <div class="layout">
     <nav class="rail toc" aria-label="Contents">
       <p class="toc-title">Contents</p>
-      <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
+      <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C++</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
     </nav>
     <div class="column">
       <details class="toc-inline toc">
         <summary>Contents</summary>
-        <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
+        <ol><li><a href="#1-about-this-manual">1. About this manual</a></li><li><a href="#2-what-bil-is">2. What BIL is</a></li><li><a href="#3-installing">3. Installing</a></li><li><a href="#4-the-concepts-in-ten-minutes">4. The concepts in ten minutes</a></li><li><a href="#5-opening-a-source">5. Opening a Source</a></li><li><a href="#6-looking-at-an-image">6. Looking at an Image</a></li><li><a href="#7-reading-slices">7. Reading Slices</a></li><li><a href="#8-levels">8. Levels</a></li><li><a href="#9-missing-data">9. Missing data</a></li><li><a href="#10-fragments-the-native-pixels">10. Fragments: the native pixels</a></li><li><a href="#11-frames-time-and-coordinates">11. Frames, time and coordinates</a></li><li><a href="#12-readers-the-cache-and-access-patterns">12. Readers, the cache and access patterns</a></li><li><a href="#13-performance">13. Performance</a></li><li><a href="#14-the-slice-functions">14. The slice functions</a></li><li><a href="#15-normalization-and-calibration">15. Normalization and calibration</a></li><li><a href="#16-metadata-the-dictionary-and-domain-profiles">16. Metadata, the dictionary and domain profiles</a></li><li><a href="#17-geocoding-and-accuracy">17. Geocoding and accuracy</a></li><li><a href="#18-writing-markings-and-identity">18. Writing, markings and identity</a></li><li><a href="#19-safety-and-containment">19. Safety and containment</a></li><li><a href="#20-extending-bil">20. Extending BIL</a></li><li><a href="#21-errors-and-statuses">21. Errors and statuses</a></li><li><a href="#22-python-rust-and-c">22. Python, Rust and C++</a></li><li><a href="#23-what-runs-today">23. What runs today</a></li><li><a href="#24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</a></li><li><a href="#appendix-where-each-call-is-described">Appendix: where each call is described</a></li></ol>
       </details>
       <main>
-<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 80, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
+<p>This manual explains how to use the Blazing Imaging Library (BIL): what to call, what comes back, what it costs and what can go wrong. It is written beside the code, against specification version 81, and read as it grows to find where the design is unclear, inconsistent or incomplete. Chapter 24 lists what that reading has found so far.</p>
 <h2 id="1-about-this-manual">1. About this manual</h2>
-<p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust, C or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
+<p><strong>Who it is for.</strong> Anyone who will call BIL from Python, Rust or C++ to read imaging sensor data: algorithm developers, people building processing systems, and people writing drivers for new formats.</p>
 <p><strong>How it relates to the other documents</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -219,7 +219,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 </table></div>
 <p><strong>Conventions</strong></p>
 <ul>
-<li><strong>Python first.</strong> Most examples are in Python, because it is the shortest. Chapter 22 shows the same calls in Rust and C.</li>
+<li><strong>Python first.</strong> Most examples are in Python, because it is the shortest. Chapter 22 shows the same calls in Rust and C++.</li>
 <li><strong>Two assumptions,</strong> shared with BIL by Example: <code>bil.Window(row_start, col_start, row_count, col_count, step=1, frame=0)</code> builds a Window, and options are passed to calls as keyword arguments.</li>
 <li><strong>Section numbers</strong> such as "(section 5)" refer to the specification.</li>
 <li><strong>Names.</strong> Types and enum values are UpperCamelCase, and every other name is snake_case, including the names passed as text, such as <code>color.hsv.hue</code> and <code>level3</code>.</li>
@@ -273,16 +273,16 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule);
 <td><code>cargo add bil</code></td>
 </tr>
 <tr>
-<td>C and C++</td>
-<td>The <code>bil</code> shared library, with its header</td>
+<td>C++</td>
+<td>The <code>bil</code> shared library, with its header <code>bil/bil.hpp</code></td>
 <td>From the same build as the Rust crate, or a package manager</td>
 </tr>
 </tbody>
 </table></div>
 <ul>
-<li><strong>One shared library.</strong> The C interface covers the whole Rust library and is delivered with it as one shared library. C++ uses the C interface.</li>
+<li><strong>One shared library.</strong> The C++ interface covers the whole Rust library and is delivered with it as one shared library, with Rust's names and shapes.</li>
 <li><strong>Libraries from the package manager.</strong> BIL takes each library it needs from an existing crate or from the installing package manager, and carries a private copy only as a last resort (section 10.5). FFmpeg, for video, always comes from conda or the system's package manager, at version 6 or later.</li>
-<li><strong>Python only for scripted drivers.</strong> Rust, C and C++ callers need no Python, unless they use drivers written in Python. Those run in the Python installed on the machine, in a helper process (chapter 20).</li>
+<li><strong>Python only for scripted drivers.</strong> Rust and C++ callers need no Python, unless they use drivers written in Python. Those run in the Python installed on the machine, in a helper process (chapter 20).</li>
 <li><strong>Optional plugins are separate.</strong> Plugins under a license stricter than BIL's, such as the Grok JPEG 2000 codec, and the <code>bil-extras</code> analysis functions, are separate packages. Installing one records its location in BIL's configuration.</li>
 <li><strong>Not every format at first.</strong> BIL is built in tiers. Tier 1 reads GeoTIFF and NITF. Tier 2 adds ENVI, video with KLV metadata, and SICD and SIDD. Tier 3 adds the rest, case by case.</li>
 </ul>
@@ -509,6 +509,11 @@ image  = source.image(0)
 <td>Bound the bytes of extracted metadata held</td>
 </tr>
 <tr>
+<td><code>max_held_warnings</code></td>
+<td>256</td>
+<td>Bound the distinct warnings held before more are dropped (chapter 21)</td>
+</tr>
+<tr>
 <td><code>remote_timeout</code></td>
 <td>30 seconds</td>
 <td>Bound each request to a remote Source</td>
@@ -532,7 +537,7 @@ image  = source.image(0)
 )
 </code></pre>
 <p><strong>Remote Sources</strong> are read through the same calls. BIL runs its network code on a small runtime of its own, so a caller's own asynchronous runtime is never touched. Requests are counted and merged, because over a network the number of requests costs more than the bytes, and <code>plan</code> reports both.</p>
-<p><strong>Closing.</strong> A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call <code>close()</code> in Python or <code>bil_close_source</code> in C. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again, while Fragments and Slices already read stay valid until each is freed. Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.</p>
+<p><strong>Closing.</strong> A Source closes when the last reference to it goes, which in Rust is when it is dropped, or when you call <code>close()</code> in Python or C++. Closing frees the cache, the held metadata, anything read ahead and the Readers, and in Python every later read from the Source is an error; in C the handle is freed and must not be used again, while Fragments and Slices already read stay valid until each is freed. Arrays borrowed from it stay valid: each keeps the memory it borrows, which goes with the last of them.</p>
 <h2 id="6-looking-at-an-image">6. Looking at an Image</h2>
 <blockquote>
 <p><strong>Status:</strong> Specified.</p>
@@ -1798,7 +1803,7 @@ scene = bil.open_source(path, untrusted=True, max_image_pixels=4 * 10**10)   # r
 <blockquote>
 <p><strong>Status:</strong> Specified.</p>
 </blockquote>
-<p><strong>Kinds of plugin.</strong> All register through one call, <code>register_plugin</code>, with a description of the plugin and its kind. <code>bil_register_driver</code>, <code>register_slice_function</code>, <code>register_level_method</code> and the scripted <code>register_driver</code> are short forms of it.</p>
+<p><strong>Kinds of plugin.</strong> All register through one call, <code>register_plugin</code>, with a description of the plugin and its kind. <code>register_driver</code>, <code>register_slice_function</code> and <code>register_level_method</code> are short forms of it, the same in every language.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -1846,7 +1851,7 @@ scene = bil.open_source(path, untrusted=True, max_image_pixels=4 * 10**10)   # r
 </tbody>
 </table></div>
 <p><strong>What a driver provides.</strong> Recognize the format (<code>probe</code>), open it, describe its Images (<code>list_images</code>), describe how its blocks are stored (<code>describe_storage</code>), read Fragments (<code>read_fragment</code>), hold decoder state (<code>open_reader</code>), declare its <code>concurrency</code>, and expose metadata and geocoding. A driver never implements slice functions: the core makes every Slice from its Fragments, so a new driver gains every applicable function at once. Optionally it can describe its pixels for the core to read, add slice functions under its own family, add additional records, or emit float32 rows directly where that reproduces the core's result exactly.</p>
-<p><strong>A driver in C, C++ or Rust,</strong> built separately, is a shared library that calls <code>bil_register_driver</code> through the C interface, with the plugin interface version it was built against. A plugin of another major version is refused and listed as not loaded, with the reason.</p>
+<p><strong>A driver in C++ or Rust,</strong> built separately, is a shared library that calls <code>register_driver</code> through the C++ interface, with the plugin interface version it was built against. A plugin of another major version is refused and listed as not loaded, with the reason.</p>
 <p><strong>A scripted driver.</strong> For an esoteric or evolving format, write the format-specific part in Python and leave the pixels to the compiled core.</p>
 <pre><code class="language-python">class VendorDriver(bil.ScriptedDriver):
     name = &quot;vendor&quot;
@@ -1867,7 +1872,7 @@ bil.register_driver(VendorDriver)
 <ul>
 <li><strong>Pixels by description.</strong> <code>describe_pixels</code> returns a <code>PixelLayout</code>: offset, byte order, interleave, row stride, blocks with their offsets, codec and validity. The core reads from it, with the zero-copy rule, Slices and Levels unchanged.</li>
 <li><strong>The slow path is reported.</strong> A script that returns pixels as an array instead is interpreted and slower, and <code>plan_slice</code> says so.</li>
-<li><strong>CPython, from the machine.</strong> Scripts run in the Python installed on the machine. Inside Python, BIL uses that interpreter. From Rust, C and C++, it runs in a BIL helper process started on first use, and each call into the script is a round trip between processes, made when a Source is opened and when additional data is read, never for pixels a layout describes.</li>
+<li><strong>CPython, from the machine.</strong> Scripts run in the Python installed on the machine. Inside Python, BIL uses that interpreter. From Rust and C++, it runs in a BIL helper process started on first use, and each call into the script is a round trip between processes, made when a Source is opened and when additional data is read, never for pixels a layout describes.</li>
 <li><strong>Additional data.</strong> A script can expose extra records by name, such as calibration tables or per-line records, and callers read them with <code>list_auxiliary()</code> and <code>read_auxiliary(name)</code>. A script can be attached to a compiled driver for data that driver does not read.</li>
 <li><strong>Code is trusted only by choice.</strong> Scripts load only when you register them or name their folder.</li>
 </ul>
@@ -1886,7 +1891,7 @@ bil.register_driver(VendorDriver)
 <blockquote>
 <p><strong>Status:</strong> Specified.</p>
 </blockquote>
-<p><strong>A call either delivers or fails.</strong> A call that cannot deliver returns an error and no value: a file that cannot be opened, a bad argument, a failed read, a limit exceeded, or corrupt data. In Python an error is an exception, in Rust an <code>Err</code>, and in C a status code with the message from <code>bil_last_error</code>.</p>
+<p><strong>A call either delivers or fails.</strong> A call that cannot deliver returns an error and no value: a file that cannot be opened, a bad argument, a failed read, a limit exceeded, or corrupt data. In Python and C++ an error is an exception, and in Rust an <code>Err</code>.</p>
 <p><strong>What is delivered carries a status</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -1989,8 +1994,44 @@ bil.register_driver(VendorDriver)
 </tr>
 </tbody>
 </table></div>
-<p><strong>A failure never becomes a crash.</strong> Failures inside BIL are caught at the interface and returned as errors. A C callback must not let an exception or a <code>longjmp</code> cross into BIL.</p>
-<h2 id="22-python-rust-and-c">22. Python, Rust and C</h2>
+<p><strong>A failure never becomes a crash.</strong> Failures inside BIL are caught at the interface and returned as errors. An exception thrown by a C++ or Python callback is caught at the boundary and returned as the error of the call that made the callback.</p>
+<p><strong>Warnings.</strong> Some events change nothing a call delivers, but you may want to know of them: a skipped directory, a cache ceiling below the file's blocks, a corrupt block delivered as missing under <code>corrupt_as_missing</code>. BIL records them on the Source, and you drain them when you choose.</p>
+<pre><code class="language-python">for tile in tiles:
+    image.read_fragment(tile)
+report = source.take_warnings()          # after the whole Image, every so many tiles, or never
+for w in report.warnings:
+    print(w.code, w.count, w.blocks, w)  # str(w) builds the message now
+report.dropped                           # distinct warnings past max_held_warnings
+</code></pre>
+<ul>
+<li><strong>Free when nothing happens.</strong> Reads do not change, and a read with nothing to report touches nothing.</li>
+<li><strong>One entry for a repeat.</strong> A warning met on a thousand tiles is one entry, with its count and the first four tiles.</li>
+<li><strong>Bounded.</strong> At most <code>max_held_warnings</code> distinct entries, 256 by default; more are counted as dropped.</li>
+<li><strong>Not errors.</strong> What is an error stays one: a library's warning while decoding is corrupt data.</li>
+</ul>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Warning</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cache_ceiling_exceeded</code></td>
+<td>A block larger than <code>set_cache_bytes</code> was held alone</td>
+</tr>
+<tr>
+<td><code>subdirectory_skipped</code></td>
+<td>A TIFF SubIFD that cannot be read was skipped</td>
+</tr>
+<tr>
+<td><code>corrupt_block_missing</code></td>
+<td>Under <code>corrupt_as_missing</code>, a corrupt block was delivered as missing</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="22-python-rust-and-c">22. Python, Rust and C++</h2>
 <blockquote>
 <p><strong>Status:</strong> Specified. Borrowed NumPy arrays and the release of the interpreter lock are prototyped in experiment 5 (chapter 23).</p>
 </blockquote>
@@ -2017,22 +2058,19 @@ let values: &amp;[f32] = &amp;slice.data;   // borrowed where the source is alre
 <li><strong>Threads are checked by the compiler.</strong> Sources, Images, Fragments and Slices are <code>Send</code> and <code>Sync</code>; a Reader is <code>Send</code>.</li>
 <li><strong>Static linking is allowed</strong> by the license's exception.</li>
 </ul>
-<p><strong>C</strong></p>
-<pre><code class="language-c">BilSource *source;
-BilImage  *image;
-BilSlice  *slice;
-BilStatus status = bil_open_source(&quot;scene.ntf&quot;, &amp;source);
-if (status == BIL_OK) status = bil_image(source, 0, &amp;image);
-if (status == BIL_OK) status = bil_read_slice(image, &quot;complex.polar.magnitude&quot;, &amp;window, &amp;slice);
-if (status == BIL_ERROR) {
-    char message[512];
-    bil_last_error(message, sizeof message);
+<p><strong>C++</strong></p>
+<pre><code class="language-cpp">#include &lt;bil/bil.hpp&gt;
+
+try {
+    auto source = bil::open_source(&quot;scene.ntf&quot;);
+    auto slice  = source.image(0).read_slice(&quot;complex.polar.magnitude&quot;, window);
+    std::span&lt;const float&gt; values = slice.data();      // rows × cols, row stride slice.row_stride()
+    if (slice.status() == bil::Status::Partial) { /* missing pixels are NaN */ }
+    for (const auto&amp; w : source.take_warnings().warnings) std::clog &lt;&lt; w &lt;&lt; '\n';
+} catch (const bil::Error&amp; e) {
+    e.kind();                                           // bil::ErrorKind::Corrupt, ...
+    e.what();
 }
-/* BIL_PARTIAL: delivered, with missing pixels marked */
-const float *values; uint32_t rows, cols; ptrdiff_t row_stride;
-bil_slice_data(slice, &amp;values, &amp;rows, &amp;cols, &amp;row_stride);
-bil_free_slice(slice);
-bil_close_source(source);
 </code></pre>
 <div class="table-wrap"><table>
 <thead>
@@ -2043,33 +2081,37 @@ bil_close_source(source);
 </thead>
 <tbody>
 <tr>
-<td>Handles</td>
-<td>Every object is an opaque handle, read through accessors</td>
+<td>Names</td>
+<td>Rust's, unchanged, in the namespace <code>bil</code>: <code>bil::open_source</code>, <code>bil::Source</code>, <code>read_slice</code>, <code>bil::SampleType::ComplexF32</code></td>
 </tr>
 <tr>
-<td>Status</td>
-<td>Every function returns a <code>BilStatus</code>, and results come back through the last arguments</td>
+<td>Objects</td>
+<td>Each Rust type is a C++ class with the same methods. Sources, Images, Fragments and Slices may be copied and shared between threads; a copy of a Source shares it. A Reader is moved, not copied.</td>
 </tr>
 <tr>
-<td>Ownership</td>
-<td>What a call creates, free with the matching <code>bil_free_</code> call. A handle from another is valid while its parent is.</td>
+<td>Lifetime</td>
+<td>Objects own what they hold. A Source closes when its last copy goes, or at <code>close()</code>. Nothing is freed by hand.</td>
+</tr>
+<tr>
+<td>Failures</td>
+<td>A call returns its value; a failure throws <code>bil::Error</code>, whose <code>kind()</code> is one of Rust's error kinds</td>
 </tr>
 <tr>
 <td>Data</td>
-<td>An accessor gives a pointer, the size and the strides, valid until the object is freed</td>
+<td><code>data()</code> is a <code>std::span</code> over the memory a Fragment or Slice borrows or owns, valid while the object lives</td>
 </tr>
 <tr>
-<td>Errors</td>
-<td><code>bil_last_error</code> gives the message for this thread's last failed call</td>
+<td>Options</td>
+<td>Structs with Rust's fields and defaults: <code>bil::OpenOptions options; options.max_held_warnings = 64;</code></td>
 </tr>
 </tbody>
 </table></div>
 <ul>
-<li><strong>Names carry a prefix:</strong> <code>bil_</code> on functions, <code>Bil</code> on types, <code>BIL_</code> on enum values in upper case.</li>
-<li><strong>Strings are UTF-8,</strong> ending with a zero byte.</li>
-<li><strong>Options are structs whose first field is their size,</strong> so new options never break old callers.</li>
+<li><strong>Strings are UTF-8,</strong> as <code>std::string</code> and <code>std::string_view</code>.</li>
+<li><strong>Callbacks are any callable;</strong> an exception from one comes back as the error of the call that made it.</li>
+<li><strong>Proposed, not yet ruled:</strong> this table and the example (M70), how the header reaches the library (M69), and the license of the header's code (M71), in chapter 24.</li>
 </ul>
-<p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
+<p><strong>Stability.</strong> The crate and the shared library follow semantic versioning. The C++ interface changes incompatibly only at a major version, and the plugin interface carries its own version.</p>
 <h2 id="23-what-runs-today">23. What runs today</h2>
 <blockquote>
 <p><strong>Status:</strong> Built (the <code>bil</code> crate's vector layer, kernels, Source interface, NITF container reader, GeoTIFF reader and JPEG 2000 codec, and <code>bil-sys</code>'s OpenJPEG bindings) and Prototyped (experiments 1, 1b, 3 and 5).</p>
@@ -2106,7 +2148,7 @@ source.as_geotiff();                                  // the reader itself, for 
 <tr>
 <td><code>open_source(path)</code>, <code>OpenOptions::open(path)</code>, <code>OpenOptions::open_from(reader)</code></td>
 <td><code>open_source</code> with <code>OpenOptions</code></td>
-<td><code>OpenOptions</code> holds <code>max_directories</code> (100,000) and <code>max_subdirectories</code> (1,000), M41's limits; the other options join as their code is written (M50). <code>open_from</code> takes any <code>ReadAt</code>: a file or bytes in memory. Each driver checks its container's leading bytes, <code>nitf</code> then <code>geotiff</code>; one that recognizes them and then fails gives its error (M54)</td>
+<td><code>OpenOptions</code> holds <code>max_directories</code> (100,000) and <code>max_subdirectories</code> (1,000), M41's limits, and <code>max_held_warnings</code> (256); the other options join as their code is written (M50). <code>open_from</code> takes any <code>ReadAt</code>: a file or bytes in memory. Each driver checks its container's leading bytes, <code>nitf</code> then <code>geotiff</code>; one that recognizes them and then fails gives its error (M54)</td>
 </tr>
 <tr>
 <td><code>Source::driver</code>, <code>image_count</code>, <code>list_images</code>, <code>image(i)</code></td>
@@ -2126,7 +2168,7 @@ source.as_geotiff();                                  // the reader itself, for 
 <tr>
 <td><code>set_cache_size</code>, <code>set_cache_bytes</code>, <code>describe_cache</code>, <code>clear_cache</code></td>
 <td>Section 4's Fragment cache</td>
-<td><code>bil::cache</code>. 16 blocks and a quarter of physical memory by default. <code>describe_cache</code> gives a <code>CacheReport</code>: <code>fragment_count</code>, <code>bytes</code>, <code>max_fragments</code>, <code>max_bytes</code>, and in blocks <code>hits</code>, <code>misses</code>, <code>served_from_read_ahead</code> (0 until read-ahead) and <code>held_past_ceiling</code>, the warning that a block passed <code>set_cache_bytes</code> and was held alone (M61, M66). GeoTIFF's chunks pass through it, every level, compressed or not; NITF's blocks do not yet, so its cache stays empty. A chunk larger than the ceiling that a read needs only part of is decoded down to the Window's last row and not kept (M67)</td>
+<td><code>bil::cache</code>. 16 blocks and a quarter of physical memory by default. <code>describe_cache</code> gives a <code>CacheReport</code>: <code>fragment_count</code>, <code>bytes</code>, <code>max_fragments</code>, <code>max_bytes</code>, and in blocks <code>hits</code>, <code>misses</code> and <code>served_from_read_ahead</code> (0 until read-ahead). A block held alone past <code>set_cache_bytes</code> is the warning <code>cache_ceiling_exceeded</code> (M61). GeoTIFF's chunks pass through it, every level, compressed or not; NITF's blocks do not yet, so its cache stays empty. A chunk larger than the ceiling that a read needs only part of is decoded down to the Window's last row and not kept (M67)</td>
 </tr>
 <tr>
 <td><code>Image::info</code>, <code>ImageInfo { row_count, col_count, frame_count, representation, component_names, pixel_type, component_count, relations, storage, may_have_missing }</code></td>
@@ -2147,6 +2189,11 @@ source.as_geotiff();                                  // the reader itself, for 
 <td><code>Image::read_fragment(window, level)</code></td>
 <td><code>read_fragment(window, level)</code></td>
 <td><code>level</code> is always given, since Rust has no default arguments</td>
+</tr>
+<tr>
+<td><code>Source::take_warnings</code>, <code>bil::warning</code>: <code>Warnings { warnings, dropped }</code>, <code>Warning { code, scope, detail, count, blocks }</code>, <code>WarningCode</code></td>
+<td>Section 3.3's warnings</td>
+<td>As specified, with M68's details. Recorded today: <code>cache_ceiling_exceeded</code> and, in GeoTIFF, <code>subdirectory_skipped</code>; <code>corrupt_block_missing</code> comes with <code>corrupt_as_missing</code>. A <code>Warning</code>'s message is its <code>Display</code>, built when asked for. <code>OpenOptions</code> has <code>max_held_warnings</code></td>
 </tr>
 <tr>
 <td><code>bil::Error</code>, <code>bil::Result</code></td>
@@ -2474,9 +2521,9 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </code></pre>
 <p>Both parts run in CI on Linux on x86 and ARM. <code>RESULTS.md</code> beside it has the full results.</p>
 <p><strong>What comes next</strong> in code: NITF's blocks through the cache, its JPEG 2000 Images by codestream tile (M62), measured first; then M31's private copy, which waits for packaging; Readers, read-ahead and the dictionary.</p>
-<p><strong>What specification versions 68 to 80 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>, and version 79's (M58) describes what it already did. Version 80's (M59 to M65) brought the Fragment cache, so far for GeoTIFF's chunks. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
+<p><strong>What specification versions 68 to 81 change in this code.</strong> Nothing in the pass, which already reads its rows top to bottom, the storage order of strips and of tiles stored row by row. The NITF reader, written against version 71, reports its <code>Storage</code> in file order, as access patterns need, and version 72's codes in locators are in it: its extension definitions are keyed by code or family of codes, and <code>check_extension_code</code> holds a code to NITF's six characters (<code>EXTENSION_TAG_LENGTH</code>). Version 73's rulings describe what the reader and experiment 3 already did, so they changed no code. The GeoTIFF reader, written against version 73, also reports its <code>Storage</code> in file order; version 74's rulings (M36 to M44) changed how it reads chunks, text, sample widths and the first IFD, as above, and M33 to M35 describe what the NITF reader already did. Version 76's rulings (M46 to M49) describe what both readers already did, save one change: JPEG 2000 resolution levels are now reported as aligned. The Source interface brings version 74's M41 and M45 into the code, and version 77's rulings (M50 to M54) describe what it already did. Version 78's (M55 to M57) brought representations and component names into <code>ImageInfo</code>, and version 79's (M58) describes what it already did. Version 80's (M59 to M65) brought the Fragment cache, so far for GeoTIFF's chunks. Version 81 brought the warning store, which replaced M66's count, and C++ in place of C, which no code had yet reached. Access patterns and domain profiles still bear on the cache, the Readers, the input layer and the dictionary, all still to be written. The implementability assessment, section 10, sets out where.</p>
 <h2 id="24-gaps-and-inconsistencies-found-while-writing">24. Gaps and inconsistencies found while writing</h2>
-<p>Writing this manual against specification versions 68 to 80, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
+<p>Writing this manual against specification versions 68 to 81, and the code beside it, found the points below. Each went to the author as a proposal; the table records each ruling, so the record is complete.</p>
 <p><strong>Fixed while writing, or ruled on by the author</strong></p>
 <div class="table-wrap"><table>
 <thead>
@@ -2837,9 +2884,14 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td><strong>What <code>describe_cache</code> counts.</strong> "How many reads the cache has served" leaves open whether a read counts once or once for each block it found.</td>
 <td>Accepted as proposed, by the author's ruling (version 80): section 4</td>
 </tr>
+<tr>
+<td>M66</td>
+<td><strong>How the warning of M61 reaches the caller.</strong> The ruling asks for a warning when the ceiling gives way, and BIL has no channel for warnings: section 3.3 has results and statuses, and BIL writes no log.</td>
+<td>Superseded by the author's warning design (version 81): the ceiling's giving way is the warning <code>cache_ceiling_exceeded</code> in the Source's store, drained by <code>take_warnings</code>; <code>held_past_ceiling</code> left <code>describe_cache</code>. Section 3.3</td>
+</tr>
 </tbody>
 </table></div>
-<p><strong>Open, for the author.</strong> M66 and M67, from coding the cache. Both are coded as proposed, so that they can be tested; a ruling otherwise changes them.</p>
+<p><strong>Open, for the author.</strong> M67, from coding the cache, and M68 to M71, from version 81's rulings. M67 and M68 are coded as proposed, so that they can be tested; M69 to M71 wait for a ruling before any C++ is written. M71 is a license point, raised under the rule that the author is warned of anything that strays from the shipped-build license.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -2850,14 +2902,29 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 </thead>
 <tbody>
 <tr>
-<td>M66</td>
-<td><strong>How the warning of M61 reaches the caller.</strong> The ruling asks for a warning when the ceiling gives way, and BIL has no channel for warnings: section 3.3 has results and statuses, and BIL writes no log.</td>
-<td>A count, <code>held_past_ceiling</code>, in <code>describe_cache</code>, beside the limits, so a caller who checks it, or <code>plan_slice</code>'s block sizes beforehand, learns that the ceiling is below the file's blocks. Not a log, which C and Python callers would have to route, and not a status on the Fragment, which is <code>Complete</code> whatever the cache did. A callback could come later with the other events BIL reports, if the author wants one.</td>
-</tr>
-<tr>
 <td>M67</td>
 <td><strong>A block much larger than the read.</strong> A TIFF whose one strip is the whole Image is common. Under M59 and M60 a 100 × 100 Window of it would decode the whole strip, and under M61 hold it past the ceiling: gigabytes for one small read.</td>
 <td>A block larger than the ceiling that the read needs only some rows of is decoded down to the Window's last row, as the reader did before the cache, and not kept; it counts as a miss. M61 applies where the read needs the block whole. Below the ceiling, blocks are decoded whole and kept, as M59 says.</td>
+</tr>
+<tr>
+<td>M68</td>
+<td><strong>The warning store's details.</strong> Version 81 rules the store: codes with structured context, kept once by code and detail with a count and the first locations, bounded with a dropped count, drained when the caller chooses. It leaves the names, the place, the bound and the return value.</td>
+<td>Kept by code, place and detail. The place is the existing <code>Scope</code>, the Source or one Image; the detail one optional number; the locations the first four blocks, named by the <code>BlockKey</code> that the cache and <code>describe_storage</code> already use. The bound is <code>max_held_warnings</code> in <code>OpenOptions</code>, 256 by default, beside <code>max_held_positions</code>, and the store is a row of section 3.4's held data. <code>take_warnings()</code> on the Source returns <code>Warnings { warnings, dropped }</code>, in the order first met, and empties the store; each <code>Warning</code>'s message is built by its <code>Display</code> (<code>str()</code> in Python, <code>operator&lt;&lt;</code> in C++). Three codes so far: <code>cache_ceiling_exceeded</code>, which replaces M66's count; <code>subdirectory_skipped</code>; <code>corrupt_block_missing</code>. Every Reader records into its Source's one store.</td>
+</tr>
+<tr>
+<td>M69</td>
+<td><strong>How the C++ interface reaches a Rust library.</strong> Rust cannot export C++ classes, and C++ classes have no stable binary form between compilers and standard libraries (MSVC, GCC and Clang; libstdc++ and libc++), which is the reason section 10 gave for not using Rust's. A plugin built by one compiler must still load into BIL built by another.</td>
+<td>The "hourglass": the shared library exports a narrow set of plain functions on opaque handles, BIL's binary layer, versioned with the plugin interface and not documented or supported as an interface for callers; the public interface is the header <code>bil/bil.hpp</code>, whose classes wrap that layer and compile with the caller's own compiler. External drivers take the same route the other way: a <code>bil::Driver</code> base class in the header, reached through the layer. One shared library stays replaceable under the LGPL and stable between compilers. <strong>A consequence:</strong> "whatever can call C can use the whole of BIL" ends. Julia, C#, Java, Go and Fortran lose a supported route, and could reach the layer only at their own risk; a language is supported again when one is asked for. The <code>cxx</code> crate was considered and rejected: it ties caller and library to one compiler's build, and gives separately built plugins no stable binary form.</td>
+</tr>
+<tr>
+<td>M70</td>
+<td><strong>The C++ standard, failures and views.</strong> Version 81 asks for an interface akin to Rust's.</td>
+<td>C++20, for <code>std::span</code> over array data. Failures throw <code>bil::Error</code>, with <code>kind()</code> (<code>bil::ErrorKind</code>: <code>Unrecognized</code>, <code>Corrupt</code>, <code>Unsupported</code>, <code>NotFound</code>, <code>Io</code>, as Rust's variants) and <code>what()</code>; statuses stay on results, as in Rust. Rust's names unchanged in the namespace <code>bil</code>. A Source, Image, Fragment or Slice is a value that may be copied, a copy sharing what it refers to, as Rust's <code>Arc</code> does; a Reader is move-only, as it belongs to one thread. Alternatives: <code>std::expected</code> (C++23) mirrors Rust's <code>Result</code> more closely but needs C++23 and a check at every call; C++17 with BIL's own span serves older compilers.</td>
+</tr>
+<tr>
+<td>M71</td>
+<td><strong>The license of code in the header (a warning).</strong> The header's classes compile into the caller's own object files. LGPL 2.1 section 5 frees such an object only where it uses small inline functions, ten lines or less, and the linking exception covers linking, keeping "any work based on BIL that is not merely linked with it" under the LGPL. A caller's object holding BIL's header code may be such a work, so a closed-source C++ program might not be free to use the header as Rust programs use the crate.</td>
+<td>Either extend <code>LINKING-EXCEPTION.md</code> to cover code included from BIL's public headers, as GCC's runtime library exception does for its headers and templates; or license <code>bil/bil.hpp</code> alone under a permissive license such as MIT, since it holds only the wrapping, not BIL's reading. Either reopens the closed license review on this one point, which is the author's to decide.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2948,7 +3015,7 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td>19</td>
 </tr>
 <tr>
-<td><code>register_plugin</code>, <code>register_driver</code>, <code>register_slice_function</code>, <code>register_level_method</code>, <code>bil_register_driver</code></td>
+<td><code>register_plugin</code>, <code>register_driver</code>, <code>register_slice_function</code>, <code>register_level_method</code></td>
 <td>20</td>
 </tr>
 <tr>
@@ -2956,13 +3023,17 @@ cargo run --release --features gdal -- --gdal --check   # needs libgdal-dev
 <td>20</td>
 </tr>
 <tr>
-<td><code>bil_last_error</code> and the C conventions</td>
-<td>21, 22</td>
+<td><code>take_warnings</code></td>
+<td>21, 23</td>
+</tr>
+<tr>
+<td>The C++ conventions</td>
+<td>22</td>
 </tr>
 </tbody>
 </table></div>
       </main>
-      <footer>BIL User Manual, version 18, written beside the code against version 80 of the Blazing Imaging Library (BIL) specification, as of 16 October 2026. Calls shown as Specified do not run yet.</footer>
+      <footer>BIL User Manual, version 19, written beside the code against version 81 of the Blazing Imaging Library (BIL) specification, as of 17 October 2026. Calls shown as Specified do not run yet.</footer>
     </div>
   </div>
 </div>

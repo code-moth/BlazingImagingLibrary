@@ -34,6 +34,7 @@ use defs::{walk, WalkError, Walked};
 use crate::cache::{Cache, CacheReport};
 pub use crate::error::{Error, Result};
 use crate::source::OpenOptions;
+use crate::warning::{WarningStore, Warnings};
 
 /// The driver's name, as an `Error::Unrecognized` lists it (M51).
 pub const DRIVER: &str = "nitf";
@@ -347,6 +348,8 @@ pub struct NitfSource<R: ReadAt> {
     held: Mutex<HashMap<(Scope, String), Arc<FieldGroup>>>,
     /// Blocks decoded, kept for the reads that follow (section 4); not yet filled.
     cache: Cache,
+    /// Warnings recorded, drained by `take_warnings` (section 3.3).
+    warnings: Arc<WarningStore>,
 }
 
 /// Reads `len` bytes at `offset`, which the caller has checked lie within the file.
@@ -453,9 +456,10 @@ impl<R: ReadAt> NitfSource<R> {
     }
 
     /// Opens a Source: reads the file header and the image subheaders, and checks that every
-    /// segment lies within the file. NITF has no chain of directories, so none of the options
-    /// built so far applies to it.
-    pub fn open_with(reader: R, _options: &OpenOptions) -> Result<NitfSource<R>> {
+    /// segment lies within the file. NITF has no chain of directories, so of the options built
+    /// so far only `max_held_warnings` applies to it.
+    pub fn open_with(reader: R, options: &OpenOptions) -> Result<NitfSource<R>> {
+        let warnings = Arc::new(WarningStore::new(options.max_held_warnings));
         let size = reader.size()?;
         if size < 9 {
             return Err(unrecognized());
@@ -577,7 +581,8 @@ impl<R: ReadAt> NitfSource<R> {
             segments,
             images,
             held: Mutex::new(HashMap::new()),
-            cache: Cache::default(),
+            cache: Cache::for_source(warnings.clone()),
+            warnings,
         })
     }
 
@@ -899,6 +904,12 @@ impl<R: ReadAt> NitfSource<R> {
             may_have_missing: info.masked
                 || info.pixel_type.is_some_and(|p| p.sample_type.is_float()),
         })
+    }
+
+    /// The warnings recorded since the last call, and how many were dropped past
+    /// `max_held_warnings`; empties the store (section 3.3).
+    pub fn take_warnings(&self) -> Warnings {
+        self.warnings.take()
     }
 
     /// Sets how many decoded blocks this Source keeps; 0 turns the cache off (section 4).

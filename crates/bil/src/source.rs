@@ -22,6 +22,7 @@ use crate::io::ReadAt;
 #[cfg(feature = "nitf")]
 use crate::nitf::NitfSource;
 use crate::types::{Fragment, ImageInfo, Scope, Storage, StoredLevel, Window};
+use crate::warning::Warnings;
 
 /// What `open_source` is given (section 3.4). This preview holds the options the readers act
 /// on; the others join as the code that uses them is written (M50).
@@ -31,6 +32,8 @@ pub struct OpenOptions {
     pub max_directories: u64,
     /// Refuse an Image with more subdirectories, such as TIFF's SubIFDs, than this.
     pub max_subdirectories: u64,
+    /// Distinct warnings held before more are dropped (section 3.3).
+    pub max_held_warnings: usize,
 }
 
 impl Default for OpenOptions {
@@ -38,6 +41,7 @@ impl Default for OpenOptions {
         OpenOptions {
             max_directories: 100_000,
             max_subdirectories: 1_000,
+            max_held_warnings: crate::warning::DEFAULT_MAX_HELD,
         }
     }
 }
@@ -157,6 +161,12 @@ impl Source {
             #[allow(unreachable_patterns)]
             _ => None,
         }
+    }
+
+    /// The warnings recorded since the last call, and how many were dropped past
+    /// `max_held_warnings`; empties the store (section 3.3).
+    pub fn take_warnings(&self) -> Warnings {
+        each!(self.0, s => s.take_warnings())
     }
 
     /// Sets how many decoded Fragments this Source keeps; 0 turns the cache off (section 4).

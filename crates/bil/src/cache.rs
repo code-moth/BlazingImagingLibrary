@@ -4,10 +4,15 @@
 //! The Fragment cache (section 4): decoded blocks kept for each Source, shared by every Reader,
 //! least recently used first out, bounded by a count and by bytes.
 
+// With no reader compiled in, nothing makes a Source's store or cache.
+#![cfg_attr(not(any(feature = "nitf", feature = "geotiff")), allow(dead_code))]
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 
 use crate::error::Result;
+use crate::types::Scope;
+use crate::warning::{WarningCode, WarningStore};
 
 /// What identifies one block (section 4, "One block, one entry"): its Image, level, frame,
 /// block row and column, and the components it holds: the first, and one past the last.
@@ -35,9 +40,6 @@ pub struct CacheReport {
     pub misses: u64,
     /// Blocks served from read-ahead: always 0 until read-ahead is built.
     pub served_from_read_ahead: u64,
-    /// Times a block larger than `max_bytes` was held alone, past the ceiling: the warning
-    /// that the ceiling is below the blocks the file holds (section 4, "At least one block").
-    pub held_past_ceiling: u64,
 }
 
 /// The default count of blocks kept (section 4).
@@ -71,11 +73,14 @@ struct State {
 pub struct Cache {
     state: Mutex<State>,
     decoded: Condvar,
+    /// The Source's warning store, where the ceiling's giving way is recorded (section 3.3).
+    warnings: Arc<WarningStore>,
 }
 
-impl Default for Cache {
-    fn default() -> Cache {
-        Cache::new(DEFAULT_FRAGMENTS, default_bytes())
+impl Cache {
+    /// A cache with the default limits, recording into a Source's warning store.
+    pub(crate) fn for_source(warnings: Arc<WarningStore>) -> Cache {
+        Cache::new(DEFAULT_FRAGMENTS, default_bytes(), warnings)
     }
 }
 
@@ -94,7 +99,7 @@ impl Drop for Pending<'_> {
 }
 
 impl Cache {
-    pub fn new(max_fragments: usize, max_bytes: u64) -> Cache {
+    pub(crate) fn new(max_fragments: usize, max_bytes: u64, warnings: Arc<WarningStore>) -> Cache {
         Cache {
             state: Mutex::new(State {
                 max_fragments,
@@ -106,7 +111,19 @@ impl Cache {
                 report: CacheReport::default(),
             }),
             decoded: Condvar::new(),
+            warnings,
         }
+    }
+
+    /// Records that the ceiling gave way for the block `key`, of `bytes` (section 4, "At least
+    /// one block"), outside the cache's lock.
+    fn warn_ceiling(&self, key: BlockKey, bytes: u64) {
+        self.warnings.record(
+            WarningCode::CacheCeilingExceeded,
+            Scope::Image(key.image as usize),
+            Some(bytes),
+            Some(key),
+        );
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -173,10 +190,10 @@ impl Cache {
             return;
         }
         let bytes = data.len() as u64;
-        if bytes > state.max_bytes {
-            // At least one block: it is held alone, and the ceiling's giving way is reported.
+        let past = bytes > state.max_bytes;
+        if past {
+            // At least one block: it is held alone, and the ceiling's giving way is a warning.
             Self::evict_until(&mut state, 0, 0);
-            state.report.held_past_ceiling += 1;
         } else {
             let (count, room) = (state.max_fragments - 1, state.max_bytes - bytes);
             Self::evict_until(&mut state, count, room);
@@ -187,6 +204,10 @@ impl Cache {
         state.by_use.insert(now, key);
         state.report.bytes += bytes;
         state.report.fragment_count = state.entries.len();
+        drop(state);
+        if past {
+            self.warn_ceiling(key, bytes);
+        }
     }
 
     /// Drops the least recently used blocks until at most `count` are held, in at most `bytes`.
@@ -228,8 +249,13 @@ impl Cache {
             }
         }
         state.report.fragment_count = state.entries.len();
-        if state.report.bytes > max_bytes {
-            state.report.held_past_ceiling += 1;
+        let past = (state.report.bytes > max_bytes)
+            .then(|| state.entries.keys().next().copied())
+            .flatten()
+            .map(|k| (k, state.report.bytes));
+        drop(state);
+        if let Some((key, bytes)) = past {
+            self.warn_ceiling(key, bytes);
         }
     }
 
@@ -337,7 +363,7 @@ mod tests {
 
     #[test]
     fn least_recently_used_goes_first() {
-        let c = Cache::new(2, 1000);
+        let c = Cache::new(2, 1000, Arc::new(WarningStore::new(8)));
         get(&c, 1, 10);
         get(&c, 2, 10);
         get(&c, 1, 10); // 1 is now the newer
@@ -352,21 +378,28 @@ mod tests {
 
     #[test]
     fn the_byte_ceiling_bounds_what_is_held() {
-        let c = Cache::new(16, 25);
+        let c = Cache::new(16, 25, Arc::new(WarningStore::new(8)));
         get(&c, 1, 10);
         get(&c, 2, 10);
         get(&c, 3, 10); // 30 bytes would pass 25: 1 goes
         let r = c.describe();
-        assert_eq!((r.fragment_count, r.bytes, r.held_past_ceiling), (2, 20, 0));
+        assert_eq!((r.fragment_count, r.bytes), (2, 20));
+        assert!(c.warnings.take().warnings.is_empty());
     }
 
     #[test]
     fn a_block_past_the_ceiling_is_held_alone_and_reported() {
-        let c = Cache::new(16, 25);
+        let c = Cache::new(16, 25, Arc::new(WarningStore::new(8)));
         get(&c, 1, 10);
         get(&c, 2, 40);
         let r = c.describe();
-        assert_eq!((r.fragment_count, r.bytes, r.held_past_ceiling), (1, 40, 1));
+        assert_eq!((r.fragment_count, r.bytes), (1, 40));
+        let w = c.warnings.take().warnings;
+        assert_eq!(
+            (w.len(), w[0].code, w[0].detail),
+            (1, WarningCode::CacheCeilingExceeded, Some(40))
+        );
+        assert_eq!(w[0].blocks, [key(2)]);
         // Read again, it is not decoded again.
         get(&c, 2, 40);
         assert_eq!(c.describe().hits, 1);
@@ -377,7 +410,7 @@ mod tests {
 
     #[test]
     fn size_zero_turns_it_off() {
-        let c = Cache::new(4, 1000);
+        let c = Cache::new(4, 1000, Arc::new(WarningStore::new(8)));
         get(&c, 1, 10);
         c.set_size(0);
         assert_eq!(c.describe().fragment_count, 0);
@@ -389,7 +422,7 @@ mod tests {
 
     #[test]
     fn a_failed_decode_is_not_kept() {
-        let c = Cache::new(4, 1000);
+        let c = Cache::new(4, 1000, Arc::new(WarningStore::new(8)));
         let e = c.get_or_decode(key(1), || Err(Error::Corrupt("bad".into())));
         assert!(e.is_err());
         assert_eq!(c.describe().fragment_count, 0);
@@ -400,7 +433,7 @@ mod tests {
     #[test]
     fn a_block_needed_at_once_is_decoded_once() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        let c = Cache::new(4, 1000);
+        let c = Cache::new(4, 1000, Arc::new(WarningStore::new(8)));
         let decodes = AtomicUsize::new(0);
         std::thread::scope(|s| {
             for _ in 0..8 {
@@ -421,7 +454,7 @@ mod tests {
     #[test]
     fn a_waiter_on_a_failed_decode_decodes_itself() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        let c = Cache::new(4, 1000);
+        let c = Cache::new(4, 1000, Arc::new(WarningStore::new(8)));
         let tries = AtomicUsize::new(0);
         let results: Vec<bool> = std::thread::scope(|s| {
             let hs: Vec<_> = (0..4)
